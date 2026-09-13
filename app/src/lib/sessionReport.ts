@@ -62,8 +62,8 @@ export function buildSessionReportHtml(opts: {
   const received = Number(session.cash || 0) + Number(session.mobile || 0) + Number(session.bank_in || 0) + deductions;
   const diff = expected - received;
 
-  const statusLabel = session.status === 'approved' ? L.statusApproved : session.status === 'submitted' ? L.statusSubmitted : L.statusOpen;
-  const statusColor = session.status === 'approved' ? '#0a7a44' : session.status === 'submitted' ? '#9a6b00' : '#666';
+  const statusLabel = session.status === 'verified' ? L.statusApproved : session.status === 'submitted' ? L.statusSubmitted : L.statusOpen;
+  const statusColor = session.status === 'verified' ? '#0a7a44' : session.status === 'submitted' ? '#9a6b00' : '#666';
 
   const body = groups
     .map((g) => {

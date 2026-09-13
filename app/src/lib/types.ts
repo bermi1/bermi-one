@@ -1,7 +1,13 @@
 export type Role = 'owner' | 'staff';
 export type Theme = 'light' | 'dark';
 export type Lang = 'en' | 'sw';
-export type SessionStatus = 'open' | 'submitted' | 'approved';
+/**
+ * A closing moves open -> submitted -> verified. The owner can instead send it
+ * back as `rejected`, which is deliberately distinct from a fresh `open` day:
+ * it carries owner_comments telling the counter what to fix. `verified` is
+ * terminal and immutable.
+ */
+export type SessionStatus = 'open' | 'submitted' | 'verified' | 'rejected';
 export type EntryKind = 'sale' | 'purchase' | 'expense' | 'payment' | 'withdrawal' | 'loss' | 'stock' | 'debt';
 export type AccountId = 'cash' | 'mobile' | 'bank';
 
@@ -91,6 +97,11 @@ export interface StockSession {
   cash: number;
   mobile: number;
   bank_in: number;
+  /** Cash physically sent to the bank at close. */
+  amount_to_bank: number;
+  /** Frozen at submit so a later price edit can't rewrite a signed-off day. */
+  total_calculated_sales: number;
+  total_calculated_profit: number;
   closing_items: ClosingItem[];
   reason: string | null;
   note: string | null;

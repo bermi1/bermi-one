@@ -11,6 +11,7 @@ import { tintVars, type Product } from '../lib/types';
 import { parseTable, buildRows, FIELD_LABELS, type FieldKey, type ParsedTable } from '../lib/csv';
 import { openStockSheet } from '../lib/stockSheet';
 import { SessionHistory } from '../components/SessionHistory';
+import { ReceiveStock } from '../components/ReceiveStock';
 
 /** The canonical bar stock template — the same columns the business exports. */
 function toCsv(products: Product[]): string {
@@ -23,16 +24,15 @@ function toCsv(products: Product[]): string {
 }
 
 export function Stock() {
-  const { L, fmt, short, lang, owner } = useSettings();
-  const { products, session, activeBusiness, addStock, reorderProducts, addProduct, addProductsBulk, updateProductFields } = useData();
+  const { L, fmt, fmt0, short, lang, owner } = useSettings();
+  const { products, session, activeBusiness, reorderProducts, addProduct, addProductsBulk, updateProductFields } = useData();
   const { flash } = useToast();
   const counts = session?.counts || {};
 
   const [tab, setTab] = useState<'items' | 'sessions'>('items');
+  const [receiveOpen, setReceiveOpen] = useState(false);
   const [query, setQuery] = useState('');
   const [cat, setCat] = useState('All');
-  const [expanded, setExpanded] = useState<string | null>(null);
-  const [draft, setDraft] = useState('0');
   const [editId, setEditId] = useState<string | null>(null);
   const [editPrice, setEditPrice] = useState('');
   const [editProfit, setEditProfit] = useState('');
@@ -74,15 +74,6 @@ export function Stock() {
     if (j < 0 || j >= ids.length) return;
     [ids[i], ids[j]] = [ids[j], ids[i]];
     void reorderProducts(ids);
-  }
-
-  async function saveAdd(p: Product) {
-    const n = Number(draft || 0);
-    if (n <= 0) return;
-    await addStock(p.id, n);
-    flash(`${n} × ${p.name}`);
-    setExpanded(null);
-    setDraft('0');
   }
 
   function startEdit(p: Product) {
@@ -264,11 +255,11 @@ export function Stock() {
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 16 }}>
         <div className="card" style={{ padding: 14 }}>
           <div style={{ fontSize: 11, color: 'var(--ink3)', fontWeight: 700 }}>{L.totalStock}</div>
-          <div style={{ marginTop: 4, fontSize: 17, fontWeight: 800 }}>{totalUnits}</div>
+          <div style={{ marginTop: 4, fontSize: 17, fontWeight: 800 }}>{totalUnits || '—'}</div>
         </div>
         <div className="card" style={{ padding: 14 }}>
           <div style={{ fontSize: 11, color: 'var(--ink3)', fontWeight: 700 }}>{L.stockValue}</div>
-          <div style={{ marginTop: 4, fontSize: 17, fontWeight: 800 }}>{fmt(totalValue)}</div>
+          <div style={{ marginTop: 4, fontSize: 17, fontWeight: 800 }}>{fmt0(totalValue)}</div>
         </div>
       </div>
 
@@ -335,13 +326,12 @@ export function Stock() {
                 <div style={{ fontSize: 12, fontWeight: 800, color: 'var(--ink2)', textTransform: 'uppercase', letterSpacing: 0.4 }}>{groupCat}</div>
                 <div style={{ fontSize: 11, color: 'var(--ink3)', fontWeight: 700 }}>{items.length}</div>
                 <div style={{ flex: 1 }} />
-                <div style={{ fontSize: 11.5, color: 'var(--ink3)', fontWeight: 700 }}>{groupUnits} · {short(groupValue)}</div>
+                <div style={{ fontSize: 11.5, color: 'var(--ink3)', fontWeight: 700 }}>{groupUnits || '—'} · {groupValue ? short(groupValue) : '—'}</div>
               </div>
 
               <div className="card" style={{ padding: 6 }}>
                 {items.map((p, i) => {
                   const qty = currentQty(p, counts);
-                  const isOpen = expanded === p.id;
                   const editing = editId === p.id;
                   const e = edits[p.id] || {};
                   const num = (v: unknown, fallback: number) => (v === undefined ? String(fallback) : String(v));
@@ -397,7 +387,7 @@ export function Stock() {
                         <div style={{ width: 34, height: 34, borderRadius: 11, background: tv.soft, color: tv.ink, display: 'grid', placeItems: 'center', flexShrink: 0 }}>
                           <Icon name={p.icon} size={16} />
                         </div>
-                        <div className="tap" style={{ flex: 1, minWidth: 0 }} onClick={() => { setExpanded(isOpen ? null : p.id); setDraft('0'); }}>
+                        <div style={{ flex: 1, minWidth: 0 }}>
                           <div style={{ fontSize: 14, fontWeight: 700 }}>{p.name}</div>
                           {editing ? (
                             <div style={{ display: 'flex', gap: 6, marginTop: 5, alignItems: 'center' }} onClick={(e) => e.stopPropagation()}>
@@ -423,45 +413,24 @@ export function Stock() {
                           ) : (
                             <div style={{ fontSize: 12, color: 'var(--ink3)', fontWeight: 600, display: 'flex', alignItems: 'center', gap: 6 }}>
                               {fmt(p.price)} · {lang === 'sw' ? 'faida' : 'profit'} {fmt(p.profit)}
-                              <Icon
-                                name="edit"
-                                size={12}
-                                style={{ color: 'var(--ink3)' }}
-                                onClick={(e) => { e.stopPropagation(); startEdit(p); }}
-                              />
+                              {owner && (
+                                <Icon
+                                  name="edit"
+                                  size={12}
+                                  style={{ color: 'var(--ink3)' }}
+                                  onClick={(e) => { e.stopPropagation(); startEdit(p); }}
+                                />
+                              )}
                             </div>
                           )}
                         </div>
-                        <div className="tap" onClick={() => { setExpanded(isOpen ? null : p.id); setDraft('0'); }} style={{ fontSize: 14, fontWeight: 800, color: qty < p.low ? 'var(--warn)' : 'var(--ink)', textAlign: 'right' }}>
-                          {qty}
-                          <div style={{ fontSize: 10.5, color: 'var(--ink3)', fontWeight: 600 }}>{p.unit}</div>
+                        <div style={{ textAlign: 'right' }}>
+                          <div style={{ fontSize: 14, fontWeight: 800, color: qty < p.low ? 'var(--warn)' : 'var(--ink)' }}>{qty || '—'}</div>
+                          <div style={{ fontSize: 10.5, color: 'var(--ink3)', fontWeight: 600 }}>
+                            {p.unit}{p.added > 0 ? ` · +${p.added}` : ''}
+                          </div>
                         </div>
                       </div>
-
-                      {isOpen && (
-                        <div style={{ padding: '4px 8px 16px', animation: 'slideIn .2s ease' }}>
-                          <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--ink3)', marginBottom: 8 }}>{L.addStockInline}</div>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                            <button className="icon-btn tap" onClick={() => setDraft(String(Math.max(0, Number(draft || 0) - 1)))}>
-                              <Icon name="minus" size={15} />
-                            </button>
-                            <input
-                              value={draft}
-                              onChange={(e) => setDraft(e.target.value.replace(/[^0-9]/g, ''))}
-                              style={{ flex: 1, textAlign: 'center', fontSize: 17, fontWeight: 800, padding: '10px 0', borderRadius: 12, border: '1px solid var(--line)', background: 'var(--card2)' }}
-                            />
-                            <button className="icon-btn tap" onClick={() => setDraft(String(Number(draft || 0) + 1))}>
-                              <Icon name="plus" size={15} />
-                            </button>
-                          </div>
-                          <div style={{ marginTop: 10, fontSize: 12.5, color: 'var(--ink2)', fontWeight: 600 }}>
-                            {L.totalAfterAdd}: {qty + Number(draft || 0)} {p.unit}
-                          </div>
-                          <button className="btn-primary tap" style={{ width: '100%', marginTop: 12, padding: '12px 0' }} onClick={() => saveAdd(p)}>
-                            {L.save}
-                          </button>
-                        </div>
-                      )}
                     </div>
                   );
                 })}
@@ -473,37 +442,48 @@ export function Stock() {
 
       {!reorderMode && !editAllMode && (
         <>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginTop: 12 }}>
-            <button className="btn-ghost tap" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }} onClick={() => setAddOpen(true)}>
-              <Icon name="plus" size={16} />
-              {lang === 'sw' ? 'Bidhaa mpya' : 'Add product'}
+          {owner && (
+            <button className="btn-primary tap" style={{ width: '100%', marginTop: 12, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }} onClick={() => setReceiveOpen(true)}>
+              <Icon name="in" size={16} />
+              {L.receiveStock}
             </button>
-            <button className="btn-ghost tap" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }} onClick={openBulk}>
-              <Icon name="upload" size={16} />
-              {L.bulkUpload}
-            </button>
-            {owner && (
+          )}
+          {owner && (
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginTop: 8 }}>
+              <button className="btn-ghost tap" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }} onClick={() => setAddOpen(true)}>
+                <Icon name="plus" size={16} />
+                {lang === 'sw' ? 'Bidhaa mpya' : 'Add product'}
+              </button>
+              <button className="btn-ghost tap" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }} onClick={openBulk}>
+                <Icon name="upload" size={16} />
+                {L.bulkUpload}
+              </button>
               <button className="btn-ghost tap" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }} onClick={() => setEditAllMode(true)}>
                 <Icon name="edit" size={16} />
                 {L.bulkEdit}
               </button>
-            )}
-            {owner && (
               <button className="btn-ghost tap" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }} onClick={exportCsv}>
                 <Icon name="download" size={16} />
                 {L.exportCsv}
               </button>
-            )}
-          </div>
+            </div>
+          )}
           <button className="btn-ghost tap" style={{ width: '100%', marginTop: 8, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }} onClick={printSheet}>
             <Icon name="doc" size={16} />
             {L.printStockSheet}
           </button>
+          {!owner && (
+            <div style={{ marginTop: 12, fontSize: 12, color: 'var(--ink3)', textAlign: 'center', lineHeight: 1.5 }}>
+              {L.staffStockNote}
+            </div>
+          )}
         </>
       )}
       </>
       )}
       <input ref={fileInputRef} type="file" accept=".csv,.txt" style={{ display: 'none' }} onChange={onFilePicked} />
+
+      <ReceiveStock open={receiveOpen} onClose={() => setReceiveOpen(false)} />
 
       <Sheet open={addOpen} onClose={() => setAddOpen(false)} title={lang === 'sw' ? 'Bidhaa mpya' : 'New product'}>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>

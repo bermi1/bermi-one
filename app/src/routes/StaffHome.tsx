@@ -13,11 +13,11 @@ export function StaffHome() {
   const counts = session?.counts || {};
 
   const status = session?.status || 'open';
-  const taskTitle = status === 'approved' ? L.closed : L.closeToday;
+  const taskTitle = status === 'verified' ? L.closed : L.closeToday;
   const taskSub =
     status === 'submitted'
       ? lang === 'sw' ? 'Imewasilishwa. Subiri idhini.' : 'Submitted. Waiting for the owner.'
-      : status === 'approved'
+      : status === 'verified'
       ? L.closedNote
       : lang === 'sw' ? 'Hesabu zilizobaki kisha wasilisha.' : 'Count what is left, then submit for review.';
 
@@ -32,12 +32,12 @@ export function StaffHome() {
 
       <div
         className="card tap"
-        onClick={() => nav(status === 'approved' ? '/home' : '/close')}
-        style={{ marginTop: 16, padding: 20, borderRadius: 24, background: status === 'approved' ? 'var(--okSoft)' : 'var(--grad)' }}
+        onClick={() => nav(status === 'verified' ? '/home' : '/close')}
+        style={{ marginTop: 16, padding: 20, borderRadius: 24, background: status === 'verified' ? 'var(--okSoft)' : 'var(--grad)' }}
       >
-        <div style={{ fontSize: 12, fontWeight: 700, color: status === 'approved' ? 'var(--ok)' : 'rgba(255,255,255,.8)' }}>{L.todaysWork}</div>
-        <div style={{ marginTop: 6, fontSize: 21, fontWeight: 800, color: status === 'approved' ? 'var(--ok)' : '#fff' }}>{taskTitle}</div>
-        <div style={{ marginTop: 6, fontSize: 13, fontWeight: 600, color: status === 'approved' ? 'var(--ink2)' : 'rgba(255,255,255,.85)' }}>{taskSub}</div>
+        <div style={{ fontSize: 12, fontWeight: 700, color: status === 'verified' ? 'var(--ok)' : 'rgba(255,255,255,.8)' }}>{L.todaysWork}</div>
+        <div style={{ marginTop: 6, fontSize: 21, fontWeight: 800, color: status === 'verified' ? 'var(--ok)' : '#fff' }}>{taskTitle}</div>
+        <div style={{ marginTop: 6, fontSize: 13, fontWeight: 600, color: status === 'verified' ? 'var(--ink2)' : 'rgba(255,255,255,.85)' }}>{taskSub}</div>
       </div>
 
       <div style={{ marginTop: 18, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>

@@ -15,5 +15,10 @@ export function useSettings() {
   const fmt = useMemo(() => (n: number) => formatMoney(n, country), [country]);
   const short = useMemo(() => (n: number) => shortMoney(n, country), [country]);
 
-  return { lang, theme, role, owner, country, L, fmt, short, countries: COUNTRIES };
+  // A screen full of "TSh 0" reads as noise, and worse, as though a real zero
+  // was recorded. Nothing counted yet shows as a dash instead.
+  const fmt0 = useMemo(() => (n: number) => (n ? formatMoney(n, country) : '—'), [country]);
+  const num0 = useMemo(() => (n: number) => (n ? String(n) : '—'), []);
+
+  return { lang, theme, role, owner, country, L, fmt, short, fmt0, num0, countries: COUNTRIES };
 }

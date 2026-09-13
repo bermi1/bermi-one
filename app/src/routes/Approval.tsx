@@ -47,7 +47,7 @@ export function Approval() {
     );
   }
 
-  const approved = session.status === 'approved';
+  const approved = session.status === 'verified';
   const closingItems = session.closing_items || [];
   const itemsByKind = { expense: 0, loss: 0, debt: 0 };
   for (const it of closingItems) itemsByKind[it.kind] += it.amount;

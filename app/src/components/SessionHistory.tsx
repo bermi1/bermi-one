@@ -28,17 +28,21 @@ export function SessionHistory() {
 
   useEffect(() => { void load(); }, [load]);
 
+  /** Prefer the figure frozen at submit — today's prices must not rewrite an old day. */
   function salesOf(s: StockSession): number {
+    if (s.total_calculated_sales > 0) return s.total_calculated_sales;
     const counts = s.counts || {};
     return products.filter((p) => counts[p.id] !== undefined).reduce((sum, p) => sum + soldOf(p, counts) * p.price, 0);
   }
 
-  const statusMeta = (s: StockSession) =>
-    s.status === 'approved'
-      ? { label: L.verifiedLocked, color: 'var(--ok)', soft: 'var(--okSoft)', icon: 'lock' }
-      : s.status === 'submitted'
-        ? { label: L.awaitingVerification, color: 'var(--warn)', soft: 'var(--warnSoft)', icon: 'clock' }
-        : { label: L.stillOpen, color: 'var(--ink3)', soft: 'var(--card2)', icon: 'edit' };
+  const statusMeta = (s: StockSession) => {
+    switch (s.status) {
+      case 'verified': return { label: L.verifiedLocked, color: 'var(--ok)', soft: 'var(--okSoft)', icon: 'lock' };
+      case 'submitted': return { label: L.awaitingVerification, color: 'var(--warn)', soft: 'var(--warnSoft)', icon: 'clock' };
+      case 'rejected': return { label: L.sentBack, color: 'var(--bad)', soft: 'var(--badSoft)', icon: 'alert' };
+      default: return { label: L.stillOpen, color: 'var(--ink3)', soft: 'var(--card2)', icon: 'edit' };
+    }
+  };
 
   function report(s: StockSession) {
     if (!activeBusiness) return;
@@ -179,7 +183,7 @@ export function SessionHistory() {
         {confirmDelete && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
             <div style={{ fontSize: 13.5, color: 'var(--ink2)', lineHeight: 1.5 }}>
-              {confirmDelete.status === 'approved' ? L.deleteVerifiedWarning : L.deleteSessionWarning}
+              {confirmDelete.status === 'verified' ? L.deleteVerifiedWarning : L.deleteSessionWarning}
             </div>
             <div style={{ display: 'flex', gap: 10 }}>
               <button className="btn-ghost tap" style={{ flex: 1 }} onClick={() => setConfirmDelete(null)}>{L.cancel}</button>

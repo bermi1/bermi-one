@@ -1,7 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from './AuthContext';
-import { todayIso } from '../lib/calc';
+import { soldOf, todayIso } from '../lib/calc';
 import { logAction, fetchRecentActions, type ActionLogEntry } from '../ontology/actions';
 import {
   type Accounts,
@@ -65,7 +65,8 @@ interface DataCtx {
   updateProductFields: (productId: string, patch: Partial<Pick<Product, 'name' | 'cat' | 'unit' | 'price' | 'profit' | 'low' | 'opening'>>) => Promise<void>;
 
   setClosingCount: (productId: string, qty: number | null) => Promise<void>;
-  setSessionMoney: (field: 'cash' | 'mobile' | 'bank_in', value: number) => Promise<void>;
+  setSessionMoney: (field: 'cash' | 'mobile' | 'bank_in' | 'amount_to_bank', value: number) => Promise<void>;
+  reopenSession: () => Promise<void>;
   addClosingItem: (kind: ClosingItemKind, amount: number, note: string) => Promise<void>;
   removeClosingItem: (id: string) => Promise<void>;
   submitSession: (reason: string | null, note: string) => Promise<void>;
@@ -73,6 +74,7 @@ interface DataCtx {
   returnSession: (comments?: string) => Promise<void>;
   fetchSessions: (limit?: number) => Promise<StockSession[]>;
   deleteSession: (id: string) => Promise<void>;
+  fetchReportSource: (businessIds: string[], from: string, to: string) => Promise<{ sessions: StockSession[]; ledger: LedgerEntry[] }>;
 
   addLedgerLines: (lines: NewEntryLine[]) => Promise<void>;
   fetchPortfolioSummary: (days: number) => Promise<BusinessSummary[]>;
@@ -324,7 +326,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
     if (!activeBusiness) return null;
     const { data } = await supabase
       .from('stock_sessions')
-      .insert({ business_id: activeBusiness.id, session_date: todayIso(), status: 'open', counts: {}, closing_items: [] })
+      .insert({ business_id: activeBusiness.id, session_date: todayIso(), status: 'open', counts: {}, closing_items: [], amount_to_bank: 0 })
       .select()
       .single();
     if (data) setSession(data as StockSession);
@@ -344,8 +346,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
     [ensureSession, session],
   );
 
-  const setSessionMoney = useCallback(
-    async (field: 'cash' | 'mobile' | 'bank_in', value: number) => {
+  const setSessionMoney = useCallback<DataCtx['setSessionMoney']>(
+    async (field, value) => {
       const s = (await ensureSession()) || session;
       if (!s) return;
       setSession({ ...s, [field]: value });
@@ -407,7 +409,18 @@ export function DataProvider({ children }: { children: ReactNode }) {
     async (reason: string | null, note: string) => {
       const s = (await ensureSession()) || session;
       if (!s) return;
-      const patch = { status: 'submitted' as const, reason, note, submitted_by_name: profile?.full_name || 'Staff', submitted_at: new Date().toISOString() };
+      // Freeze what the day was worth at the moment it was submitted.
+      const counted = products.filter((p) => s.counts[p.id] !== undefined);
+      const patch = {
+        status: 'submitted' as const,
+        reason,
+        note,
+        owner_comments: null,
+        total_calculated_sales: counted.reduce((sum, p) => sum + soldOf(p, s.counts) * p.price, 0),
+        total_calculated_profit: counted.reduce((sum, p) => sum + soldOf(p, s.counts) * p.profit, 0),
+        submitted_by_name: profile?.full_name || 'Staff',
+        submitted_at: new Date().toISOString(),
+      };
       setSession({ ...s, ...patch });
       await supabase.from('stock_sessions').update(patch).eq('id', s.id);
       if (activeBusiness) {
@@ -418,12 +431,20 @@ export function DataProvider({ children }: { children: ReactNode }) {
         });
       }
     },
-    [ensureSession, session, profile, activeBusiness, record],
+    [ensureSession, session, profile, activeBusiness, record, products],
   );
+
+  /** Owner reopening a submitted or rejected day to correct it before verifying. */
+  const reopenSession = useCallback(async () => {
+    if (!session || !activeBusiness || session.status === 'verified') return;
+    const patch = { status: 'open' as const };
+    setSession({ ...session, ...patch });
+    await supabase.from('stock_sessions').update(patch).eq('id', session.id);
+  }, [session, activeBusiness]);
 
   const approveSession = useCallback(async () => {
     if (!session || !activeBusiness) return;
-    const patch = { status: 'approved' as const, approved_by_name: profile?.full_name || 'Owner', approved_at: new Date().toISOString() };
+    const patch = { status: 'verified' as const, approved_by_name: profile?.full_name || 'Owner', approved_at: new Date().toISOString() };
     setSession({ ...session, ...patch });
     await supabase.from('stock_sessions').update(patch).eq('id', session.id);
 
@@ -521,7 +542,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
   const returnSession = useCallback<DataCtx['returnSession']>(
     async (comments) => {
       if (!session || !activeBusiness) return;
-      const patch = { status: 'open' as const, owner_comments: comments?.trim() || null };
+      const patch = { status: 'rejected' as const, owner_comments: comments?.trim() || null };
       setSession({ ...session, ...patch });
       await supabase.from('stock_sessions').update(patch).eq('id', session.id);
       await record({
@@ -547,6 +568,19 @@ export function DataProvider({ children }: { children: ReactNode }) {
       return (data || []) as StockSession[];
     },
     [activeBusiness],
+  );
+
+  const fetchReportSource = useCallback<DataCtx['fetchReportSource']>(
+    async (businessIds, from, to) => {
+      if (businessIds.length === 0) return { sessions: [], ledger: [] };
+      const [{ data: sess }, { data: led }] = await Promise.all([
+        supabase.from('stock_sessions').select('*').in('business_id', businessIds).gte('session_date', from).lte('session_date', to),
+        supabase.from('ledger_entries').select('*').in('business_id', businessIds)
+          .gte('created_at', `${from}T00:00:00.000Z`).lte('created_at', `${to}T23:59:59.999Z`),
+      ]);
+      return { sessions: (sess || []) as StockSession[], ledger: (led || []) as LedgerEntry[] };
+    },
+    [],
   );
 
   const deleteSession = useCallback<DataCtx['deleteSession']>(
@@ -596,8 +630,10 @@ export function DataProvider({ children }: { children: ReactNode }) {
     submitSession,
     approveSession,
     returnSession,
+    reopenSession,
     fetchSessions,
     deleteSession,
+    fetchReportSource,
     addLedgerLines,
     fetchPortfolioSummary,
     addStaffMember,
