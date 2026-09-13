@@ -8,7 +8,7 @@ import { useData } from '../state/DataContext';
 import { useToast } from '../state/ToastContext';
 import { currentQty, stockValueOf } from '../lib/calc';
 import { tintVars, type Product } from '../lib/types';
-import { parseProductsCsv, type ParsedProductRow } from '../lib/csv';
+import { parseTable, buildRows, FIELD_LABELS, type FieldKey, type ParsedTable } from '../lib/csv';
 
 export function Stock() {
   const { L, fmt, lang } = useSettings();
@@ -28,11 +28,16 @@ export function Stock() {
 
   const [bulkOpen, setBulkOpen] = useState(false);
   const [bulkText, setBulkText] = useState('');
-  const [bulkRows, setBulkRows] = useState<ParsedProductRow[]>([]);
-  const [bulkErrors, setBulkErrors] = useState<string[]>([]);
+  const [bulkTable, setBulkTable] = useState<ParsedTable | null>(null);
+  const [bulkColumnMap, setBulkColumnMap] = useState<FieldKey[]>([]);
   const [bulkFileName, setBulkFileName] = useState('');
   const [bulkBusy, setBulkBusy] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const { rows: bulkRows, errors: bulkErrors } = useMemo(
+    () => (bulkTable ? buildRows(bulkTable.rows, bulkColumnMap) : { rows: [], errors: [] }),
+    [bulkTable, bulkColumnMap],
+  );
 
   const cats = useMemo(() => ['All', ...Array.from(new Set(products.map((p) => p.cat)))], [products]);
   const filtered = useMemo(
@@ -84,15 +89,19 @@ export function Stock() {
 
   function applyBulkText(text: string) {
     setBulkText(text);
-    const { rows, errors } = parseProductsCsv(text);
-    setBulkRows(rows);
-    setBulkErrors(errors);
+    const table = parseTable(text);
+    setBulkTable(table);
+    setBulkColumnMap(table.columnMap);
+  }
+
+  function setColumnMapAt(ix: number, field: FieldKey) {
+    setBulkColumnMap((prev) => prev.map((f, i) => (i === ix ? field : f)));
   }
 
   function openBulk() {
     setBulkText('');
-    setBulkRows([]);
-    setBulkErrors([]);
+    setBulkTable(null);
+    setBulkColumnMap([]);
     setBulkFileName('');
     setBulkOpen(true);
   }
@@ -295,6 +304,40 @@ export function Stock() {
             style={{ width: '100%', padding: 12, border: 'none', fontSize: 13, fontFamily: 'monospace', resize: 'vertical' }}
           />
           <div style={{ fontSize: 11.5, color: 'var(--ink3)' }}>{L.csvFormatHint}</div>
+
+          {bulkTable && bulkColumnMap.length > 0 && (
+            <div className="card" style={{ padding: 10, display: 'flex', flexDirection: 'column', gap: 8 }}>
+              <div style={{ fontSize: 11.5, fontWeight: 700, color: 'var(--ink3)', textTransform: 'uppercase', letterSpacing: 0.4 }}>
+                {L.matchColumns}
+              </div>
+              {bulkColumnMap.map((field, ix) => {
+                const headerLabel = bulkTable.headerCells?.[ix]?.trim() || `${lang === 'sw' ? 'Safu' : 'Column'} ${ix + 1}`;
+                const sample = bulkTable.rows[0]?.[ix] || '';
+                return (
+                  <div key={ix} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: 12.5, fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{headerLabel}</div>
+                      {sample && (
+                        <div style={{ fontSize: 11, color: 'var(--ink3)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          {lang === 'sw' ? 'mfano' : 'e.g.'} {sample}
+                        </div>
+                      )}
+                    </div>
+                    <select
+                      value={field}
+                      onChange={(e) => setColumnMapAt(ix, e.target.value as FieldKey)}
+                      className="card"
+                      style={{ padding: '7px 8px', border: '1px solid var(--line)', fontSize: 12.5, fontWeight: 600 }}
+                    >
+                      {Object.entries(FIELD_LABELS).map(([key, label]) => (
+                        <option key={key} value={key}>{label}</option>
+                      ))}
+                    </select>
+                  </div>
+                );
+              })}
+            </div>
+          )}
 
           {bulkErrors.length > 0 && (
             <div style={{ fontSize: 12, color: 'var(--warn)', display: 'flex', flexDirection: 'column', gap: 2 }}>
