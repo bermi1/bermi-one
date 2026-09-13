@@ -7,7 +7,7 @@ import { BusinessSwitchSheet } from './BusinessSwitchSheet';
 
 export function AppHeader() {
   const { L, lang, theme, owner } = useSettings();
-  const { activeBusiness, setLang, setTheme, setRole } = useData();
+  const { activeBusiness, setTheme, setRole } = useData();
   const [switching, setSwitching] = useState(false);
   const meta = activeBusiness ? bizMeta(activeBusiness.type) : null;
 
@@ -26,27 +26,15 @@ export function AppHeader() {
           </div>
           <Icon name="down" size={14} style={{ color: 'var(--ink3)', flexShrink: 0 }} />
         </div>
-        <div className="row" style={{ gap: 8, flexShrink: 0 }}>
-          <div style={{ display: 'flex', background: 'var(--card)', border: '1px solid var(--line)', borderRadius: 10, padding: 2, gap: 2, boxShadow: 'var(--sh)' }}>
-            <button
-              className="tap"
-              type="button"
-              onClick={() => setRole('owner')}
-              style={{ padding: '6px 9px', borderRadius: 8, fontSize: 11, fontWeight: 700, background: owner ? 'var(--brandSoft)' : 'transparent', color: owner ? 'var(--brand)' : 'var(--ink3)' }}
-            >
-              {lang === 'sw' ? 'Mmiliki' : 'Owner'}
-            </button>
-            <button
-              className="tap"
-              type="button"
-              onClick={() => setRole('staff')}
-              style={{ padding: '6px 9px', borderRadius: 8, fontSize: 11, fontWeight: 700, background: !owner ? 'var(--brandSoft)' : 'transparent', color: !owner ? 'var(--brand)' : 'var(--ink3)' }}
-            >
-              {lang === 'sw' ? 'Mfanyakazi' : 'Staff'}
-            </button>
-          </div>
-          <button className="chip tap" onClick={() => setLang(lang === 'en' ? 'sw' : 'en')} type="button">
-            {lang === 'en' ? 'EN' : 'SW'}
+        <div className="row" style={{ gap: 6, flexShrink: 0 }}>
+          <button
+            className="chip tap"
+            type="button"
+            onClick={() => setRole(owner ? 'staff' : 'owner')}
+            style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '7px 10px 7px 8px', background: 'var(--brandSoft)', color: 'var(--brand)', border: 'none' }}
+          >
+            <Icon name={owner ? 'shield' : 'user'} size={12} />
+            <span style={{ fontSize: 11.5 }}>{owner ? (lang === 'sw' ? 'Mmiliki' : 'Owner') : (lang === 'sw' ? 'Mfanyakazi' : 'Staff')}</span>
           </button>
           <button className="icon-btn tap" onClick={() => setTheme(theme === 'light' ? 'dark' : 'light')} type="button" aria-label="Toggle theme">
             <Icon name={theme === 'light' ? 'moon' : 'sun'} size={16} />

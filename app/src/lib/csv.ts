@@ -6,7 +6,7 @@
 // That correction step is the "fix it" half: auto-detect, then let a human
 // confirm — never silently import a wrong guess.
 
-export type FieldKey = 'name' | 'cat' | 'unit' | 'cost' | 'price' | 'opening' | 'low' | 'ignore';
+export type FieldKey = 'name' | 'cat' | 'unit' | 'cost' | 'price' | 'opening' | 'low' | 'profit' | 'ignore';
 
 export const FIELD_LABELS: Record<FieldKey, string> = {
   name: 'Product name',
@@ -16,6 +16,7 @@ export const FIELD_LABELS: Record<FieldKey, string> = {
   price: 'Selling price',
   opening: 'Opening quantity',
   low: 'Low stock level',
+  profit: 'Profit per unit (fills in cost)',
   ignore: 'Ignore this column',
 };
 
@@ -100,6 +101,7 @@ function detectDelimiter(lines: string[]): string {
 // header like "item_price" from being misread as the product name.
 const FIELD_KEYWORDS: [FieldKey, RegExp][] = [
   ['cost', /\b(cost|buy(ing)?|purchase|wholesale)\s*price\b|\bcost\b|\bbuying\b|\bunit\s*cost\b/i],
+  ['profit', /\bprofit\b|\bmargin\b/i],
   ['price', /\b(sell(ing)?|retail|sale)\s*price\b|\bprice\b|\bsrp\b/i],
   ['opening', /\b(opening|current|available|in\s*stock|on\s*hand|qty|quantity|stock\s*level|balance)\b/i],
   ['low', /\b(low|reorder|min(imum)?|re-?order)\s*(level|point|qty|quantity)?\b/i],
@@ -221,12 +223,18 @@ export function buildRows(rows: string[][], columnMap: FieldKey[]): { rows: Pars
       const ci = columnMap.indexOf(field);
       return ci >= 0 ? cells[ci] : undefined;
     };
+    const price = cleanNumber(get('price'));
+    let cost = cleanNumber(get('cost'));
+    if (cost === 0 && columnMap.includes('profit')) {
+      const profit = cleanNumber(get('profit'));
+      if (price > 0 && profit > 0 && profit < price) cost = price - profit;
+    }
     out.push({
       name,
       cat: (get('cat') || '').trim() || 'General',
       unit: (get('unit') || '').trim() || 'unit',
-      cost: cleanNumber(get('cost')),
-      price: cleanNumber(get('price')),
+      cost,
+      price,
       opening: cleanNumber(get('opening')),
       low: cleanNumber(get('low')),
     });
