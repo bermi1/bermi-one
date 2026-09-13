@@ -11,7 +11,7 @@ import { groupByCategory } from '../lib/calc';
  * cost. This is the only way stock goes up between closings — the person on
  * shift never touches it, they only count what is left at the end of the day.
  */
-export function ReceiveStock({ open, onClose }: { open: boolean; onClose: () => void }) {
+export function ReceiveStock({ open, onClose, note, heldForNext }: { open: boolean; onClose: () => void; note: string; heldForNext: boolean }) {
   const { L, fmt, lang } = useSettings();
   const { products, addStock, addLedgerLines } = useData();
   const { flash } = useToast();
@@ -63,8 +63,15 @@ export function ReceiveStock({ open, onClose }: { open: boolean; onClose: () => 
   }
 
   return (
-    <Sheet open={open} onClose={onClose} title={L.receiveStock} sub={L.receiveStockSub}>
+    <Sheet open={open} onClose={onClose} title={L.addStockCta} sub={L.addStockCtaSub}>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+        <div
+          className="card"
+          style={{ padding: '10px 13px', display: 'flex', alignItems: 'center', gap: 9, background: heldForNext ? 'var(--warnSoft)' : 'var(--brandSoft)' }}
+        >
+          <Icon name={heldForNext ? 'clock' : 'check'} size={14} style={{ color: heldForNext ? 'var(--warn)' : 'var(--brand)', flexShrink: 0 }} />
+          <span style={{ fontSize: 12, fontWeight: 700, color: heldForNext ? 'var(--warn)' : 'var(--brand)' }}>{note}</span>
+        </div>
         <label className="card" style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '11px 13px' }}>
           <Icon name="search" size={15} style={{ color: 'var(--ink3)' }} />
           <input
@@ -86,7 +93,7 @@ export function ReceiveStock({ open, onClose }: { open: boolean; onClose: () => 
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <div style={{ fontSize: 13, fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.name}</div>
                       <div style={{ fontSize: 10.5, color: 'var(--ink3)', fontWeight: 600 }}>
-                        {p.opening + p.added} {p.unit} {lang === 'sw' ? 'zilizopo' : 'on hand'}
+                        {p.opening + p.added + p.incoming} {p.unit} {lang === 'sw' ? 'zilizopo' : 'on hand'}
                       </div>
                     </div>
                     <input

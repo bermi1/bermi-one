@@ -47,6 +47,12 @@ export interface Product {
   cost: number;
   opening: number;
   added: number;
+  /**
+   * Stock delivered while a closing sat submitted and frozen for review. It is
+   * physically on the shelf but must not change the figures under review, so it
+   * waits here and folds into `added` the moment that closing is verified.
+   */
+  incoming: number;
   low: number;
   wk: number;
   sort_order: number;
@@ -120,18 +126,28 @@ export const KIND_ICON: Record<EntryKind, string> = {
   sale: 'cash', payment: 'phone', purchase: 'truck', expense: 'receipt', withdrawal: 'out', loss: 'alert', stock: 'box', debt: 'user',
 };
 
+/**
+ * Bar is the only module that is actually built out — the closing sheet, the
+ * profit-per-bottle template and the reports are all shaped around it. The rest
+ * are listed so people can see where this is going, but they are marked
+ * `live: false` and cannot be picked yet.
+ */
 export const BUSINESS_TYPES = [
-  { id: 'bar', name: 'Bar', icon: 'bottle' },
-  { id: 'rest', name: 'Restaurant', icon: 'fork' },
-  { id: 'pharm', name: 'Pharmacy', icon: 'pill' },
-  { id: 'groc', name: 'Grocery', icon: 'cart' },
-  { id: 'retail', name: 'Retail', icon: 'store' },
-  { id: 'whole', name: 'Wholesale', icon: 'truck' },
-  { id: 'serv', name: 'Service', icon: 'tool' },
-  { id: 'hotel', name: 'Hotel', icon: 'bed' },
-  { id: 'manu', name: 'Manufacturing', icon: 'factory' },
-  { id: 'other', name: 'Other', icon: 'plus' },
+  { id: 'bar', name: 'Bar', icon: 'bottle', live: true },
+  { id: 'rest', name: 'Restaurant', icon: 'fork', live: false },
+  { id: 'pharm', name: 'Pharmacy', icon: 'pill', live: false },
+  { id: 'groc', name: 'Grocery', icon: 'cart', live: false },
+  { id: 'retail', name: 'Retail', icon: 'store', live: false },
+  { id: 'whole', name: 'Wholesale', icon: 'truck', live: false },
+  { id: 'serv', name: 'Service', icon: 'tool', live: false },
+  { id: 'hotel', name: 'Hotel', icon: 'bed', live: false },
+  { id: 'manu', name: 'Manufacturing', icon: 'factory', live: false },
+  { id: 'other', name: 'Other', icon: 'plus', live: false },
 ] as const;
+
+export function isLiveType(type: string): boolean {
+  return BUSINESS_TYPES.some((b) => b.id === type && b.live);
+}
 
 export function bizMeta(type: string) {
   return BUSINESS_TYPES.find((b) => b.id === type) || BUSINESS_TYPES[BUSINESS_TYPES.length - 1];

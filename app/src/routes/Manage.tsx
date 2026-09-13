@@ -8,6 +8,7 @@ import { useData } from '../state/DataContext';
 import { useAuth } from '../state/AuthContext';
 import { useToast } from '../state/ToastContext';
 import { BUSINESS_TYPES, bizMeta, tintVars } from '../lib/types';
+import { ComingSoonType } from '../components/ComingSoonType';
 import { COUNTRIES } from '../lib/countries';
 
 export function Manage() {
@@ -165,11 +166,13 @@ export function Manage() {
       <Sheet open={addOpen} onClose={() => setAddOpen(false)} title={L.addBusiness}>
         <input autoFocus placeholder={L.businessProfile} value={newName} onChange={(e) => setNewName(e.target.value)} className="card" style={{ width: '100%', padding: '14px 16px', border: 'none', fontSize: 15, fontWeight: 600, marginBottom: 12 }} />
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 16 }}>
-          {BUSINESS_TYPES.map((b) => (
+          {BUSINESS_TYPES.map((b) => b.live ? (
             <div key={b.id} className="tap" onClick={() => setNewType(b.id)} style={{ padding: '10px 12px', borderRadius: 14, background: newType === b.id ? 'var(--brandSoft)' : 'var(--card2)', border: `1.5px solid ${newType === b.id ? 'var(--brand)' : 'transparent'}`, display: 'flex', alignItems: 'center', gap: 8 }}>
               <Icon name={b.icon} size={14} />
               <span style={{ fontSize: 12.5, fontWeight: 700 }}>{b.name}</span>
             </div>
+          ) : (
+            <ComingSoonType key={b.id} name={b.name} icon={b.icon} label={L.comingSoon} compact />
           ))}
         </div>
         <div className="card" style={{ padding: 14, marginBottom: 16, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>

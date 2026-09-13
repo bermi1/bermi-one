@@ -20,7 +20,7 @@ export function Approval() {
 
   function printReport() {
     if (!activeBusiness || !session) return;
-    const ok = openSessionReport({ business: activeBusiness, products, session, lang });
+    const ok = openSessionReport({ business: activeBusiness, products, session, lang, includeProfit: owner });
     if (!ok) flash(lang === 'sw' ? 'Ruhusu dirisha jipya' : 'Allow pop-ups to open the report');
   }
 
@@ -61,7 +61,7 @@ export function Approval() {
     ...(itemsByKind.loss > 0 ? [{ label: L.rLoss, value: fmt(itemsByKind.loss) }] : []),
     ...(itemsByKind.debt > 0 ? [{ label: L.rDebt, value: fmt(itemsByKind.debt) }] : []),
     { label: L.difference, value: fmt(Math.abs(diff)), color: diff === 0 ? 'var(--ok)' : 'var(--bad)' },
-    { label: L.grossProfit, value: fmt(gross), color: 'var(--ok)' },
+    ...(owner ? [{ label: L.grossProfit, value: fmt(gross), color: 'var(--ok)' }] : []),
   ];
 
   return (

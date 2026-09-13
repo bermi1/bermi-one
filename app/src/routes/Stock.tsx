@@ -67,6 +67,19 @@ export function Stock() {
   const totalValue = stockValueOf(products, counts);
   const totalUnits = products.reduce((s, p) => s + currentQty(p, counts), 0);
 
+  /**
+   * A delivery joins the closing that is still being counted; once that closing
+   * is submitted or verified it belongs to the next one instead. Saying which,
+   * up front, is the difference between a stock figure people trust and one
+   * they argue about.
+   */
+  const heldForNext = session?.status === 'submitted';
+  const stockDestinationNote = heldForNext
+    ? L.goesToNextClosing
+    : session?.status === 'verified'
+      ? L.goesToComingStock
+      : L.goesToThisClosing;
+
   function move(p: Product, dir: -1 | 1) {
     const ids = products.map((x) => x.id);
     const i = ids.indexOf(p.id);
@@ -263,6 +276,21 @@ export function Stock() {
         </div>
       </div>
 
+      {owner && !reorderMode && !editAllMode && (
+        <button
+          className="btn-primary tap"
+          style={{ width: '100%', marginBottom: 12, padding: '13px 16px', display: 'flex', alignItems: 'center', gap: 12, textAlign: 'left' }}
+          onClick={() => setReceiveOpen(true)}
+        >
+          <Icon name="in" size={18} />
+          <span style={{ flex: 1 }}>
+            <span style={{ display: 'block', fontSize: 14.5, fontWeight: 800 }}>{L.addStockCta}</span>
+            <span style={{ display: 'block', marginTop: 2, fontSize: 11.5, fontWeight: 600, opacity: 0.8 }}>{stockDestinationNote}</span>
+          </span>
+          <Icon name="right" size={16} style={{ opacity: 0.7 }} />
+        </button>
+      )}
+
       {editAllMode && (
         <div className="card" style={{ padding: 12, marginBottom: 12, display: 'flex', alignItems: 'center', gap: 10, background: 'var(--brandSoft)' }}>
           <div style={{ flex: 1, fontSize: 12.5, fontWeight: 700, color: 'var(--brand)' }}>
@@ -412,7 +440,8 @@ export function Stock() {
                             </div>
                           ) : (
                             <div style={{ fontSize: 12, color: 'var(--ink3)', fontWeight: 600, display: 'flex', alignItems: 'center', gap: 6 }}>
-                              {fmt(p.price)} · {lang === 'sw' ? 'faida' : 'profit'} {fmt(p.profit)}
+                              {fmt(p.price)}
+                              {owner && <> · {lang === 'sw' ? 'faida' : 'profit'} {fmt(p.profit)}</>}
                               {owner && (
                                 <Icon
                                   name="edit"
@@ -427,7 +456,7 @@ export function Stock() {
                         <div style={{ textAlign: 'right' }}>
                           <div style={{ fontSize: 14, fontWeight: 800, color: qty < p.low ? 'var(--warn)' : 'var(--ink)' }}>{qty || '—'}</div>
                           <div style={{ fontSize: 10.5, color: 'var(--ink3)', fontWeight: 600 }}>
-                            {p.unit}{p.added > 0 ? ` · +${p.added}` : ''}
+                            {p.unit}{p.added > 0 ? ` · +${p.added}` : ''}{p.incoming > 0 ? ` · +${p.incoming} ${L.heldForNextCount}` : ''}
                           </div>
                         </div>
                       </div>
@@ -443,13 +472,7 @@ export function Stock() {
       {!reorderMode && !editAllMode && (
         <>
           {owner && (
-            <button className="btn-primary tap" style={{ width: '100%', marginTop: 12, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }} onClick={() => setReceiveOpen(true)}>
-              <Icon name="in" size={16} />
-              {L.receiveStock}
-            </button>
-          )}
-          {owner && (
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginTop: 8 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginTop: 12 }}>
               <button className="btn-ghost tap" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }} onClick={() => setAddOpen(true)}>
                 <Icon name="plus" size={16} />
                 {lang === 'sw' ? 'Bidhaa mpya' : 'Add product'}
@@ -483,7 +506,7 @@ export function Stock() {
       )}
       <input ref={fileInputRef} type="file" accept=".csv,.txt" style={{ display: 'none' }} onChange={onFilePicked} />
 
-      <ReceiveStock open={receiveOpen} onClose={() => setReceiveOpen(false)} />
+      <ReceiveStock open={receiveOpen} onClose={() => setReceiveOpen(false)} note={stockDestinationNote} heldForNext={heldForNext} />
 
       <Sheet open={addOpen} onClose={() => setAddOpen(false)} title={lang === 'sw' ? 'Bidhaa mpya' : 'New product'}>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>

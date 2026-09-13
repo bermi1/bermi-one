@@ -46,7 +46,10 @@ function AppRoutes() {
   if (!session) return <AuthScreen />;
   if (!profile?.onboarded) return <Onboarding />;
 
-  const isOwnerOnly = ['/money', '/reports', '/ai', '/manage', '/business', '/staff'].includes(location.pathname) && !owner;
+  // Money stays open to staff — it is where they record their own entries, and
+  // the screen already withholds the profit summary from them. Everything else
+  // in this list is owner business.
+  const isOwnerOnly = ['/reports', '/ai', '/manage', '/business', '/staff'].includes(location.pathname) && !owner;
   if (isOwnerOnly) return <Navigate to="/home" replace />;
 
   return (

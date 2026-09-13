@@ -12,8 +12,8 @@ import type { StockSession } from '../lib/types';
 /** Every past closing for this business: review, verify, reprint, remove. */
 export function SessionHistory() {
   const nav = useNavigate();
-  const { L, fmt, lang } = useSettings();
-  const { products, activeBusiness, fetchSessions, deleteSession } = useData();
+  const { L, fmt, lang, owner } = useSettings();
+  const { products, activeBusiness, fetchSessions, deleteSession, resumeSession } = useData();
   const { flash } = useToast();
 
   const [sessions, setSessions] = useState<StockSession[] | null>(null);
@@ -46,7 +46,7 @@ export function SessionHistory() {
 
   function report(s: StockSession) {
     if (!activeBusiness) return;
-    const ok = openSessionReport({ business: activeBusiness, products, session: s, lang });
+    const ok = openSessionReport({ business: activeBusiness, products, session: s, lang, includeProfit: owner });
     if (!ok) flash(lang === 'sw' ? 'Ruhusu dirisha jipya' : 'Allow pop-ups to open the report');
   }
 
@@ -124,6 +124,16 @@ export function SessionHistory() {
                     {L.reviewClosing}
                   </button>
                 )}
+                {(s.status === 'open' || s.status === 'rejected') && (
+                  <button
+                    className="chip tap"
+                    style={{ padding: '6px 11px', fontSize: 11.5, color: 'var(--brand)', display: 'flex', alignItems: 'center', gap: 5 }}
+                    onClick={() => { resumeSession(s); nav('/close'); }}
+                  >
+                    <Icon name="edit" size={11} />
+                    {L.resumeClosing}
+                  </button>
+                )}
                 <div style={{ flex: 1 }} />
                 <button className="chip tap" style={{ padding: '6px 11px', fontSize: 11.5, color: 'var(--bad)' }} onClick={() => setConfirmDelete(s)}>
                   <Icon name="x" size={11} />
@@ -171,6 +181,16 @@ export function SessionHistory() {
               </div>
             )}
 
+            {(viewing.status === 'open' || viewing.status === 'rejected') && (
+              <button
+                className="btn-primary tap"
+                style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}
+                onClick={() => { resumeSession(viewing); setViewing(null); nav('/close'); }}
+              >
+                <Icon name="edit" size={15} />
+                {L.resumeClosing}
+              </button>
+            )}
             <button className="btn-ghost tap" style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }} onClick={() => report(viewing)}>
               <Icon name="doc" size={15} />
               {L.report}

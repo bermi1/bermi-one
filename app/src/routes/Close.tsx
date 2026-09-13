@@ -6,7 +6,7 @@ import { Icon } from '../lib/icons';
 import { useSettings } from '../lib/useSettings';
 import { useData } from '../state/DataContext';
 import { useToast } from '../state/ToastContext';
-import { expectedSales, profitOf, soldOf, closingItemsTotal, groupByCategory } from '../lib/calc';
+import { businessDayIso, expectedSales, profitOf, soldOf, closingItemsTotal, groupByCategory } from '../lib/calc';
 import { tintVars, type ClosingItemKind } from '../lib/types';
 import { openSessionReport } from '../lib/sessionReport';
 
@@ -33,6 +33,14 @@ export function Close() {
   // read-only until the owner explicitly reopens them.
   const editing = status === 'open';
   const canReopen = owner && (status === 'submitted' || status === 'rejected');
+
+  /**
+   * A bar counts after the night is over, so the count entered this morning
+   * settles yesterday's trade. Saying which day is being closed, on the screen,
+   * is what stops a counter filing a night under the wrong date.
+   */
+  const closingDay = session?.session_date || businessDayIso();
+  const closingDayLabel = `${L.closingFor} ${new Date(closingDay).toLocaleDateString(lang === 'sw' ? 'sw-TZ' : 'en-GB', { weekday: 'long', day: '2-digit', month: 'long' })}`;
 
   const [itemSheetOpen, setItemSheetOpen] = useState(false);
   const [itemKind, setItemKind] = useState<ClosingItemKind>('expense');
@@ -70,7 +78,7 @@ export function Close() {
 
   function printReport() {
     if (!activeBusiness || !session) return;
-    const ok = openSessionReport({ business: activeBusiness, products, session, lang });
+    const ok = openSessionReport({ business: activeBusiness, products, session, lang, includeProfit: owner });
     if (!ok) flash(lang === 'sw' ? 'Ruhusu dirisha jipya' : 'Allow pop-ups to open the report');
   }
 
@@ -78,7 +86,7 @@ export function Close() {
   if (products.length === 0) {
     return (
       <div className="screen sb">
-        <ScreenHeader title={L.closeToday} sub={L.closeSub} />
+        <ScreenHeader title={L.closeToday} sub={closingDayLabel} />
         <div className="card" style={{ padding: 40, textAlign: 'center' }}>
           <div style={{ width: 46, height: 46, borderRadius: 15, margin: '0 auto 14px', background: 'var(--card2)', display: 'grid', placeItems: 'center', color: 'var(--ink3)' }}>
             <Icon name="box" size={20} />
@@ -104,7 +112,7 @@ export function Close() {
 
     return (
       <div className="screen sb">
-        <ScreenHeader title={L.closeToday} sub={session?.session_date} />
+        <ScreenHeader title={L.closeToday} sub={closingDayLabel} />
 
         <div className="card" style={{ padding: 20, marginBottom: 14, background: meta.soft }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
@@ -129,7 +137,7 @@ export function Close() {
         <div className="card" style={{ padding: 16, marginBottom: 14 }}>
           {[
             { k: L.sales, v: fmt0(session?.total_calculated_sales || expected) },
-            { k: L.grossProfit, v: fmt0(session?.total_calculated_profit || grossProfit), c: 'var(--ok)' },
+            ...(owner ? [{ k: L.grossProfit, v: fmt0(session?.total_calculated_profit || grossProfit), c: 'var(--ok)' }] : []),
             { k: L.cashReceived, v: fmt0(session?.cash || 0) },
             { k: L.mobileReceived, v: fmt0(session?.mobile || 0) },
             { k: L.amountToBank, v: fmt0(session?.amount_to_bank || 0) },
@@ -165,7 +173,7 @@ export function Close() {
   // --- The counting form ---
   return (
     <div className="screen sb">
-      <ScreenHeader title={L.closeToday} sub={L.closeSub} />
+      <ScreenHeader title={L.closeToday} sub={closingDayLabel} />
 
       {session?.owner_comments && (
         <div className="card" style={{ padding: 14, marginBottom: 14, background: 'var(--badSoft)' }}>
@@ -240,7 +248,7 @@ export function Close() {
                       <div style={{ display: 'flex', gap: 10, marginTop: 6, paddingLeft: 42, fontSize: 11.5, fontWeight: 700 }}>
                         <span style={{ color: 'var(--ink3)' }}><span style={{ color: 'var(--ink)' }}>{sold || '—'}</span> {L.sold}</span>
                         <span style={{ color: 'var(--ink3)' }}>{L.sales} <span style={{ color: 'var(--ink)' }}>{fmt0(sold * p.price)}</span></span>
-                        <span style={{ color: 'var(--ink3)' }}>{L.profit} <span style={{ color: 'var(--ok)' }}>{fmt0(sold * p.profit)}</span></span>
+                        {owner && <span style={{ color: 'var(--ink3)' }}>{L.profit} <span style={{ color: 'var(--ok)' }}>{fmt0(sold * p.profit)}</span></span>}
                       </div>
                     )}
                   </div>

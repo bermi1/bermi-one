@@ -1,11 +1,11 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { ScreenHeader } from '../components/ScreenHeader';
 import { Sheet } from '../components/Sheet';
 import { Icon } from '../lib/icons';
 import { useSettings } from '../lib/useSettings';
 import { useData } from '../state/DataContext';
 import { useToast } from '../state/ToastContext';
-import { KIND_ICON, KIND_SIGN, tintVars, type AccountId, type EntryKind } from '../lib/types';
+import { KIND_ICON, KIND_SIGN, tintVars, type AccountId, type Accounts, type EntryKind, type LedgerEntry } from '../lib/types';
 
 const KINDS: EntryKind[] = ['sale', 'payment', 'purchase', 'expense', 'withdrawal', 'loss', 'debt'];
 
@@ -15,9 +15,43 @@ interface Line {
 }
 
 export function Money() {
-  const { L, fmt, short, owner, lang } = useSettings();
-  const { accounts, ledger, addLedgerLines } = useData();
+  const { L, fmt, fmt0, short, owner, lang } = useSettings();
+  const { accounts, ledger, businesses, activeBusiness, addLedgerLines, fetchBooks } = useData();
   const { flash } = useToast();
+
+  /**
+   * The cash book can be read one business at a time or several at once, the
+   * same way the portfolio reads. Recording, though, always lands in the
+   * business you are actually standing in — an entry has to belong somewhere.
+   */
+  const [picked, setPicked] = useState<string[]>(() => (activeBusiness ? [activeBusiness.id] : []));
+  const [combined, setCombined] = useState<{ accounts: Accounts[]; ledger: LedgerEntry[] } | null>(null);
+
+  useEffect(() => {
+    if (activeBusiness && picked.length === 0) setPicked([activeBusiness.id]);
+  }, [activeBusiness, picked.length]);
+
+  const isCombined = picked.length > 1;
+
+  useEffect(() => {
+    if (!isCombined) { setCombined(null); return; }
+    let live = true;
+    void fetchBooks(picked).then((b) => { if (live) setCombined(b); });
+    return () => { live = false; };
+  }, [isCombined, picked, fetchBooks]);
+
+  function togglePicked(id: string) {
+    setPicked((prev) => (prev.includes(id) ? (prev.length === 1 ? prev : prev.filter((x) => x !== id)) : [...prev, id]));
+  }
+
+  const bookLedger = isCombined ? combined?.ledger || [] : ledger;
+  const balances: Record<AccountId, number> = isCombined
+    ? (combined?.accounts || []).reduce(
+        (acc, a) => ({ cash: acc.cash + a.cash, mobile: acc.mobile + a.mobile, bank: acc.bank + a.bank }),
+        { cash: 0, mobile: 0, bank: 0 },
+      )
+    : { cash: accounts?.cash || 0, mobile: accounts?.mobile || 0, bank: accounts?.bank || 0 };
+  const bizName = new Map(businesses.map((b) => [b.id, b.name]));
 
   const [sheetStep, setSheetStep] = useState<'closed' | 'kinds' | 'entry'>('closed');
   const [kind, setKind] = useState<EntryKind>('expense');
@@ -29,13 +63,13 @@ export function Money() {
   };
   const accountLabel: Record<AccountId, string> = { cash: L.cash, mobile: L.mobileMoney, bank: L.bank };
 
-  const opexToday = useMemo(() => ledger.filter((e) => e.kind === 'expense').reduce((s, e) => s + Math.abs(e.amount), 0), [ledger]);
-  const lossesToday = useMemo(() => ledger.filter((e) => e.kind === 'loss').reduce((s, e) => s + Math.abs(e.amount), 0), [ledger]);
-  const debtToday = useMemo(() => ledger.filter((e) => e.kind === 'debt').reduce((s, e) => s + Math.abs(e.amount), 0), [ledger]);
-  const draws = useMemo(() => ledger.filter((e) => e.kind === 'withdrawal').reduce((s, e) => s + Math.abs(e.amount), 0), [ledger]);
-  const salesTotal = useMemo(() => ledger.filter((e) => e.kind === 'sale' || e.kind === 'payment').reduce((s, e) => s + e.amount, 0), [ledger]);
-  const cogsEst = Math.round(salesTotal * 0.6);
-  const net = salesTotal - cogsEst - opexToday - lossesToday;
+  const sumKind = (k: EntryKind) => bookLedger.filter((e) => e.kind === k).reduce((s, e) => s + Math.abs(e.amount), 0);
+  const book = useMemo(() => {
+    const inflow = bookLedger.filter((e) => e.amount > 0).reduce((s, e) => s + e.amount, 0);
+    const outflow = bookLedger.filter((e) => e.amount < 0).reduce((s, e) => s - e.amount, 0);
+    return { inflow, outflow, net: inflow - outflow };
+  }, [bookLedger]);
+  const held = balances.cash + balances.mobile + balances.bank;
 
   function openKindPicker() {
     setKind('expense');
@@ -70,11 +104,29 @@ export function Money() {
 
   return (
     <div className="screen sb">
-      <ScreenHeader title={L.money} sub={owner ? L.todayAccount : L.myEntries} right={
+      <ScreenHeader title={L.cashBook} sub={owner ? L.cashBookSub : L.myEntries} right={
         <button className="icon-btn tap" onClick={openKindPicker} aria-label={L.add}>
           <Icon name="plus" />
         </button>
       } />
+
+      {owner && businesses.length > 1 && (
+        <div className="sb" style={{ display: 'flex', gap: 8, overflowX: 'auto', paddingBottom: 4, marginBottom: 12 }}>
+          {businesses.map((b) => {
+            const on = picked.includes(b.id);
+            return (
+              <button
+                key={b.id}
+                className="tap"
+                onClick={() => togglePicked(b.id)}
+                style={{ flexShrink: 0, padding: '8px 14px', borderRadius: 12, fontSize: 12.5, fontWeight: 700, background: on ? 'var(--brand)' : 'var(--card)', color: on ? 'var(--brandInk)' : 'var(--ink2)', border: '1px solid var(--line)' }}
+              >
+                {b.name}
+              </button>
+            );
+          })}
+        </div>
+      )}
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 8, marginBottom: 16 }}>
         {(['cash', 'mobile', 'bank'] as AccountId[]).map((id, i) => {
@@ -86,7 +138,7 @@ export function Money() {
                 <Icon name={accIcon[id]} size={13} />
               </div>
               <div style={{ fontSize: 11, color: 'var(--ink3)', fontWeight: 700 }}>{accountLabel[id]}</div>
-              <div style={{ marginTop: 3, fontSize: 14, fontWeight: 800 }}>{short(accounts ? accounts[id] : 0)}</div>
+              <div style={{ marginTop: 3, fontSize: 14, fontWeight: 800 }}>{balances[id] ? short(balances[id]) : '—'}</div>
             </div>
           );
         })}
@@ -94,38 +146,53 @@ export function Money() {
 
       {owner && (
         <div className="card" style={{ padding: 16, marginBottom: 18 }}>
-          <div style={{ fontSize: 13, fontWeight: 800, marginBottom: 10 }}>{L.todayAccount}</div>
+          <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 10 }}>
+            <div style={{ fontSize: 13, fontWeight: 800 }}>{isCombined ? L.combinedBooks : L.cashBook}</div>
+            <div style={{ fontSize: 12, color: 'var(--ink3)', fontWeight: 700 }}>{L.totalHeld} {fmt0(held)}</div>
+          </div>
           {[
-            { label: L.revenue, value: fmt(salesTotal) },
-            { label: '− ' + L.costOfSales, value: fmt(cogsEst) },
-            { label: '− ' + L.opex, value: fmt(opexToday) },
-            ...(lossesToday > 0 ? [{ label: '− ' + L.losses, value: fmt(lossesToday) }] : []),
-            { label: '= ' + L.netProfit, value: fmt(net), color: net >= 0 ? 'var(--ok)' : 'var(--bad)', big: true },
-            { label: L.withdrawals, value: fmt(draws) },
-            ...(debtToday > 0 ? [{ label: L.staffDebtOutstanding, value: fmt(debtToday) }] : []),
+            { label: L.moneyIn, value: fmt0(book.inflow), color: book.inflow ? 'var(--ok)' : undefined },
+            { label: L.salesRecorded, value: fmt0(sumKind('sale') + sumKind('payment')), sub: true },
+            { label: L.moneyOut, value: fmt0(book.outflow), color: book.outflow ? 'var(--bad)' : undefined },
+            { label: L.purchase, value: fmt0(sumKind('purchase')), sub: true },
+            { label: L.opex, value: fmt0(sumKind('expense')), sub: true },
+            { label: L.losses, value: fmt0(sumKind('loss')), sub: true },
+            { label: L.withdrawals, value: fmt0(sumKind('withdrawal')), sub: true },
+            { label: L.staffDebtOutstanding, value: fmt0(sumKind('debt')), sub: true },
+            { label: L.netMovement, value: fmt0(book.net), color: book.net >= 0 ? 'var(--ok)' : 'var(--bad)', big: true },
           ].map((r) => (
-            <div key={r.label} style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0', fontSize: r.big ? 15 : 13.5 }}>
-              <span style={{ color: 'var(--ink2)', fontWeight: r.big ? 800 : 600 }}>{r.label}</span>
-              <span style={{ fontWeight: 800, color: r.color || 'var(--ink)' }}>{r.value}</span>
+            <div key={r.label} style={{ display: 'flex', justifyContent: 'space-between', padding: r.sub ? '3px 0 3px 12px' : '7px 0', fontSize: r.big ? 15 : r.sub ? 12.5 : 13.5, borderTop: r.big ? '1px solid var(--line)' : undefined, marginTop: r.big ? 6 : undefined }}>
+              <span style={{ color: r.sub ? 'var(--ink3)' : 'var(--ink2)', fontWeight: r.big ? 800 : r.sub ? 600 : 700 }}>{r.label}</span>
+              <span style={{ fontWeight: r.sub ? 700 : 800, color: r.color || (r.sub ? 'var(--ink2)' : 'var(--ink)') }}>{r.value}</span>
             </div>
           ))}
+          {isCombined && activeBusiness && (
+            <div style={{ marginTop: 10, paddingTop: 10, borderTop: '1px solid var(--line)', fontSize: 11.5, color: 'var(--ink3)', fontWeight: 600 }}>
+              {L.recordsInto} {activeBusiness.name}.
+            </div>
+          )}
         </div>
       )}
 
       <div style={{ fontSize: 13, fontWeight: 800, color: 'var(--ink2)', textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 10 }}>{L.recent}</div>
       <div className="card" style={{ padding: 6 }}>
-        {ledger.length === 0 && <div style={{ padding: 20, textAlign: 'center', color: 'var(--ink3)', fontSize: 13 }}>{L.entries}: 0</div>}
-        {ledger.map((e, i) => {
+        {bookLedger.length === 0 && (
+          <div style={{ padding: 28, textAlign: 'center' }}>
+            <div style={{ fontSize: 13.5, fontWeight: 700 }}>{L.noEntriesYet}</div>
+            <div style={{ marginTop: 5, fontSize: 12.5, color: 'var(--ink3)' }}>{L.noEntriesYetSub}</div>
+          </div>
+        )}
+        {bookLedger.map((e, i) => {
           const tv = tintVars(i);
           return (
-            <div key={e.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '11px 8px', borderBottom: i === ledger.length - 1 ? 'none' : '1px solid var(--line)' }}>
+            <div key={e.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '11px 8px', borderBottom: i === bookLedger.length - 1 ? 'none' : '1px solid var(--line)' }}>
               <div style={{ width: 32, height: 32, borderRadius: 10, background: tv.soft, color: tv.ink, display: 'grid', placeItems: 'center', flexShrink: 0 }}>
                 <Icon name={KIND_ICON[e.kind]} size={15} />
               </div>
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ fontSize: 13, fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{e.label}</div>
                 <div style={{ fontSize: 11, color: 'var(--ink3)', fontWeight: 600 }}>
-                  {new Date(e.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} · {accountLabel[e.account]} {e.who_name ? `· ${e.who_name}` : ''}
+                  {new Date(e.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} · {accountLabel[e.account]}{isCombined ? ` · ${bizName.get(e.business_id) || ''}` : ''}{e.who_name ? ` · ${e.who_name}` : ''}
                 </div>
               </div>
               <div style={{ fontSize: 13, fontWeight: 800, color: e.amount > 0 ? 'var(--ok)' : e.amount < 0 ? 'var(--ink)' : 'var(--ink3)' }}>

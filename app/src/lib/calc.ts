@@ -50,6 +50,20 @@ export function todayIso(): string {
 }
 
 /**
+ * The trading day a closing belongs to.
+ *
+ * A bar counts its stock after the night is over — in practice the next
+ * morning — so the count taken now settles *yesterday's* trade. Dating the
+ * session to the calendar day it is entered on would file every night under
+ * the wrong date and shift every report by one day.
+ */
+export function businessDayIso(): string {
+  const d = new Date();
+  d.setDate(d.getDate() - 1);
+  return d.toISOString().slice(0, 10);
+}
+
+/**
  * Products bucketed by category, keeping each product's existing sort order
  * within its group and ordering groups by where they first appear. Bar stock
  * sheets are always read category by category, so this is the shape every

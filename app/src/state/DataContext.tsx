@@ -1,9 +1,10 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from './AuthContext';
-import { soldOf, todayIso } from '../lib/calc';
+import { businessDayIso, soldOf } from '../lib/calc';
 import { logAction, fetchRecentActions, type ActionLogEntry } from '../ontology/actions';
 import {
+  type AccountId,
   type Accounts,
   type Business,
   type ClosingItem,
@@ -67,6 +68,8 @@ interface DataCtx {
   setClosingCount: (productId: string, qty: number | null) => Promise<void>;
   setSessionMoney: (field: 'cash' | 'mobile' | 'bank_in' | 'amount_to_bank', value: number) => Promise<void>;
   reopenSession: () => Promise<void>;
+  /** Make a past closing the one the Close screen is working on. */
+  resumeSession: (s: StockSession) => void;
   addClosingItem: (kind: ClosingItemKind, amount: number, note: string) => Promise<void>;
   removeClosingItem: (id: string) => Promise<void>;
   submitSession: (reason: string | null, note: string) => Promise<void>;
@@ -76,8 +79,10 @@ interface DataCtx {
   deleteSession: (id: string) => Promise<void>;
   fetchReportSource: (businessIds: string[], from: string, to: string) => Promise<{ sessions: StockSession[]; ledger: LedgerEntry[] }>;
 
-  addLedgerLines: (lines: NewEntryLine[]) => Promise<void>;
+  addLedgerLines: (lines: NewEntryLine[], sessionId?: string) => Promise<void>;
   fetchPortfolioSummary: (days: number) => Promise<BusinessSummary[]>;
+  /** Cash/mobile/bank balances for several businesses at once — the combined cash book. */
+  fetchBooks: (businessIds: string[]) => Promise<{ accounts: Accounts[]; ledger: LedgerEntry[] }>;
 
   addStaffMember: (input: { name: string; phone: string; title: string }) => Promise<void>;
   removeStaffMember: (id: string) => Promise<void>;
@@ -117,7 +122,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
       supabase.from('products').select('*').eq('business_id', businessId).order('sort_order'),
       supabase.from('accounts').select('*').eq('business_id', businessId).maybeSingle(),
       supabase.from('ledger_entries').select('*').eq('business_id', businessId).order('created_at', { ascending: false }).limit(100),
-      supabase.from('stock_sessions').select('*').eq('business_id', businessId).eq('session_date', todayIso()).maybeSingle(),
+      supabase.from('stock_sessions').select('*').eq('business_id', businessId).eq('session_date', businessDayIso()).maybeSingle(),
       fetchRecentActions(businessId),
       supabase.from('staff_members').select('*').eq('business_id', businessId).order('sort_order'),
     ]);
@@ -255,23 +260,38 @@ export function DataProvider({ children }: { children: ReactNode }) {
     [activeBusiness, record, profile],
   );
 
+  /**
+   * Where a delivery lands depends on whether a closing is currently frozen.
+   *
+   * A closing that is still open (or was sent back for correction) has not been
+   * counted yet, so the delivery is part of what has to be counted — it goes to
+   * `added`. A closing that has been submitted is waiting on the owner and its
+   * figures must not move underneath them, so the delivery parks in `incoming`
+   * and folds into `added` the moment that closing is verified. Once a day is
+   * verified the shelf baseline has already rolled forward, so a delivery is
+   * simply the next count's addition again.
+   */
+  const stockTarget: 'added' | 'incoming' = session?.status === 'submitted' ? 'incoming' : 'added';
+
   const addStock = useCallback(
     async (productId: string, qty: number) => {
       if (!activeBusiness || qty <= 0) return;
       const p = products.find((x) => x.id === productId);
       if (!p) return;
-      const newAdded = p.added + qty;
-      setProducts((ps) => ps.map((x) => (x.id === productId ? { ...x, added: newAdded } : x)));
-      await supabase.from('products').update({ added: newAdded }).eq('id', productId);
+      const target = stockTarget;
+      const next = (target === 'incoming' ? p.incoming : p.added) + qty;
+      setProducts((ps) => ps.map((x) => (x.id === productId ? { ...x, [target]: next } : x)));
+      await supabase.from('products').update({ [target]: next }).eq('id', productId);
+      const where = target === 'incoming' ? ' (held for the next count)' : '';
       const { data: entry } = await supabase
         .from('ledger_entries')
-        .insert({ business_id: activeBusiness.id, kind: 'stock', label: `Stock added — ${qty} × ${p.name}`, amount: 0, account: 'cash', who_name: profile?.full_name })
+        .insert({ business_id: activeBusiness.id, kind: 'stock', label: `Stock added — ${qty} × ${p.name}${where}`, amount: 0, account: 'cash', who_name: profile?.full_name })
         .select()
         .single();
       if (entry) setLedger((l) => [entry as LedgerEntry, ...l]);
-      await record({ businessId: activeBusiness.id, actionType: 'stock.add', objectId: productId, summary: `Added ${qty} × ${p.name} to stock`, payload: { qty, product: p.name }, actorName: profile?.full_name });
+      await record({ businessId: activeBusiness.id, actionType: 'stock.add', objectId: productId, summary: `Added ${qty} × ${p.name} to stock${where}`, payload: { qty, product: p.name, target }, actorName: profile?.full_name });
     },
-    [activeBusiness, products, profile, record],
+    [activeBusiness, products, profile, record, stockTarget],
   );
 
   const addProduct = useCallback<DataCtx['addProduct']>(
@@ -279,7 +299,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
       if (!activeBusiness) return;
       const { data: p } = await supabase
         .from('products')
-        .insert({ business_id: activeBusiness.id, name, cat, unit, price, profit, low, cost: 0, icon: 'box', opening: 0, added: 0, wk: 0, sort_order: products.length })
+        .insert({ business_id: activeBusiness.id, name, cat, unit, price, profit, low, cost: 0, icon: 'box', opening: 0, added: 0, incoming: 0, wk: 0, sort_order: products.length })
         .select()
         .single();
       if (p) setProducts((ps) => [...ps, p as Product]);
@@ -308,7 +328,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
       const startIx = products.length;
       const toInsert = rows.map((r, i) => ({
         business_id: activeBusiness.id, name: r.name, cat: r.cat, unit: r.unit, cost: r.cost, price: r.price, profit: r.profit,
-        low: r.low, icon: 'box', opening: r.opening, added: 0, wk: 0, sort_order: startIx + i,
+        low: r.low, icon: 'box', opening: r.opening, added: 0, incoming: 0, wk: 0, sort_order: startIx + i,
       }));
       const { data } = await supabase.from('products').insert(toInsert).select();
       if (data) setProducts((ps) => [...ps, ...(data as Product[])]);
@@ -326,7 +346,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
     if (!activeBusiness) return null;
     const { data } = await supabase
       .from('stock_sessions')
-      .insert({ business_id: activeBusiness.id, session_date: todayIso(), status: 'open', counts: {}, closing_items: [], amount_to_bank: 0 })
+      .insert({ business_id: activeBusiness.id, session_date: businessDayIso(), status: 'open', counts: {}, closing_items: [], amount_to_bank: 0 })
       .select()
       .single();
     if (data) setSession(data as StockSession);
@@ -380,9 +400,11 @@ export function DataProvider({ children }: { children: ReactNode }) {
   );
 
   const addLedgerLines = useCallback(
-    async (lines: NewEntryLine[]) => {
+    async (lines: NewEntryLine[], sessionId?: string) => {
       if (!activeBusiness || lines.length === 0) return;
-      const rows = lines.map((l) => ({ business_id: activeBusiness.id, kind: l.kind, label: l.label, amount: l.amount, account: l.account, who_name: profile?.full_name }));
+      // session_id ties a line back to the closing that produced it, so deleting
+      // that closing can take its money with it instead of leaving orphans.
+      const rows = lines.map((l) => ({ business_id: activeBusiness.id, kind: l.kind, label: l.label, amount: l.amount, account: l.account, who_name: profile?.full_name, session_id: sessionId ?? null }));
       const { data } = await supabase.from('ledger_entries').insert(rows).select();
       if (data) setLedger((l) => [...(data as LedgerEntry[]), ...l]);
 
@@ -442,6 +464,13 @@ export function DataProvider({ children }: { children: ReactNode }) {
     await supabase.from('stock_sessions').update(patch).eq('id', session.id);
   }, [session, activeBusiness]);
 
+  /**
+   * Pick up a closing from the history list. The Close screen always edits
+   * whatever `session` holds, so pointing it at an older unfinished day is all
+   * it takes to carry on counting where someone left off.
+   */
+  const resumeSession = useCallback((s: StockSession) => setSession(s), []);
+
   const approveSession = useCallback(async () => {
     if (!session || !activeBusiness) return;
     const patch = { status: 'verified' as const, approved_by_name: profile?.full_name || 'Owner', approved_at: new Date().toISOString() };
@@ -457,21 +486,23 @@ export function DataProvider({ children }: { children: ReactNode }) {
       if (item.amount <= 0) continue;
       lines.push({ kind: item.kind, label: item.note || closingItemLabel[item.kind], amount: -item.amount, account: 'cash' });
     }
-    if (lines.length) await addLedgerLines(lines);
+    if (lines.length) await addLedgerLines(lines, session.id);
 
     // Roll the counted closing forward: what was left on the shelf tonight is
     // what the business opens with tomorrow, and the day's additions are now
     // baked into that figure. Without this the opening never moves and every
     // later day's "sold" is computed off a stale baseline.
+    // Anything received while this closing was frozen for review is real stock
+    // on the shelf that nobody counted, so it becomes the new day's addition.
     const counted = products.filter((p) => session.counts[p.id] !== undefined);
     if (counted.length) {
-      const rolled = counted.map((p) => ({ id: p.id, opening: Number(session.counts[p.id]) }));
+      const rolled = counted.map((p) => ({ id: p.id, opening: Number(session.counts[p.id]), added: p.incoming || 0 }));
       setProducts((ps) => ps.map((p) => {
         const r = rolled.find((x) => x.id === p.id);
-        return r ? { ...p, opening: r.opening, added: 0 } : p;
+        return r ? { ...p, opening: r.opening, added: r.added, incoming: 0 } : p;
       }));
       for (const r of rolled) {
-        await supabase.from('products').update({ opening: r.opening, added: 0 }).eq('id', r.id);
+        await supabase.from('products').update({ opening: r.opening, added: r.added, incoming: 0 }).eq('id', r.id);
       }
     }
 
@@ -481,6 +512,21 @@ export function DataProvider({ children }: { children: ReactNode }) {
       payload: { rolledForward: counted.length }, actorName: profile?.full_name,
     });
   }, [session, profile, addLedgerLines, activeBusiness, record, products]);
+
+  const fetchBooks = useCallback<DataCtx['fetchBooks']>(
+    async (businessIds) => {
+      if (businessIds.length === 0) return { accounts: [], ledger: [] };
+      const [{ data: accs }, { data: led }] = await Promise.all([
+        supabase.from('accounts').select('*').in('business_id', businessIds),
+        supabase.from('ledger_entries').select('*').in('business_id', businessIds).order('created_at', { ascending: false }).limit(300),
+      ]);
+      return {
+        accounts: (accs || []) as Accounts[],
+        ledger: (led || []) as LedgerEntry[],
+      };
+    },
+    [],
+  );
 
   const fetchPortfolioSummary = useCallback<DataCtx['fetchPortfolioSummary']>(
     async (days) => {
@@ -583,17 +629,41 @@ export function DataProvider({ children }: { children: ReactNode }) {
     [],
   );
 
+  /**
+   * Deleting a closing removes the whole record of it: the money it posted to
+   * the ledger, the effect that money had on the account balances, and the
+   * session row itself. The ledger rows go with the session by cascade, but the
+   * balances are running totals, so they have to be unwound by hand first.
+   */
   const deleteSession = useCallback<DataCtx['deleteSession']>(
     async (id) => {
       if (!activeBusiness) return;
+
+      const { data: linked } = await supabase
+        .from('ledger_entries')
+        .select('id, amount, account')
+        .eq('session_id', id);
+      const rows = (linked || []) as { id: string; amount: number; account: AccountId }[];
+
+      if (rows.length && accounts) {
+        const next = { ...accounts };
+        for (const r of rows) next[r.account] -= Number(r.amount);
+        setAccounts(next);
+        await supabase.from('accounts').update({ cash: next.cash, mobile: next.mobile, bank: next.bank }).eq('business_id', activeBusiness.id);
+      }
+
       await supabase.from('stock_sessions').delete().eq('id', id);
+      const gone = new Set(rows.map((r) => r.id));
+      if (gone.size) setLedger((l) => l.filter((e) => !gone.has(e.id)));
       if (session?.id === id) setSession(null);
+
       await record({
         businessId: activeBusiness.id, actionType: 'session.delete', objectId: id,
-        summary: 'Deleted a closing session', actorName: profile?.full_name,
+        summary: `Deleted a closing session and its ${rows.length} ledger ${rows.length === 1 ? 'entry' : 'entries'}`,
+        payload: { reversedEntries: rows.length }, actorName: profile?.full_name,
       });
     },
-    [activeBusiness, session, record, profile],
+    [activeBusiness, session, record, profile, accounts],
   );
 
   const displayName = profile?.full_name || authSession?.user?.email?.split('@')[0] || 'there';
@@ -631,11 +701,13 @@ export function DataProvider({ children }: { children: ReactNode }) {
     approveSession,
     returnSession,
     reopenSession,
+    resumeSession,
     fetchSessions,
     deleteSession,
     fetchReportSource,
     addLedgerLines,
     fetchPortfolioSummary,
+    fetchBooks,
     addStaffMember,
     removeStaffMember,
   };

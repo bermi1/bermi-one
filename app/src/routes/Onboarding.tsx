@@ -4,6 +4,7 @@ import { useData } from '../state/DataContext';
 import { T } from '../lib/i18n';
 import { COUNTRIES } from '../lib/countries';
 import { BUSINESS_TYPES, tintVars } from '../lib/types';
+import { ComingSoonType } from '../components/ComingSoonType';
 
 type Answers = { products: boolean | null; suppliers: boolean | null; credit: boolean | null; staff: boolean | null };
 
@@ -124,6 +125,7 @@ export function Onboarding() {
               {BUSINESS_TYPES.map((b, i) => {
                 const tv = tintVars(i);
                 const active = type === b.id;
+                if (!b.live) return <ComingSoonType key={b.id} name={b.name} icon={b.icon} label={L.comingSoon} />;
                 return (
                   <div
                     key={b.id}
