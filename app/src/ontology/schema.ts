@@ -64,6 +64,7 @@ export type ActionTypeName =
   | 'stock.updatePrice'
   | 'stock.reorder'
   | 'stock.addProduct'
+  | 'stock.bulkImport'
   | 'session.submit'
   | 'session.approve'
   | 'session.return'
@@ -81,6 +82,7 @@ export const ACTION_TYPES: Record<ActionTypeName, ActionTypeDef> = {
   'stock.updatePrice': { label: 'Change price', objectType: 'Product' },
   'stock.reorder': { label: 'Reorder products', objectType: 'Product' },
   'stock.addProduct': { label: 'Add product', objectType: 'Product' },
+  'stock.bulkImport': { label: 'Bulk import products', objectType: 'Product' },
   'session.submit': { label: 'Submit closing', objectType: 'StockSession' },
   'session.approve': { label: 'Approve closing', objectType: 'StockSession' },
   'session.return': { label: 'Return closing for correction', objectType: 'StockSession' },

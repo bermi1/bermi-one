@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { AppHeader } from '../components/AppHeader';
 import { ScreenHeader } from '../components/ScreenHeader';
 import { Sheet } from '../components/Sheet';
@@ -8,10 +8,11 @@ import { useData } from '../state/DataContext';
 import { useToast } from '../state/ToastContext';
 import { currentQty, stockValueOf } from '../lib/calc';
 import { tintVars, type Product } from '../lib/types';
+import { parseProductsCsv, type ParsedProductRow } from '../lib/csv';
 
 export function Stock() {
   const { L, fmt, lang } = useSettings();
-  const { products, session, addStock, updateProductPrice, reorderProducts, addProduct } = useData();
+  const { products, session, addStock, updateProductPrice, reorderProducts, addProduct, addProductsBulk } = useData();
   const { flash } = useToast();
   const counts = session?.counts || {};
 
@@ -24,6 +25,14 @@ export function Stock() {
   const [reorderMode, setReorderMode] = useState(false);
   const [addOpen, setAddOpen] = useState(false);
   const [newP, setNewP] = useState({ name: '', cat: 'Other', unit: 'unit', cost: '', price: '', low: '' });
+
+  const [bulkOpen, setBulkOpen] = useState(false);
+  const [bulkText, setBulkText] = useState('');
+  const [bulkRows, setBulkRows] = useState<ParsedProductRow[]>([]);
+  const [bulkErrors, setBulkErrors] = useState<string[]>([]);
+  const [bulkFileName, setBulkFileName] = useState('');
+  const [bulkBusy, setBulkBusy] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const cats = useMemo(() => ['All', ...Array.from(new Set(products.map((p) => p.cat)))], [products]);
   const filtered = useMemo(
@@ -71,6 +80,40 @@ export function Stock() {
     setAddOpen(false);
     setNewP({ name: '', cat: 'Other', unit: 'unit', cost: '', price: '', low: '' });
     flash(lang === 'sw' ? 'Bidhaa imeongezwa' : 'Product added');
+  }
+
+  function applyBulkText(text: string) {
+    setBulkText(text);
+    const { rows, errors } = parseProductsCsv(text);
+    setBulkRows(rows);
+    setBulkErrors(errors);
+  }
+
+  function openBulk() {
+    setBulkText('');
+    setBulkRows([]);
+    setBulkErrors([]);
+    setBulkFileName('');
+    setBulkOpen(true);
+  }
+
+  function onFilePicked(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setBulkFileName(file.name);
+    const reader = new FileReader();
+    reader.onload = () => applyBulkText(String(reader.result || ''));
+    reader.readAsText(file);
+    e.target.value = '';
+  }
+
+  async function confirmBulkImport() {
+    if (!bulkRows.length) return;
+    setBulkBusy(true);
+    await addProductsBulk(bulkRows);
+    setBulkBusy(false);
+    setBulkOpen(false);
+    flash(`${bulkRows.length} ${L.rowsReady}`);
   }
 
   return (
@@ -206,11 +249,18 @@ export function Stock() {
       </div>
 
       {!reorderMode && (
-        <button className="btn-ghost tap" style={{ width: '100%', marginTop: 12, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }} onClick={() => setAddOpen(true)}>
-          <Icon name="plus" size={16} />
-          {lang === 'sw' ? 'Ongeza bidhaa mpya' : 'Add new product'}
-        </button>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginTop: 12 }}>
+          <button className="btn-ghost tap" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }} onClick={() => setAddOpen(true)}>
+            <Icon name="plus" size={16} />
+            {lang === 'sw' ? 'Ongeza bidhaa mpya' : 'Add new product'}
+          </button>
+          <button className="btn-ghost tap" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }} onClick={openBulk}>
+            <Icon name="upload" size={16} />
+            {L.bulkUpload}
+          </button>
+        </div>
       )}
+      <input ref={fileInputRef} type="file" accept=".csv,.txt" style={{ display: 'none' }} onChange={onFilePicked} />
 
       <Sheet open={addOpen} onClose={() => setAddOpen(false)} title={lang === 'sw' ? 'Bidhaa mpya' : 'New product'}>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
@@ -226,6 +276,53 @@ export function Stock() {
           <input placeholder={lang === 'sw' ? 'Kiwango cha chini' : 'Low stock alert level'} inputMode="numeric" value={newP.low} onChange={(e) => setNewP({ ...newP, low: e.target.value.replace(/[^0-9]/g, '') })} className="card" style={{ padding: '12px 14px', border: 'none', fontSize: 14 }} />
           <button className="btn-primary tap" style={{ width: '100%', marginTop: 4 }} onClick={submitNewProduct}>
             {L.save}
+          </button>
+        </div>
+      </Sheet>
+
+      <Sheet open={bulkOpen} onClose={() => setBulkOpen(false)} title={L.bulkUploadTitle} sub={L.bulkUploadSub}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+          <button className="btn-ghost tap" style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }} onClick={() => fileInputRef.current?.click()}>
+            <Icon name="upload" size={16} />
+            {bulkFileName || L.chooseCsvFile}
+          </button>
+          <textarea
+            placeholder={L.orPasteRows}
+            value={bulkText}
+            onChange={(e) => applyBulkText(e.target.value)}
+            rows={6}
+            className="card"
+            style={{ width: '100%', padding: 12, border: 'none', fontSize: 13, fontFamily: 'monospace', resize: 'vertical' }}
+          />
+          <div style={{ fontSize: 11.5, color: 'var(--ink3)' }}>{L.csvFormatHint}</div>
+
+          {bulkErrors.length > 0 && (
+            <div style={{ fontSize: 12, color: 'var(--warn)', display: 'flex', flexDirection: 'column', gap: 2 }}>
+              {bulkErrors.slice(0, 5).map((e, i) => <div key={i}>{e}</div>)}
+            </div>
+          )}
+
+          {bulkRows.length > 0 ? (
+            <div className="card" style={{ padding: 6, maxHeight: 220, overflowY: 'auto' }}>
+              {bulkRows.slice(0, 20).map((r, i) => (
+                <div key={i} style={{ display: 'flex', gap: 8, alignItems: 'center', padding: '8px 8px', borderBottom: i === Math.min(bulkRows.length, 20) - 1 ? 'none' : '1px solid var(--line)', fontSize: 12.5 }}>
+                  <div style={{ flex: 1, fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.name}</div>
+                  <div style={{ color: 'var(--ink3)' }}>{r.opening} {r.unit}</div>
+                  <div style={{ fontWeight: 700 }}>{fmt(r.price)}</div>
+                </div>
+              ))}
+              {bulkRows.length > 20 && (
+                <div style={{ padding: 8, fontSize: 12, color: 'var(--ink3)', textAlign: 'center' }}>
+                  +{bulkRows.length - 20} {lang === 'sw' ? 'zaidi' : 'more'}
+                </div>
+              )}
+            </div>
+          ) : (
+            bulkText.trim().length > 0 && <div style={{ fontSize: 12.5, color: 'var(--ink3)' }}>{L.noRowsYet}</div>
+          )}
+
+          <button className="btn-primary tap" style={{ width: '100%' }} data-disabled={bulkRows.length === 0 || bulkBusy} onClick={confirmBulkImport}>
+            {bulkRows.length > 0 ? `${L.confirmImport} · ${bulkRows.length} ${L.rowsReady}` : L.confirmImport}
           </button>
         </div>
       </Sheet>

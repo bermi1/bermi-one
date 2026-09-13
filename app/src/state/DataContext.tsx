@@ -48,6 +48,7 @@ interface DataCtx {
   reorderProducts: (orderedIds: string[]) => Promise<void>;
   addStock: (productId: string, qty: number) => Promise<void>;
   addProduct: (input: { name: string; cat: string; unit: string; cost: number; price: number; low: number }) => Promise<void>;
+  addProductsBulk: (rows: { name: string; cat: string; unit: string; cost: number; price: number; opening: number; low: number }[]) => Promise<void>;
 
   setClosingCount: (productId: string, qty: number | null) => Promise<void>;
   setSessionMoney: (field: 'cash' | 'mobile' | 'bank_in' | 'expenses_paid', value: number) => Promise<void>;
@@ -259,6 +260,25 @@ export function DataProvider({ children }: { children: ReactNode }) {
     [activeBusiness, products.length, record, profile],
   );
 
+  const addProductsBulk = useCallback<DataCtx['addProductsBulk']>(
+    async (rows) => {
+      if (!activeBusiness || rows.length === 0) return;
+      const startIx = products.length;
+      const toInsert = rows.map((r, i) => ({
+        business_id: activeBusiness.id, name: r.name, cat: r.cat, unit: r.unit, cost: r.cost, price: r.price,
+        low: r.low, icon: 'box', opening: r.opening, added: 0, wk: 0, sort_order: startIx + i,
+      }));
+      const { data } = await supabase.from('products').insert(toInsert).select();
+      if (data) setProducts((ps) => [...ps, ...(data as Product[])]);
+      await record({
+        businessId: activeBusiness.id, actionType: 'stock.bulkImport',
+        summary: `Imported ${rows.length} product${rows.length === 1 ? '' : 's'} from a file`,
+        payload: { count: rows.length }, actorName: profile?.full_name,
+      });
+    },
+    [activeBusiness, products.length, record, profile],
+  );
+
   const ensureSession = useCallback(async (): Promise<StockSession | null> => {
     if (session) return session;
     if (!activeBusiness) return null;
@@ -386,6 +406,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
     reorderProducts,
     addStock,
     addProduct,
+    addProductsBulk,
     setClosingCount,
     setSessionMoney,
     submitSession,
