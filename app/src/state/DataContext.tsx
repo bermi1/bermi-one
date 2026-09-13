@@ -4,7 +4,6 @@ import { useAuth } from './AuthContext';
 import { todayIso } from '../lib/calc';
 import { logAction, fetchRecentActions, type ActionLogEntry } from '../ontology/actions';
 import {
-  SEED_PRODUCTS,
   type Accounts,
   type Business,
   type EntryKind,
@@ -38,12 +37,11 @@ interface DataCtx {
   setLang: (l: Lang) => void;
   setTheme: (t: Theme) => void;
   setRole: (r: Role) => void;
-  setCountryCode: (c: string) => void;
   displayName: string;
 
   completeOnboarding: (input: { name: string; type: string; city: string; countryCode: string; answers: Record<string, boolean | null> }) => Promise<void>;
-  addBusiness: (input: { name: string; type: string; city: string }) => Promise<void>;
-  updateBusiness: (patch: Partial<Pick<Business, 'name' | 'city' | 'type'>>) => Promise<void>;
+  addBusiness: (input: { name: string; type: string; city: string; countryCode: string }) => Promise<void>;
+  updateBusiness: (patch: Partial<Pick<Business, 'name' | 'city' | 'type' | 'country_code' | 'answers'>>) => Promise<void>;
   switchBusiness: (id: string) => Promise<void>;
 
   updateProductPrice: (productId: string, price: number) => Promise<void>;
@@ -144,22 +142,18 @@ export function DataProvider({ children }: { children: ReactNode }) {
   const setLang = useCallback((l: Lang) => void patchProfile({ lang: l }), [patchProfile]);
   const setTheme = useCallback((t: Theme) => void patchProfile({ theme: t }), [patchProfile]);
   const setRole = useCallback((r: Role) => void patchProfile({ role: r }), [patchProfile]);
-  const setCountryCode = useCallback((c: string) => void patchProfile({ country_code: c }), [patchProfile]);
 
   const completeOnboarding = useCallback<DataCtx['completeOnboarding']>(
     async ({ name, type, city, countryCode, answers }) => {
       if (!uid) return;
       const { data: biz } = await supabase
         .from('businesses')
-        .insert({ owner_id: uid, name, type, city, answers, sort_order: businesses.length })
+        .insert({ owner_id: uid, name, type, city, country_code: countryCode, answers, sort_order: businesses.length })
         .select()
         .single();
       if (!biz) return;
       await supabase.from('accounts').insert({ business_id: biz.id, cash: 0, mobile: 0, bank: 0 });
-      await supabase.from('products').insert(
-        SEED_PRODUCTS.map((p, i) => ({ ...p, business_id: biz.id, sort_order: i })),
-      );
-      await patchProfile({ onboarded: true, active_business_id: biz.id, country_code: countryCode });
+      await patchProfile({ onboarded: true, active_business_id: biz.id });
       setBusinesses((bs) => [...bs, biz as Business]);
       await loadBusinessData(biz.id);
       await record({ businessId: biz.id, actionType: 'business.create', objectId: biz.id, summary: `Opened ${name} (${type})`, payload: { name, type, city }, actorName: profile?.full_name });
@@ -168,11 +162,11 @@ export function DataProvider({ children }: { children: ReactNode }) {
   );
 
   const addBusiness = useCallback<DataCtx['addBusiness']>(
-    async ({ name, type, city }) => {
+    async ({ name, type, city, countryCode }) => {
       if (!uid) return;
       const { data: biz } = await supabase
         .from('businesses')
-        .insert({ owner_id: uid, name, type, city, answers: {}, sort_order: businesses.length })
+        .insert({ owner_id: uid, name, type, city, country_code: countryCode, answers: {}, sort_order: businesses.length })
         .select()
         .single();
       if (!biz) return;
@@ -186,7 +180,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
   );
 
   const updateBusiness = useCallback(
-    async (patch: Partial<Pick<Business, 'name' | 'city' | 'type'>>) => {
+    async (patch: Partial<Pick<Business, 'name' | 'city' | 'type' | 'country_code' | 'answers'>>) => {
       if (!activeBusiness) return;
       setBusinesses((bs) => bs.map((b) => (b.id === activeBusiness.id ? { ...b, ...patch } : b)));
       await supabase.from('businesses').update(patch).eq('id', activeBusiness.id);
@@ -383,7 +377,6 @@ export function DataProvider({ children }: { children: ReactNode }) {
     setLang,
     setTheme,
     setRole,
-    setCountryCode,
     displayName,
     completeOnboarding,
     addBusiness,

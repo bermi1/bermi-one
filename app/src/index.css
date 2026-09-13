@@ -54,3 +54,16 @@ button{background:none;border:none;cursor:pointer;-webkit-tap-highlight-color:tr
 .chip{padding:9px 13px;border-radius:12px;font-size:12.5px;font-weight:700;color:var(--ink);background:var(--card);border:1px solid var(--line);box-shadow:var(--sh)}
 
 ::placeholder{color:var(--ink3)}
+
+/* Desktop ("computer") layout: a fixed sidebar replaces the mobile bottom nav,
+   and screen content sits in a centered, comfortably-wide reading column. */
+.sidebar{display:none}
+.app-main{display:flex;flex-direction:column;min-width:0;flex:1}
+@media (min-width:880px){
+  .app-shell{flex-direction:row;align-items:stretch}
+  .sidebar{display:flex;flex-direction:column;width:236px;flex-shrink:0;padding:22px 14px;border-right:1px solid var(--line);position:sticky;top:0;height:100dvh;overflow-y:auto;background:var(--bg)}
+  .sidebar-item{display:flex;align-items:center;gap:12px;padding:11px 13px;border-radius:13px;font-size:13.5px;font-weight:700}
+  .app-main>*{max-width:640px;margin-left:auto;margin-right:auto;width:100%}
+  .bottom-nav{display:none}
+  .screen{padding-bottom:40px}
+}

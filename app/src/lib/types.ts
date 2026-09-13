@@ -22,6 +22,7 @@ export interface Business {
   name: string;
   type: string;
   city: string | null;
+  country_code: string;
   answers: Record<string, boolean | null>;
   sort_order: number;
 }
@@ -102,19 +103,6 @@ export const BUSINESS_TYPES = [
 export function bizMeta(type: string) {
   return BUSINESS_TYPES.find((b) => b.id === type) || BUSINESS_TYPES[BUSINESS_TYPES.length - 1];
 }
-
-export const SEED_PRODUCTS: Omit<Product, 'id' | 'business_id' | 'sort_order'>[] = [
-  { name: 'Tusker Lager', icon: 'bottle', cat: 'Beer', unit: 'btl', cost: 2200, price: 3500, opening: 40, added: 20, low: 24, wk: 310 },
-  { name: 'Safari Lager', icon: 'bottle', cat: 'Beer', unit: 'btl', cost: 2100, price: 3000, opening: 30, added: 10, low: 24, wk: 240 },
-  { name: 'Kilimanjaro', icon: 'bottle', cat: 'Beer', unit: 'btl', cost: 2200, price: 3500, opening: 24, added: 0, low: 24, wk: 180 },
-  { name: 'Serengeti', icon: 'bottle', cat: 'Beer', unit: 'btl', cost: 2000, price: 3000, opening: 36, added: 12, low: 24, wk: 340 },
-  { name: 'Castle Lite', icon: 'bottle', cat: 'Beer', unit: 'btl', cost: 2500, price: 4000, opening: 18, added: 0, low: 24, wk: 90 },
-  { name: 'Coca-Cola 500ml', icon: 'cup', cat: 'Soda', unit: 'btl', cost: 700, price: 1500, opening: 50, added: 20, low: 30, wk: 410 },
-  { name: 'Sprite 500ml', icon: 'cup', cat: 'Soda', unit: 'btl', cost: 700, price: 1500, opening: 30, added: 0, low: 30, wk: 220 },
-  { name: 'Konyagi 250ml', icon: 'glass', cat: 'Spirits', unit: 'btl', cost: 3500, price: 6000, opening: 15, added: 6, low: 10, wk: 120 },
-  { name: 'Savanna Dry', icon: 'glass', cat: 'Cider', unit: 'btl', cost: 3000, price: 5000, opening: 12, added: 0, low: 10, wk: 70 },
-  { name: 'Water 500ml', icon: 'droplet', cat: 'Water', unit: 'btl', cost: 300, price: 1000, opening: 40, added: 0, low: 20, wk: 260 },
-];
 
 export const TINTS = ['brand', 'vio', 'sky', 'ok', 'warn'] as const;
 export function tintVars(i: number) {

@@ -5,6 +5,7 @@ import { DataProvider, useData } from './state/DataContext';
 import { ToastProvider } from './state/ToastContext';
 import { IconSprite } from './lib/icons';
 import { BottomNav } from './components/BottomNav';
+import { Sidebar } from './components/Sidebar';
 import { AuthScreen } from './routes/AuthScreen';
 import { Onboarding } from './routes/Onboarding';
 import { Home } from './routes/Home';
@@ -17,6 +18,7 @@ import { Money } from './routes/Money';
 import { Reports } from './routes/Reports';
 import { AI } from './routes/AI';
 import { Manage } from './routes/Manage';
+import { BusinessProfile } from './routes/BusinessProfile';
 
 function ThemeRoot() {
   const { profile } = useData();
@@ -43,24 +45,28 @@ function AppRoutes() {
   if (!session) return <AuthScreen />;
   if (!profile?.onboarded) return <Onboarding />;
 
-  const isOwnerOnly = ['/money', '/reports', '/ai', '/manage'].includes(location.pathname) && !owner;
+  const isOwnerOnly = ['/money', '/reports', '/ai', '/manage', '/business'].includes(location.pathname) && !owner;
   if (isOwnerOnly) return <Navigate to="/home" replace />;
 
   return (
     <div className="app-shell">
       <ThemeRoot />
-      <Routes>
-        <Route path="/home" element={owner ? <Home /> : <StaffHome />} />
-        <Route path="/stock" element={<Stock />} />
-        <Route path="/close" element={<Close />} />
-        <Route path="/diff" element={<Difference />} />
-        <Route path="/approval" element={<Approval />} />
-        <Route path="/money" element={<Money />} />
-        <Route path="/reports" element={<Reports />} />
-        <Route path="/ai" element={<AI />} />
-        <Route path="/manage" element={<Manage />} />
-        <Route path="*" element={<Navigate to="/home" replace />} />
-      </Routes>
+      <Sidebar />
+      <div className="app-main">
+        <Routes>
+          <Route path="/home" element={owner ? <Home /> : <StaffHome />} />
+          <Route path="/stock" element={<Stock />} />
+          <Route path="/close" element={<Close />} />
+          <Route path="/diff" element={<Difference />} />
+          <Route path="/approval" element={<Approval />} />
+          <Route path="/money" element={<Money />} />
+          <Route path="/reports" element={<Reports />} />
+          <Route path="/ai" element={<AI />} />
+          <Route path="/manage" element={<Manage />} />
+          <Route path="/business" element={<BusinessProfile />} />
+          <Route path="*" element={<Navigate to="/home" replace />} />
+        </Routes>
+      </div>
       <BottomNav />
     </div>
   );

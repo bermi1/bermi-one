@@ -4,6 +4,7 @@ import { Icon } from '../lib/icons';
 import { useData } from '../state/DataContext';
 import { useSettings } from '../lib/useSettings';
 import { bizMeta, BUSINESS_TYPES, tintVars } from '../lib/types';
+import { COUNTRIES } from '../lib/countries';
 import { useToast } from '../state/ToastContext';
 
 export function BusinessSwitchSheet({ open, onClose }: { open: boolean; onClose: () => void }) {
@@ -13,10 +14,11 @@ export function BusinessSwitchSheet({ open, onClose }: { open: boolean; onClose:
   const [adding, setAdding] = useState(false);
   const [name, setName] = useState('');
   const [type, setType] = useState('retail');
+  const [countryIx, setCountryIx] = useState(0);
 
   async function submitAdd() {
     if (!name.trim()) return;
-    await addBusiness({ name: name.trim(), type, city: '' });
+    await addBusiness({ name: name.trim(), type, city: '', countryCode: COUNTRIES[countryIx].code });
     setAdding(false);
     setName('');
     flash(L.addBusiness);
@@ -80,6 +82,15 @@ export function BusinessSwitchSheet({ open, onClose }: { open: boolean; onClose:
                 <span style={{ fontSize: 12.5, fontWeight: 700 }}>{b.name}</span>
               </div>
             ))}
+          </div>
+          <div className="card" style={{ padding: 14, marginBottom: 16, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <div>
+              <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--ink3)', textTransform: 'uppercase', letterSpacing: 0.4 }}>{L.country}</div>
+              <div style={{ marginTop: 3, fontSize: 14, fontWeight: 700 }}>{COUNTRIES[countryIx].name} · {COUNTRIES[countryIx].cur}</div>
+            </div>
+            <button className="chip tap" type="button" onClick={() => setCountryIx((countryIx + 1) % COUNTRIES.length)}>
+              {L.change}
+            </button>
           </div>
           <button className="btn-primary tap" style={{ width: '100%' }} onClick={submitAdd}>
             {L.save}

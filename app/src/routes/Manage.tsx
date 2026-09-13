@@ -8,36 +8,28 @@ import { useData } from '../state/DataContext';
 import { useAuth } from '../state/AuthContext';
 import { useToast } from '../state/ToastContext';
 import { BUSINESS_TYPES, bizMeta, tintVars } from '../lib/types';
+import { COUNTRIES } from '../lib/countries';
 
 export function Manage() {
   const nav = useNavigate();
-  const { L, lang, theme, country, countries } = useSettings();
-  const { businesses, activeBusiness, switchBusiness, addBusiness, updateBusiness, setLang, setTheme, setCountryCode, displayName } = useData();
+  const { L, lang, theme } = useSettings();
+  const { businesses, activeBusiness, switchBusiness, addBusiness, setLang, setTheme, displayName } = useData();
   const { signOut } = useAuth();
   const { flash } = useToast();
 
   const [addOpen, setAddOpen] = useState(false);
   const [newName, setNewName] = useState('');
   const [newType, setNewType] = useState('retail');
-
-  const [editOpen, setEditOpen] = useState(false);
-  const [editName, setEditName] = useState(activeBusiness?.name || '');
-  const [editCity, setEditCity] = useState(activeBusiness?.city || '');
+  const [newCountryIx, setNewCountryIx] = useState(0);
 
   const meta = activeBusiness ? bizMeta(activeBusiness.type) : null;
 
   async function submitAdd() {
     if (!newName.trim()) return;
-    await addBusiness({ name: newName.trim(), type: newType, city: '' });
+    await addBusiness({ name: newName.trim(), type: newType, city: '', countryCode: COUNTRIES[newCountryIx].code });
     setAddOpen(false);
     setNewName('');
     flash(L.addBusiness);
-  }
-
-  async function saveEdit() {
-    await updateBusiness({ name: editName.trim() || activeBusiness?.name, city: editCity.trim() });
-    setEditOpen(false);
-    flash(L.save);
   }
 
   const groups: { title: string; items: { name: string; meta: string; icon: string }[] }[] = [
@@ -108,7 +100,7 @@ export function Manage() {
 
       <div style={{ fontSize: 13, fontWeight: 800, color: 'var(--ink2)', textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 10 }}>{L.wholeBusiness}</div>
       <div className="card" style={{ padding: 6, marginBottom: 18 }}>
-        <div className="tap" onClick={() => setEditOpen(true)} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '11px 8px' }}>
+        <div className="tap" onClick={() => nav('/business')} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '11px 8px' }}>
           <div style={{ width: 32, height: 32, borderRadius: 10, background: 'var(--brandSoft)', color: 'var(--brand)', display: 'grid', placeItems: 'center', flexShrink: 0 }}>
             <Icon name={meta?.icon || 'building'} size={15} />
           </div>
@@ -148,7 +140,7 @@ export function Manage() {
             {lang === 'en' ? 'English' : 'Kiswahili'}
           </button>
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '11px 8px', borderBottom: '1px solid var(--line)' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '11px 8px' }}>
           <div style={{ width: 32, height: 32, borderRadius: 10, background: 'var(--card2)', color: 'var(--ink2)', display: 'grid', placeItems: 'center' }}>
             <Icon name={theme === 'light' ? 'sun' : 'moon'} size={15} />
           </div>
@@ -156,23 +148,6 @@ export function Manage() {
           <button className="chip tap" onClick={() => setTheme(theme === 'light' ? 'dark' : 'light')} style={{ padding: '6px 12px', fontSize: 12 }}>
             {theme === 'light' ? (lang === 'sw' ? 'Nyeupe' : 'Light') : lang === 'sw' ? 'Giza' : 'Dark'}
           </button>
-        </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '11px 8px' }}>
-          <div style={{ width: 32, height: 32, borderRadius: 10, background: 'var(--card2)', color: 'var(--ink2)', display: 'grid', placeItems: 'center' }}>
-            <Icon name="swap" size={15} />
-          </div>
-          <div style={{ flex: 1, fontSize: 13.5, fontWeight: 700 }}>{L.country}</div>
-          <select
-            value={country.code}
-            onChange={(e) => setCountryCode(e.target.value)}
-            style={{ border: 'none', background: 'var(--card2)', borderRadius: 10, padding: '6px 10px', fontSize: 12, fontWeight: 700, color: 'var(--ink)' }}
-          >
-            {countries.map((c) => (
-              <option key={c.code} value={c.code}>
-                {c.name} · {c.cur}
-              </option>
-            ))}
-          </select>
         </div>
       </div>
 
@@ -191,15 +166,16 @@ export function Manage() {
             </div>
           ))}
         </div>
+        <div className="card" style={{ padding: 14, marginBottom: 16, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <div>
+            <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--ink3)', textTransform: 'uppercase', letterSpacing: 0.4 }}>{L.country}</div>
+            <div style={{ marginTop: 3, fontSize: 14, fontWeight: 700 }}>{COUNTRIES[newCountryIx].name} · {COUNTRIES[newCountryIx].cur}</div>
+          </div>
+          <button className="chip tap" type="button" onClick={() => setNewCountryIx((newCountryIx + 1) % COUNTRIES.length)}>
+            {L.change}
+          </button>
+        </div>
         <button className="btn-primary tap" style={{ width: '100%' }} onClick={submitAdd}>
-          {L.save}
-        </button>
-      </Sheet>
-
-      <Sheet open={editOpen} onClose={() => setEditOpen(false)} title={L.businessProfile}>
-        <input value={editName} onChange={(e) => setEditName(e.target.value)} className="card" style={{ width: '100%', padding: '14px 16px', border: 'none', fontSize: 15, fontWeight: 600, marginBottom: 10 }} />
-        <input value={editCity} onChange={(e) => setEditCity(e.target.value)} placeholder={L.locations} className="card" style={{ width: '100%', padding: '14px 16px', border: 'none', fontSize: 15, fontWeight: 600, marginBottom: 16 }} />
-        <button className="btn-primary tap" style={{ width: '100%' }} onClick={saveEdit}>
           {L.save}
         </button>
       </Sheet>
