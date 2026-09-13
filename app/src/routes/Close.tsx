@@ -1,11 +1,11 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ScreenHeader } from '../components/ScreenHeader';
 import { Sheet } from '../components/Sheet';
 import { Icon } from '../lib/icons';
 import { useSettings } from '../lib/useSettings';
 import { useData } from '../state/DataContext';
-import { expectedSales, soldOf, closingItemsTotal } from '../lib/calc';
+import { expectedSales, soldOf, closingItemsTotal, groupByCategory } from '../lib/calc';
 import { tintVars, KIND_ICON, type ClosingItemKind } from '../lib/types';
 
 export function Close() {
@@ -23,6 +23,7 @@ export function Close() {
 
   const expected = expectedSales(products, counts);
   const soldUnits = products.reduce((s, p) => s + soldOf(p, counts), 0);
+  const groups = useMemo(() => groupByCategory(products), [products]);
 
   const moneyFields: { key: 'cash' | 'mobile' | 'bank_in'; label: string; icon: string }[] = [
     { key: 'cash', label: L.cash, icon: 'cash' },
@@ -50,40 +51,57 @@ export function Close() {
     <div className="screen sb">
       <ScreenHeader title={L.closeToday} sub={L.closeSub} />
 
-      <div className="card" style={{ padding: 6, marginBottom: 16 }}>
-        {products.map((p, i) => {
-          const tv = tintVars(i);
-          const sold = soldOf(p, counts);
-          const val = sold * p.price;
-          const avail = p.opening + p.added;
-          const closingVal = counts[p.id];
-          return (
-            <div key={p.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '12px 8px', borderBottom: i === products.length - 1 ? 'none' : '1px solid var(--line)' }}>
-              <div style={{ width: 32, height: 32, borderRadius: 10, background: tv.soft, color: tv.ink, display: 'grid', placeItems: 'center', flexShrink: 0 }}>
-                <Icon name={p.icon} size={15} />
-              </div>
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: 13.5, fontWeight: 700 }}>{p.name}</div>
-                <div style={{ fontSize: 11, color: 'var(--ink3)', fontWeight: 600 }}>
-                  {L.open} {avail} {p.unit}
-                </div>
-              </div>
-              <input
-                inputMode="numeric"
-                placeholder="—"
-                disabled={locked}
-                value={closingVal === undefined ? '' : String(closingVal)}
-                onChange={(e) => {
-                  const v = e.target.value.replace(/[^0-9]/g, '');
-                  void setClosingCount(p.id, v === '' ? null : Number(v));
-                }}
-                style={{ width: 54, textAlign: 'center', padding: '8px 0', borderRadius: 10, border: '1px solid var(--line)', background: 'var(--card2)', fontSize: 14, fontWeight: 700 }}
-              />
-              <div style={{ width: 66, textAlign: 'right', fontSize: 12.5, fontWeight: 800, color: 'var(--ink)' }}>{short(val)}</div>
+      {groups.map(({ cat, items }, gi) => {
+        const tv = tintVars(gi);
+        const catSold = items.reduce((s, p) => s + soldOf(p, counts), 0);
+        const catValue = items.reduce((s, p) => s + soldOf(p, counts) * p.price, 0);
+        const counted = items.filter((p) => counts[p.id] !== undefined).length;
+        return (
+          <div key={cat} style={{ marginBottom: 14 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '0 4px 8px' }}>
+              <div style={{ width: 8, height: 8, borderRadius: 3, background: tv.ink, flexShrink: 0 }} />
+              <div style={{ fontSize: 12, fontWeight: 800, color: 'var(--ink2)', textTransform: 'uppercase', letterSpacing: 0.4 }}>{cat}</div>
+              <div style={{ fontSize: 11, color: counted === items.length ? 'var(--ok)' : 'var(--ink3)', fontWeight: 700 }}>{counted}/{items.length}</div>
+              <div style={{ flex: 1 }} />
+              <div style={{ fontSize: 11.5, color: 'var(--ink3)', fontWeight: 700 }}>{catSold} · {short(catValue)}</div>
             </div>
-          );
-        })}
-      </div>
+
+            <div className="card" style={{ padding: 6 }}>
+              {items.map((p, i) => {
+                const sold = soldOf(p, counts);
+                const val = sold * p.price;
+                const avail = p.opening + p.added;
+                const closingVal = counts[p.id];
+                return (
+                  <div key={p.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '12px 8px', borderBottom: i === items.length - 1 ? 'none' : '1px solid var(--line)' }}>
+                    <div style={{ width: 32, height: 32, borderRadius: 10, background: tv.soft, color: tv.ink, display: 'grid', placeItems: 'center', flexShrink: 0 }}>
+                      <Icon name={p.icon} size={15} />
+                    </div>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: 13.5, fontWeight: 700 }}>{p.name}</div>
+                      <div style={{ fontSize: 11, color: 'var(--ink3)', fontWeight: 600 }}>
+                        {L.open} {avail} {p.unit}
+                      </div>
+                    </div>
+                    <input
+                      inputMode="numeric"
+                      placeholder="—"
+                      disabled={locked}
+                      value={closingVal === undefined ? '' : String(closingVal)}
+                      onChange={(e) => {
+                        const v = e.target.value.replace(/[^0-9]/g, '');
+                        void setClosingCount(p.id, v === '' ? null : Number(v));
+                      }}
+                      style={{ width: 54, textAlign: 'center', padding: '8px 0', borderRadius: 10, border: '1px solid var(--line)', background: 'var(--card2)', fontSize: 14, fontWeight: 700 }}
+                    />
+                    <div style={{ width: 66, textAlign: 'right', fontSize: 12.5, fontWeight: 800, color: 'var(--ink)' }}>{short(val)}</div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        );
+      })}
 
       <div className="card" style={{ padding: 16, marginBottom: 16, display: 'flex', justifyContent: 'space-between' }}>
         <div>

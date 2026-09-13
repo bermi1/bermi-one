@@ -14,6 +14,7 @@ import {
   type Product,
   type Profile,
   type Role,
+  type StaffMember,
   type StockSession,
   type Theme,
 } from '../lib/types';
@@ -44,6 +45,7 @@ interface DataCtx {
   ledger: LedgerEntry[];
   session: StockSession | null;
   actionLog: ActionLogEntry[];
+  staffMembers: StaffMember[];
 
   setLang: (l: Lang) => void;
   setTheme: (t: Theme) => void;
@@ -58,8 +60,9 @@ interface DataCtx {
   updateProductPrice: (productId: string, price: number) => Promise<void>;
   reorderProducts: (orderedIds: string[]) => Promise<void>;
   addStock: (productId: string, qty: number) => Promise<void>;
-  addProduct: (input: { name: string; cat: string; unit: string; cost: number; price: number; low: number }) => Promise<void>;
-  addProductsBulk: (rows: { name: string; cat: string; unit: string; cost: number; price: number; opening: number; low: number }[]) => Promise<void>;
+  addProduct: (input: { name: string; cat: string; unit: string; price: number; profit: number; low: number }) => Promise<void>;
+  addProductsBulk: (rows: { name: string; cat: string; unit: string; cost: number; price: number; profit: number; opening: number; low: number }[]) => Promise<void>;
+  updateProductFields: (productId: string, patch: Partial<Pick<Product, 'name' | 'cat' | 'unit' | 'price' | 'profit' | 'low' | 'opening'>>) => Promise<void>;
 
   setClosingCount: (productId: string, qty: number | null) => Promise<void>;
   setSessionMoney: (field: 'cash' | 'mobile' | 'bank_in', value: number) => Promise<void>;
@@ -71,6 +74,9 @@ interface DataCtx {
 
   addLedgerLines: (lines: NewEntryLine[]) => Promise<void>;
   fetchPortfolioSummary: (days: number) => Promise<BusinessSummary[]>;
+
+  addStaffMember: (input: { name: string; phone: string; title: string }) => Promise<void>;
+  removeStaffMember: (id: string) => Promise<void>;
 }
 
 const Ctx = createContext<DataCtx | null>(null);
@@ -87,6 +93,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
   const [ledger, setLedger] = useState<LedgerEntry[]>([]);
   const [session, setSession] = useState<StockSession | null>(null);
   const [actionLog, setActionLog] = useState<ActionLogEntry[]>([]);
+  const [staffMembers, setStaffMembers] = useState<StaffMember[]>([]);
 
   const activeBusiness = useMemo(
     () => businesses.find((b) => b.id === profile?.active_business_id) || businesses[0] || null,
@@ -102,18 +109,20 @@ export function DataProvider({ children }: { children: ReactNode }) {
   );
 
   const loadBusinessData = useCallback(async (businessId: string) => {
-    const [{ data: prods }, { data: acc }, { data: led }, { data: sess }, log] = await Promise.all([
+    const [{ data: prods }, { data: acc }, { data: led }, { data: sess }, log, { data: staff }] = await Promise.all([
       supabase.from('products').select('*').eq('business_id', businessId).order('sort_order'),
       supabase.from('accounts').select('*').eq('business_id', businessId).maybeSingle(),
       supabase.from('ledger_entries').select('*').eq('business_id', businessId).order('created_at', { ascending: false }).limit(100),
       supabase.from('stock_sessions').select('*').eq('business_id', businessId).eq('session_date', todayIso()).maybeSingle(),
       fetchRecentActions(businessId),
+      supabase.from('staff_members').select('*').eq('business_id', businessId).order('sort_order'),
     ]);
     setProducts(prods || []);
     setAccounts(acc || { business_id: businessId, cash: 0, mobile: 0, bank: 0 });
     setLedger(led || []);
     setSession(sess || null);
     setActionLog(log);
+    setStaffMembers(staff || []);
   }, []);
 
   useEffect(() => {
@@ -126,6 +135,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
       setLedger([]);
       setSession(null);
       setActionLog([]);
+      setStaffMembers([]);
       return;
     }
     let cancelled = false;
@@ -261,17 +271,31 @@ export function DataProvider({ children }: { children: ReactNode }) {
   );
 
   const addProduct = useCallback<DataCtx['addProduct']>(
-    async ({ name, cat, unit, cost, price, low }) => {
+    async ({ name, cat, unit, price, profit, low }) => {
       if (!activeBusiness) return;
       const { data: p } = await supabase
         .from('products')
-        .insert({ business_id: activeBusiness.id, name, cat, unit, cost, price, low, icon: 'box', opening: 0, added: 0, wk: 0, sort_order: products.length })
+        .insert({ business_id: activeBusiness.id, name, cat, unit, price, profit, low, cost: 0, icon: 'box', opening: 0, added: 0, wk: 0, sort_order: products.length })
         .select()
         .single();
       if (p) setProducts((ps) => [...ps, p as Product]);
-      await record({ businessId: activeBusiness.id, actionType: 'stock.addProduct', objectId: p?.id, summary: `Added new product ${name}`, payload: { name, cat, cost, price }, actorName: profile?.full_name });
+      await record({ businessId: activeBusiness.id, actionType: 'stock.addProduct', objectId: p?.id, summary: `Added new product ${name}`, payload: { name, cat, price, profit }, actorName: profile?.full_name });
     },
     [activeBusiness, products.length, record, profile],
+  );
+
+  const updateProductFields = useCallback<DataCtx['updateProductFields']>(
+    async (productId, patch) => {
+      const prior = products.find((p) => p.id === productId);
+      if (!prior || !activeBusiness) return;
+      setProducts((ps) => ps.map((p) => (p.id === productId ? { ...p, ...patch } : p)));
+      await supabase.from('products').update(patch).eq('id', productId);
+      await record({
+        businessId: activeBusiness.id, actionType: 'stock.updateProduct', objectId: productId,
+        summary: `Updated ${prior.name}`, payload: patch, actorName: profile?.full_name,
+      });
+    },
+    [products, activeBusiness, record, profile],
   );
 
   const addProductsBulk = useCallback<DataCtx['addProductsBulk']>(
@@ -279,7 +303,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
       if (!activeBusiness || rows.length === 0) return;
       const startIx = products.length;
       const toInsert = rows.map((r, i) => ({
-        business_id: activeBusiness.id, name: r.name, cat: r.cat, unit: r.unit, cost: r.cost, price: r.price,
+        business_id: activeBusiness.id, name: r.name, cat: r.cat, unit: r.unit, cost: r.cost, price: r.price, profit: r.profit,
         low: r.low, icon: 'box', opening: r.opening, added: 0, wk: 0, sort_order: startIx + i,
       }));
       const { data } = await supabase.from('products').insert(toInsert).select();
@@ -441,6 +465,37 @@ export function DataProvider({ children }: { children: ReactNode }) {
     [businesses],
   );
 
+  const addStaffMember = useCallback<DataCtx['addStaffMember']>(
+    async ({ name, phone, title }) => {
+      if (!activeBusiness || !name.trim()) return;
+      const { data: member } = await supabase
+        .from('staff_members')
+        .insert({ business_id: activeBusiness.id, name: name.trim(), phone: phone.trim() || null, title: title.trim() || null, sort_order: staffMembers.length })
+        .select()
+        .single();
+      if (member) setStaffMembers((ms) => [...ms, member as StaffMember]);
+      await record({
+        businessId: activeBusiness.id, actionType: 'staff.add', objectId: member?.id,
+        summary: `Added ${name.trim()} to the team`, payload: { name, phone, title }, actorName: profile?.full_name,
+      });
+    },
+    [activeBusiness, staffMembers.length, record, profile],
+  );
+
+  const removeStaffMember = useCallback<DataCtx['removeStaffMember']>(
+    async (id) => {
+      if (!activeBusiness) return;
+      const member = staffMembers.find((m) => m.id === id);
+      setStaffMembers((ms) => ms.filter((m) => m.id !== id));
+      await supabase.from('staff_members').delete().eq('id', id);
+      await record({
+        businessId: activeBusiness.id, actionType: 'staff.remove', objectId: id,
+        summary: member ? `Removed ${member.name} from the team` : 'Removed a staff member', actorName: profile?.full_name,
+      });
+    },
+    [activeBusiness, staffMembers, record, profile],
+  );
+
   const returnSession = useCallback(async () => {
     if (!session || !activeBusiness) return;
     const patch = { status: 'open' as const };
@@ -461,6 +516,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
     ledger,
     session,
     actionLog,
+    staffMembers,
     setLang,
     setTheme,
     setRole,
@@ -474,6 +530,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
     addStock,
     addProduct,
     addProductsBulk,
+    updateProductFields,
     setClosingCount,
     setSessionMoney,
     addClosingItem,
@@ -483,6 +540,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
     returnSession,
     addLedgerLines,
     fetchPortfolioSummary,
+    addStaffMember,
+    removeStaffMember,
   };
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;

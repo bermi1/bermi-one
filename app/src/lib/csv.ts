@@ -16,7 +16,7 @@ export const FIELD_LABELS: Record<FieldKey, string> = {
   price: 'Selling price',
   opening: 'Opening quantity',
   low: 'Low stock level',
-  profit: 'Profit per unit (fills in cost)',
+  profit: 'Profit per unit',
   ignore: 'Ignore this column',
 };
 
@@ -26,6 +26,7 @@ export interface ParsedProductRow {
   unit: string;
   cost: number;
   price: number;
+  profit: number;
   opening: number;
   low: number;
 }
@@ -200,6 +201,16 @@ export function parseTable(text: string): ParsedTable {
   return { headerCells: null, rows: allRows, columnMap: inferColumnsFromContent(allRows, columnCount) };
 }
 
+/**
+ * Categories drive the grouping on every stock list and printed sheet, so a
+ * stray capital or double space must not split one group into two — the same
+ * file routinely carries "strong alcohol" and "Strong Alcohol ".
+ */
+function normalizeCategory(raw: string | undefined): string {
+  const c = (raw || '').trim().replace(/\s+/g, ' ').toLowerCase();
+  return c || 'general';
+}
+
 function cleanNumber(raw: string | undefined): number {
   if (!raw) return 0;
   const cleaned = raw.replace(/[^0-9.-]/g, '');
@@ -223,18 +234,13 @@ export function buildRows(rows: string[][], columnMap: FieldKey[]): { rows: Pars
       const ci = columnMap.indexOf(field);
       return ci >= 0 ? cells[ci] : undefined;
     };
-    const price = cleanNumber(get('price'));
-    let cost = cleanNumber(get('cost'));
-    if (cost === 0 && columnMap.includes('profit')) {
-      const profit = cleanNumber(get('profit'));
-      if (price > 0 && profit > 0 && profit < price) cost = price - profit;
-    }
     out.push({
       name,
-      cat: (get('cat') || '').trim() || 'General',
+      cat: normalizeCategory(get('cat')),
       unit: (get('unit') || '').trim() || 'unit',
-      cost,
-      price,
+      cost: cleanNumber(get('cost')),
+      price: cleanNumber(get('price')),
+      profit: cleanNumber(get('profit')),
       opening: cleanNumber(get('opening')),
       low: cleanNumber(get('low')),
     });

@@ -13,7 +13,7 @@ import { COUNTRIES } from '../lib/countries';
 export function Manage() {
   const nav = useNavigate();
   const { L, lang, theme } = useSettings();
-  const { businesses, activeBusiness, switchBusiness, addBusiness, setLang, setTheme, displayName } = useData();
+  const { businesses, activeBusiness, switchBusiness, addBusiness, setLang, setTheme, displayName, staffMembers } = useData();
   const { signOut } = useAuth();
   const { flash } = useToast();
 
@@ -32,11 +32,11 @@ export function Manage() {
     flash(L.addBusiness);
   }
 
-  const groups: { title: string; items: { name: string; meta: string; icon: string }[] }[] = [
+  const groups: { title: string; items: { name: string; meta: string; icon: string; onClick?: () => void }[] }[] = [
     {
       title: L.people,
       items: [
-        { name: L.staffCount, meta: '1', icon: 'user' },
+        { name: L.staffCount, meta: String(staffMembers.length), icon: 'user', onClick: () => nav('/staff') },
         { name: L.roles, meta: '2', icon: 'shield' },
       ],
     },
@@ -117,12 +117,18 @@ export function Manage() {
           <div style={{ fontSize: 13, fontWeight: 800, color: 'var(--ink2)', textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 10 }}>{g.title}</div>
           <div className="card" style={{ padding: 6 }}>
             {g.items.map((it, i) => (
-              <div key={it.name} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '11px 8px', borderBottom: i === g.items.length - 1 ? 'none' : '1px solid var(--line)' }}>
+              <div
+                key={it.name}
+                className={it.onClick ? 'tap' : undefined}
+                onClick={it.onClick}
+                style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '11px 8px', borderBottom: i === g.items.length - 1 ? 'none' : '1px solid var(--line)' }}
+              >
                 <div style={{ width: 32, height: 32, borderRadius: 10, background: 'var(--card2)', color: 'var(--ink2)', display: 'grid', placeItems: 'center', flexShrink: 0 }}>
                   <Icon name={it.icon} size={15} />
                 </div>
                 <div style={{ flex: 1, fontSize: 13.5, fontWeight: 700 }}>{it.name}</div>
                 <div style={{ fontSize: 12.5, color: 'var(--ink3)', fontWeight: 700 }}>{it.meta}</div>
+                {it.onClick && <Icon name="right" size={13} style={{ color: 'var(--ink3)' }} />}
               </div>
             ))}
           </div>

@@ -4,7 +4,7 @@ import { Icon } from '../lib/icons';
 import { useSettings } from '../lib/useSettings';
 import { useData } from '../state/DataContext';
 import { useToast } from '../state/ToastContext';
-import { diffOf, expectedSales, cogsOf, soldOf } from '../lib/calc';
+import { diffOf, expectedSales, profitOf, soldOf } from '../lib/calc';
 import { tintVars } from '../lib/types';
 
 export function Approval() {
@@ -16,8 +16,7 @@ export function Approval() {
   const counts = session?.counts || {};
   const sessionMoney = { cash: session?.cash || 0, mobile: session?.mobile || 0, bank_in: session?.bank_in || 0, closing_items: session?.closing_items || [] };
   const expected = expectedSales(products, counts);
-  const cogs = cogsOf(products, counts);
-  const gross = expected - cogs;
+  const gross = profitOf(products, counts);
   const diff = diffOf(products, counts, sessionMoney);
 
   const reasonLabel: Record<string, string> = { expense: L.rExpense, loss: L.rLoss, debt: L.rDebt, short: L.rShort, other: L.rOther };

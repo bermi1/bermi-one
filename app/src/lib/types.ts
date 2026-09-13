@@ -34,12 +34,24 @@ export interface Product {
   icon: string;
   cat: string;
   unit: string;
-  cost: number;
+  /** Selling price per unit (item_price in the stock template). */
   price: number;
+  /** Profit earned per unit sold (item_profit) — supplied by the business, never derived. */
+  profit: number;
+  cost: number;
   opening: number;
   added: number;
   low: number;
   wk: number;
+  sort_order: number;
+}
+
+export interface StaffMember {
+  id: string;
+  business_id: string;
+  name: string;
+  phone: string | null;
+  title: string | null;
   sort_order: number;
 }
 

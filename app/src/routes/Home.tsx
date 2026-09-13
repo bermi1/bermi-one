@@ -4,7 +4,7 @@ import { AppHeader } from '../components/AppHeader';
 import { Icon } from '../lib/icons';
 import { useSettings } from '../lib/useSettings';
 import { useData } from '../state/DataContext';
-import { cogsOf, currentQty, expectedSales, isCounted, stockValueOf } from '../lib/calc';
+import { currentQty, expectedSales, isCounted, profitOf, stockValueOf } from '../lib/calc';
 import { tintVars } from '../lib/types';
 import { topInsight } from '../ontology/insights';
 
@@ -20,7 +20,7 @@ export function Home() {
   const counts = session?.counts || {};
   const counted = isCounted(counts);
   const expected = expectedSales(products, counts);
-  const cogs = cogsOf(products, counts);
+  const grossProfit = profitOf(products, counts);
 
   const todayKey = dayKey(new Date());
   const todayEntries = useMemo(() => ledger.filter((e) => e.created_at.slice(0, 10) === todayKey), [ledger, todayKey]);
@@ -28,8 +28,8 @@ export function Home() {
   const ledgerSalesToday = useMemo(() => todayEntries.filter((e) => e.kind === 'sale').reduce((s, e) => s + e.amount, 0), [todayEntries]);
 
   const revenue = counted ? expected : ledgerSalesToday;
-  const cogsV = counted ? cogs : Math.round(revenue * 0.6);
-  const profit = revenue - cogsV - opexToday;
+  const grossV = counted ? grossProfit : Math.round(revenue * 0.4);
+  const profit = grossV - opexToday;
 
   const stockValue = stockValueOf(products, counts);
   const lowItems = useMemo(() => products.filter((p) => currentQty(p, counts) < p.low), [products, counts]);

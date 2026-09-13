@@ -6,13 +6,14 @@ import { Icon } from '../lib/icons';
 import { useSettings } from '../lib/useSettings';
 import { useData } from '../state/DataContext';
 import { useToast } from '../state/ToastContext';
-import { currentQty, stockValueOf } from '../lib/calc';
+import { currentQty, groupByCategory, stockValueOf } from '../lib/calc';
 import { tintVars, type Product } from '../lib/types';
 import { parseTable, buildRows, FIELD_LABELS, type FieldKey, type ParsedTable } from '../lib/csv';
+import { openStockSheet } from '../lib/stockSheet';
 
 export function Stock() {
-  const { L, fmt, lang } = useSettings();
-  const { products, session, addStock, updateProductPrice, reorderProducts, addProduct, addProductsBulk } = useData();
+  const { L, fmt, short, lang } = useSettings();
+  const { products, session, activeBusiness, addStock, reorderProducts, addProduct, addProductsBulk, updateProductFields } = useData();
   const { flash } = useToast();
   const counts = session?.counts || {};
 
@@ -20,11 +21,12 @@ export function Stock() {
   const [cat, setCat] = useState('All');
   const [expanded, setExpanded] = useState<string | null>(null);
   const [draft, setDraft] = useState('0');
-  const [priceEditId, setPriceEditId] = useState<string | null>(null);
-  const [priceDraft, setPriceDraft] = useState('');
+  const [editId, setEditId] = useState<string | null>(null);
+  const [editPrice, setEditPrice] = useState('');
+  const [editProfit, setEditProfit] = useState('');
   const [reorderMode, setReorderMode] = useState(false);
   const [addOpen, setAddOpen] = useState(false);
-  const [newP, setNewP] = useState({ name: '', cat: 'Other', unit: 'unit', cost: '', price: '', low: '' });
+  const [newP, setNewP] = useState({ name: '', cat: '', unit: 'bottle', price: '', profit: '', low: '' });
 
   const [bulkOpen, setBulkOpen] = useState(false);
   const [bulkText, setBulkText] = useState('');
@@ -44,6 +46,7 @@ export function Stock() {
     () => products.filter((p) => (cat === 'All' || p.cat === cat) && p.name.toLowerCase().includes(query.toLowerCase())),
     [products, cat, query],
   );
+  const groups = useMemo(() => groupByCategory(filtered), [filtered]);
 
   const totalValue = stockValueOf(products, counts);
   const totalUnits = products.reduce((s, p) => s + currentQty(p, counts), 0);
@@ -66,24 +69,29 @@ export function Stock() {
     setDraft('0');
   }
 
-  async function savePrice(p: Product) {
-    const v = Number(priceDraft || 0);
-    if (v > 0) await updateProductPrice(p.id, v);
-    setPriceEditId(null);
+  function startEdit(p: Product) {
+    setEditId(p.id);
+    setEditPrice(String(p.price));
+    setEditProfit(String(p.profit));
+  }
+
+  async function saveEdit(p: Product) {
+    await updateProductFields(p.id, { price: Number(editPrice || 0), profit: Number(editProfit || 0) });
+    setEditId(null);
   }
 
   async function submitNewProduct() {
     if (!newP.name.trim()) return;
     await addProduct({
       name: newP.name.trim(),
-      cat: newP.cat.trim() || 'Other',
+      cat: newP.cat.trim() || 'General',
       unit: newP.unit.trim() || 'unit',
-      cost: Number(newP.cost || 0),
       price: Number(newP.price || 0),
+      profit: Number(newP.profit || 0),
       low: Number(newP.low || 0),
     });
     setAddOpen(false);
-    setNewP({ name: '', cat: 'Other', unit: 'unit', cost: '', price: '', low: '' });
+    setNewP({ name: '', cat: '', unit: 'bottle', price: '', profit: '', low: '' });
     flash(lang === 'sw' ? 'Bidhaa imeongezwa' : 'Product added');
   }
 
@@ -125,12 +133,18 @@ export function Stock() {
     flash(`${bulkRows.length} ${L.rowsReady}`);
   }
 
+  function printSheet() {
+    if (!activeBusiness) return;
+    const ok = openStockSheet({ business: activeBusiness, products: filtered, lang });
+    if (!ok) flash(lang === 'sw' ? 'Ruhusu dirisha jipya kwenye kivinjari' : 'Allow pop-ups to print the sheet');
+  }
+
   return (
     <div className="screen sb">
       <AppHeader />
       <ScreenHeader
         title={L.stock}
-        sub={`${products.length} ${L.products}`}
+        sub={`${products.length} ${L.products} · ${cats.length - 1} ${lang === 'sw' ? 'aina' : 'categories'}`}
         right={
           <button className="chip tap" onClick={() => setReorderMode((v) => !v)}>
             {reorderMode ? L.doneEditing : L.reorderProducts}
@@ -161,7 +175,7 @@ export function Stock() {
                 key={c}
                 className="tap"
                 onClick={() => setCat(c)}
-                style={{ flexShrink: 0, padding: '8px 14px', borderRadius: 12, fontSize: 12.5, fontWeight: 700, background: cat === c ? 'var(--brand)' : 'var(--card)', color: cat === c ? 'var(--brandInk)' : 'var(--ink2)', border: '1px solid var(--line)' }}
+                style={{ flexShrink: 0, padding: '8px 14px', borderRadius: 12, fontSize: 12.5, fontWeight: 700, background: cat === c ? 'var(--brand)' : 'var(--card)', color: cat === c ? 'var(--brandInk)' : 'var(--ink2)', border: '1px solid var(--line)', textTransform: 'capitalize' }}
               >
                 {c}
               </button>
@@ -170,104 +184,141 @@ export function Stock() {
         </>
       )}
 
-      <div className="card" style={{ padding: 6 }}>
-        {(reorderMode ? products : filtered).map((p, i) => {
-          const tv = tintVars(i);
-          const qty = currentQty(p, counts);
-          const isOpen = expanded === p.id;
-          const editingPrice = priceEditId === p.id;
+      {reorderMode ? (
+        <div className="card" style={{ padding: 6 }}>
+          {products.map((p, i) => (
+            <div key={p.id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '13px 8px', borderBottom: i === products.length - 1 ? 'none' : '1px solid var(--line)' }}>
+              <Icon name="grip" size={16} style={{ color: 'var(--ink3)' }} />
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 14, fontWeight: 700 }}>{p.name}</div>
+                <div style={{ fontSize: 11, color: 'var(--ink3)', fontWeight: 600, textTransform: 'capitalize' }}>{p.cat}</div>
+              </div>
+              <button className="icon-btn tap" style={{ width: 32, height: 32 }} onClick={() => move(p, -1)} disabled={i === 0}>
+                <Icon name="up" size={14} />
+              </button>
+              <button className="icon-btn tap" style={{ width: 32, height: 32 }} onClick={() => move(p, 1)} disabled={i === products.length - 1}>
+                <Icon name="down" size={14} />
+              </button>
+            </div>
+          ))}
+        </div>
+      ) : (
+        groups.map(({ cat: groupCat, items }, gi) => {
+          const tv = tintVars(gi);
+          const groupUnits = items.reduce((s, p) => s + currentQty(p, counts), 0);
+          const groupValue = items.reduce((s, p) => s + currentQty(p, counts) * p.price, 0);
           return (
-            <div key={p.id} style={{ borderBottom: i === (reorderMode ? products : filtered).length - 1 ? 'none' : '1px solid var(--line)' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '13px 8px' }}>
-                {reorderMode ? (
-                  <>
-                    <Icon name="grip" size={16} style={{ color: 'var(--ink3)' }} />
-                    <div style={{ flex: 1, fontSize: 14, fontWeight: 700 }}>{p.name}</div>
-                    <button className="icon-btn tap" style={{ width: 32, height: 32 }} onClick={() => move(p, -1)} disabled={i === 0}>
-                      <Icon name="up" size={14} />
-                    </button>
-                    <button className="icon-btn tap" style={{ width: 32, height: 32 }} onClick={() => move(p, 1)} disabled={i === products.length - 1}>
-                      <Icon name="down" size={14} />
-                    </button>
-                  </>
-                ) : (
-                  <>
-                    <div style={{ width: 34, height: 34, borderRadius: 11, background: tv.soft, color: tv.ink, display: 'grid', placeItems: 'center', flexShrink: 0 }}>
-                      <Icon name={p.icon} size={16} />
-                    </div>
-                    <div className="tap" style={{ flex: 1, minWidth: 0 }} onClick={() => { setExpanded(isOpen ? null : p.id); setDraft('0'); }}>
-                      <div style={{ fontSize: 14, fontWeight: 700 }}>{p.name}</div>
-                      {editingPrice ? (
-                        <div style={{ display: 'flex', gap: 6, marginTop: 4 }} onClick={(e) => e.stopPropagation()}>
-                          <input
-                            autoFocus
-                            value={priceDraft}
-                            onChange={(e) => setPriceDraft(e.target.value.replace(/[^0-9]/g, ''))}
-                            style={{ width: 90, padding: '5px 8px', borderRadius: 8, border: '1px solid var(--line)', background: 'var(--card2)', fontSize: 12.5 }}
-                          />
-                          <button className="chip tap" style={{ padding: '5px 10px', fontSize: 11.5 }} onClick={() => savePrice(p)}>
+            <div key={groupCat} style={{ marginBottom: 14 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '0 4px 8px' }}>
+                <div style={{ width: 8, height: 8, borderRadius: 3, background: tv.ink, flexShrink: 0 }} />
+                <div style={{ fontSize: 12, fontWeight: 800, color: 'var(--ink2)', textTransform: 'uppercase', letterSpacing: 0.4 }}>{groupCat}</div>
+                <div style={{ fontSize: 11, color: 'var(--ink3)', fontWeight: 700 }}>{items.length}</div>
+                <div style={{ flex: 1 }} />
+                <div style={{ fontSize: 11.5, color: 'var(--ink3)', fontWeight: 700 }}>{groupUnits} · {short(groupValue)}</div>
+              </div>
+
+              <div className="card" style={{ padding: 6 }}>
+                {items.map((p, i) => {
+                  const qty = currentQty(p, counts);
+                  const isOpen = expanded === p.id;
+                  const editing = editId === p.id;
+                  return (
+                    <div key={p.id} style={{ borderBottom: i === items.length - 1 ? 'none' : '1px solid var(--line)' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 8px' }}>
+                        <div style={{ width: 34, height: 34, borderRadius: 11, background: tv.soft, color: tv.ink, display: 'grid', placeItems: 'center', flexShrink: 0 }}>
+                          <Icon name={p.icon} size={16} />
+                        </div>
+                        <div className="tap" style={{ flex: 1, minWidth: 0 }} onClick={() => { setExpanded(isOpen ? null : p.id); setDraft('0'); }}>
+                          <div style={{ fontSize: 14, fontWeight: 700 }}>{p.name}</div>
+                          {editing ? (
+                            <div style={{ display: 'flex', gap: 6, marginTop: 5, alignItems: 'center' }} onClick={(e) => e.stopPropagation()}>
+                              <input
+                                autoFocus
+                                inputMode="numeric"
+                                value={editPrice}
+                                onChange={(e) => setEditPrice(e.target.value.replace(/[^0-9]/g, ''))}
+                                placeholder={L.price}
+                                style={{ width: 74, padding: '5px 8px', borderRadius: 8, border: '1px solid var(--line)', background: 'var(--card2)', fontSize: 12.5 }}
+                              />
+                              <input
+                                inputMode="numeric"
+                                value={editProfit}
+                                onChange={(e) => setEditProfit(e.target.value.replace(/[^0-9]/g, ''))}
+                                placeholder={L.profitPerUnit}
+                                style={{ width: 74, padding: '5px 8px', borderRadius: 8, border: '1px solid var(--line)', background: 'var(--card2)', fontSize: 12.5 }}
+                              />
+                              <button className="chip tap" style={{ padding: '5px 10px', fontSize: 11.5 }} onClick={() => saveEdit(p)}>
+                                {L.save}
+                              </button>
+                            </div>
+                          ) : (
+                            <div style={{ fontSize: 12, color: 'var(--ink3)', fontWeight: 600, display: 'flex', alignItems: 'center', gap: 6 }}>
+                              {fmt(p.price)} · {lang === 'sw' ? 'faida' : 'profit'} {fmt(p.profit)}
+                              <Icon
+                                name="edit"
+                                size={12}
+                                style={{ color: 'var(--ink3)' }}
+                                onClick={(e) => { e.stopPropagation(); startEdit(p); }}
+                              />
+                            </div>
+                          )}
+                        </div>
+                        <div className="tap" onClick={() => { setExpanded(isOpen ? null : p.id); setDraft('0'); }} style={{ fontSize: 14, fontWeight: 800, color: qty < p.low ? 'var(--warn)' : 'var(--ink)', textAlign: 'right' }}>
+                          {qty}
+                          <div style={{ fontSize: 10.5, color: 'var(--ink3)', fontWeight: 600 }}>{p.unit}</div>
+                        </div>
+                      </div>
+
+                      {isOpen && (
+                        <div style={{ padding: '4px 8px 16px', animation: 'slideIn .2s ease' }}>
+                          <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--ink3)', marginBottom: 8 }}>{L.addStockInline}</div>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                            <button className="icon-btn tap" onClick={() => setDraft(String(Math.max(0, Number(draft || 0) - 1)))}>
+                              <Icon name="minus" size={15} />
+                            </button>
+                            <input
+                              value={draft}
+                              onChange={(e) => setDraft(e.target.value.replace(/[^0-9]/g, ''))}
+                              style={{ flex: 1, textAlign: 'center', fontSize: 17, fontWeight: 800, padding: '10px 0', borderRadius: 12, border: '1px solid var(--line)', background: 'var(--card2)' }}
+                            />
+                            <button className="icon-btn tap" onClick={() => setDraft(String(Number(draft || 0) + 1))}>
+                              <Icon name="plus" size={15} />
+                            </button>
+                          </div>
+                          <div style={{ marginTop: 10, fontSize: 12.5, color: 'var(--ink2)', fontWeight: 600 }}>
+                            {L.totalAfterAdd}: {qty + Number(draft || 0)} {p.unit}
+                          </div>
+                          <button className="btn-primary tap" style={{ width: '100%', marginTop: 12, padding: '12px 0' }} onClick={() => saveAdd(p)}>
                             {L.save}
                           </button>
                         </div>
-                      ) : (
-                        <div style={{ fontSize: 12, color: 'var(--ink3)', fontWeight: 600, display: 'flex', alignItems: 'center', gap: 6 }}>
-                          {fmt(p.price)} · {lang === 'sw' ? 'gharama' : 'cost'} {fmt(p.cost)}
-                          <Icon
-                            name="edit"
-                            size={12}
-                            style={{ color: 'var(--ink3)' }}
-                            onClick={(e) => { e.stopPropagation(); setPriceEditId(p.id); setPriceDraft(String(p.price)); }}
-                          />
-                        </div>
                       )}
                     </div>
-                    <div className="tap" onClick={() => { setExpanded(isOpen ? null : p.id); setDraft('0'); }} style={{ fontSize: 14, fontWeight: 800, color: qty < p.low ? 'var(--warn)' : 'var(--ink)' }}>
-                      {qty} {p.unit}
-                    </div>
-                  </>
-                )}
+                  );
+                })}
               </div>
-
-              {isOpen && !reorderMode && (
-                <div style={{ padding: '4px 8px 16px', animation: 'slideIn .2s ease' }}>
-                  <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--ink3)', marginBottom: 8 }}>{L.addStockInline}</div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                    <button className="icon-btn tap" onClick={() => setDraft(String(Math.max(0, Number(draft || 0) - 1)))}>
-                      <Icon name="minus" size={15} />
-                    </button>
-                    <input
-                      value={draft}
-                      onChange={(e) => setDraft(e.target.value.replace(/[^0-9]/g, ''))}
-                      style={{ flex: 1, textAlign: 'center', fontSize: 17, fontWeight: 800, padding: '10px 0', borderRadius: 12, border: '1px solid var(--line)', background: 'var(--card2)' }}
-                    />
-                    <button className="icon-btn tap" onClick={() => setDraft(String(Number(draft || 0) + 1))}>
-                      <Icon name="plus" size={15} />
-                    </button>
-                  </div>
-                  <div style={{ marginTop: 10, fontSize: 12.5, color: 'var(--ink2)', fontWeight: 600 }}>
-                    {L.totalAfterAdd}: {qty + Number(draft || 0)} {p.unit}
-                  </div>
-                  <button className="btn-primary tap" style={{ width: '100%', marginTop: 12, padding: '12px 0' }} onClick={() => saveAdd(p)}>
-                    {L.save}
-                  </button>
-                </div>
-              )}
             </div>
           );
-        })}
-      </div>
+        })
+      )}
 
       {!reorderMode && (
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginTop: 12 }}>
-          <button className="btn-ghost tap" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }} onClick={() => setAddOpen(true)}>
-            <Icon name="plus" size={16} />
-            {lang === 'sw' ? 'Ongeza bidhaa mpya' : 'Add new product'}
+        <>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginTop: 12 }}>
+            <button className="btn-ghost tap" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }} onClick={() => setAddOpen(true)}>
+              <Icon name="plus" size={16} />
+              {lang === 'sw' ? 'Bidhaa mpya' : 'Add product'}
+            </button>
+            <button className="btn-ghost tap" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }} onClick={openBulk}>
+              <Icon name="upload" size={16} />
+              {L.bulkUpload}
+            </button>
+          </div>
+          <button className="btn-ghost tap" style={{ width: '100%', marginTop: 8, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }} onClick={printSheet}>
+            <Icon name="doc" size={16} />
+            {L.printStockSheet}
           </button>
-          <button className="btn-ghost tap" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }} onClick={openBulk}>
-            <Icon name="upload" size={16} />
-            {L.bulkUpload}
-          </button>
-        </div>
+        </>
       )}
       <input ref={fileInputRef} type="file" accept=".csv,.txt" style={{ display: 'none' }} onChange={onFilePicked} />
 
@@ -275,12 +326,15 @@ export function Stock() {
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
           <input placeholder={L.product} value={newP.name} onChange={(e) => setNewP({ ...newP, name: e.target.value })} className="card" style={{ padding: '12px 14px', border: 'none', fontSize: 14 }} />
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-            <input placeholder={lang === 'sw' ? 'Aina' : 'Category'} value={newP.cat} onChange={(e) => setNewP({ ...newP, cat: e.target.value })} className="card" style={{ padding: '12px 14px', border: 'none', fontSize: 14 }} />
+            <input list="cat-options" placeholder={lang === 'sw' ? 'Aina' : 'Category'} value={newP.cat} onChange={(e) => setNewP({ ...newP, cat: e.target.value })} className="card" style={{ padding: '12px 14px', border: 'none', fontSize: 14 }} />
             <input placeholder={lang === 'sw' ? 'Kipimo' : 'Unit'} value={newP.unit} onChange={(e) => setNewP({ ...newP, unit: e.target.value })} className="card" style={{ padding: '12px 14px', border: 'none', fontSize: 14 }} />
           </div>
+          <datalist id="cat-options">
+            {cats.filter((c) => c !== 'All').map((c) => <option key={c} value={c} />)}
+          </datalist>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-            <input placeholder={L.cost2} inputMode="numeric" value={newP.cost} onChange={(e) => setNewP({ ...newP, cost: e.target.value.replace(/[^0-9]/g, '') })} className="card" style={{ padding: '12px 14px', border: 'none', fontSize: 14 }} />
             <input placeholder={L.price} inputMode="numeric" value={newP.price} onChange={(e) => setNewP({ ...newP, price: e.target.value.replace(/[^0-9]/g, '') })} className="card" style={{ padding: '12px 14px', border: 'none', fontSize: 14 }} />
+            <input placeholder={L.profitPerUnit} inputMode="numeric" value={newP.profit} onChange={(e) => setNewP({ ...newP, profit: e.target.value.replace(/[^0-9]/g, '') })} className="card" style={{ padding: '12px 14px', border: 'none', fontSize: 14 }} />
           </div>
           <input placeholder={lang === 'sw' ? 'Kiwango cha chini' : 'Low stock alert level'} inputMode="numeric" value={newP.low} onChange={(e) => setNewP({ ...newP, low: e.target.value.replace(/[^0-9]/g, '') })} className="card" style={{ padding: '12px 14px', border: 'none', fontSize: 14 }} />
           <button className="btn-primary tap" style={{ width: '100%', marginTop: 4 }} onClick={submitNewProduct}>

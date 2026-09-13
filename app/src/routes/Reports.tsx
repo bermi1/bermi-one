@@ -50,9 +50,9 @@ export function Reports() {
         .map((p) => {
           const units = soldOf(p, counts);
           const rev = units * p.price;
-          const cost = units * p.cost;
-          const profit = rev - cost;
-          return { p, units, rev, profit, costW: rev ? Math.round((cost / rev) * 100) : 0, profitW: rev ? Math.round((profit / rev) * 100) : 0 };
+          const profit = units * p.profit;
+          const rest = Math.max(0, rev - profit);
+          return { p, units, rev, profit, costW: rev ? Math.round((rest / rev) * 100) : 0, profitW: rev ? Math.round((profit / rev) * 100) : 0 };
         })
         .sort((a, b) => b.units - a.units),
     [products, counts],

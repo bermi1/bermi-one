@@ -11,7 +11,7 @@
 // logic and Bermi AI's reasoning are both built on one explicit model instead
 // of scattered ad hoc state.
 
-export type ObjectTypeName = 'Business' | 'Product' | 'StockSession' | 'LedgerEntry' | 'Accounts' | 'Profile';
+export type ObjectTypeName = 'Business' | 'Product' | 'StockSession' | 'LedgerEntry' | 'Accounts' | 'Profile' | 'StaffMember';
 
 export interface ObjectTypeDef {
   label: string;
@@ -25,7 +25,7 @@ export const OBJECT_TYPES: Record<ObjectTypeName, ObjectTypeDef> = {
     label: 'Business',
     description: 'One business in the owner’s portfolio (a bar, pharmacy, shop, etc).',
     properties: ['name', 'type', 'city', 'answers'],
-    links: { Product: 'has many', StockSession: 'has many', LedgerEntry: 'has many', Accounts: 'has one' },
+    links: { Product: 'has many', StockSession: 'has many', LedgerEntry: 'has many', Accounts: 'has one', StaffMember: 'has many' },
   },
   Product: {
     label: 'Product',
@@ -57,6 +57,12 @@ export const OBJECT_TYPES: Record<ObjectTypeName, ObjectTypeDef> = {
     properties: ['full_name', 'role', 'lang', 'theme', 'country_code'],
     links: { Business: 'owns / works in' },
   },
+  StaffMember: {
+    label: 'Staff member',
+    description: 'Someone who works at the business (not necessarily a signed-in user).',
+    properties: ['name', 'phone', 'title', 'sort_order'],
+    links: { Business: 'belongs to' },
+  },
 };
 
 export type ActionTypeName =
@@ -64,13 +70,16 @@ export type ActionTypeName =
   | 'stock.updatePrice'
   | 'stock.reorder'
   | 'stock.addProduct'
+  | 'stock.updateProduct'
   | 'stock.bulkImport'
   | 'session.submit'
   | 'session.approve'
   | 'session.return'
   | 'ledger.recordLines'
   | 'business.create'
-  | 'business.update';
+  | 'business.update'
+  | 'staff.add'
+  | 'staff.remove';
 
 export interface ActionTypeDef {
   label: string;
@@ -82,6 +91,7 @@ export const ACTION_TYPES: Record<ActionTypeName, ActionTypeDef> = {
   'stock.updatePrice': { label: 'Change price', objectType: 'Product' },
   'stock.reorder': { label: 'Reorder products', objectType: 'Product' },
   'stock.addProduct': { label: 'Add product', objectType: 'Product' },
+  'stock.updateProduct': { label: 'Update product', objectType: 'Product' },
   'stock.bulkImport': { label: 'Bulk import products', objectType: 'Product' },
   'session.submit': { label: 'Submit closing', objectType: 'StockSession' },
   'session.approve': { label: 'Approve closing', objectType: 'StockSession' },
@@ -89,4 +99,6 @@ export const ACTION_TYPES: Record<ActionTypeName, ActionTypeDef> = {
   'ledger.recordLines': { label: 'Record money entry', objectType: 'LedgerEntry' },
   'business.create': { label: 'Create business', objectType: 'Business' },
   'business.update': { label: 'Update business profile', objectType: 'Business' },
+  'staff.add': { label: 'Add staff member', objectType: 'StaffMember' },
+  'staff.remove': { label: 'Remove staff member', objectType: 'StaffMember' },
 };

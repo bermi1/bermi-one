@@ -19,6 +19,7 @@ import { Reports } from './routes/Reports';
 import { AI } from './routes/AI';
 import { Manage } from './routes/Manage';
 import { BusinessProfile } from './routes/BusinessProfile';
+import { Staff } from './routes/Staff';
 
 function ThemeRoot() {
   const { profile } = useData();
@@ -45,7 +46,7 @@ function AppRoutes() {
   if (!session) return <AuthScreen />;
   if (!profile?.onboarded) return <Onboarding />;
 
-  const isOwnerOnly = ['/money', '/reports', '/ai', '/manage', '/business'].includes(location.pathname) && !owner;
+  const isOwnerOnly = ['/money', '/reports', '/ai', '/manage', '/business', '/staff'].includes(location.pathname) && !owner;
   if (isOwnerOnly) return <Navigate to="/home" replace />;
 
   return (
@@ -64,6 +65,7 @@ function AppRoutes() {
           <Route path="/ai" element={<AI />} />
           <Route path="/manage" element={<Manage />} />
           <Route path="/business" element={<BusinessProfile />} />
+          <Route path="/staff" element={<Staff />} />
           <Route path="*" element={<Navigate to="/home" replace />} />
         </Routes>
       </div>
