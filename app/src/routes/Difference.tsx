@@ -18,7 +18,7 @@ export function Difference() {
   const [busy, setBusy] = useState(false);
 
   const counts = session?.counts || {};
-  const sessionMoney = { cash: session?.cash || 0, mobile: session?.mobile || 0, bank_in: session?.bank_in || 0, expenses_paid: session?.expenses_paid || 0 };
+  const sessionMoney = { cash: session?.cash || 0, mobile: session?.mobile || 0, bank_in: session?.bank_in || 0, closing_items: session?.closing_items || [] };
   const expected = expectedSales(products, counts);
   const received = moneyReceived(sessionMoney);
   const diff = diffOf(products, counts, sessionMoney);

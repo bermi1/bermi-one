@@ -2,7 +2,7 @@ export type Role = 'owner' | 'staff';
 export type Theme = 'light' | 'dark';
 export type Lang = 'en' | 'sw';
 export type SessionStatus = 'open' | 'submitted' | 'approved';
-export type EntryKind = 'sale' | 'purchase' | 'expense' | 'payment' | 'withdrawal' | 'loss' | 'stock';
+export type EntryKind = 'sale' | 'purchase' | 'expense' | 'payment' | 'withdrawal' | 'loss' | 'stock' | 'debt';
 export type AccountId = 'cash' | 'mobile' | 'bank';
 
 export interface Profile {
@@ -61,6 +61,15 @@ export interface LedgerEntry {
   created_at: string;
 }
 
+export type ClosingItemKind = 'expense' | 'loss' | 'debt';
+
+export interface ClosingItem {
+  id: string;
+  kind: ClosingItemKind;
+  amount: number;
+  note: string;
+}
+
 export interface StockSession {
   id: string;
   business_id: string;
@@ -70,7 +79,7 @@ export interface StockSession {
   cash: number;
   mobile: number;
   bank_in: number;
-  expenses_paid: number;
+  closing_items: ClosingItem[];
   reason: string | null;
   note: string | null;
   submitted_by_name: string | null;
@@ -80,11 +89,11 @@ export interface StockSession {
 }
 
 export const KIND_SIGN: Record<EntryKind, number> = {
-  sale: 1, payment: 1, purchase: -1, expense: -1, withdrawal: -1, loss: 0, stock: 0,
+  sale: 1, payment: 1, purchase: -1, expense: -1, withdrawal: -1, loss: 0, stock: 0, debt: 0,
 };
 
 export const KIND_ICON: Record<EntryKind, string> = {
-  sale: 'cash', payment: 'phone', purchase: 'truck', expense: 'receipt', withdrawal: 'out', loss: 'alert', stock: 'box',
+  sale: 'cash', payment: 'phone', purchase: 'truck', expense: 'receipt', withdrawal: 'out', loss: 'alert', stock: 'box', debt: 'user',
 };
 
 export const BUSINESS_TYPES = [

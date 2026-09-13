@@ -36,7 +36,7 @@ export const OBJECT_TYPES: Record<ObjectTypeName, ObjectTypeDef> = {
   StockSession: {
     label: 'Closing session',
     description: 'One day’s stock count and cash reconciliation.',
-    properties: ['session_date', 'status', 'counts', 'cash', 'mobile', 'bank_in', 'expenses_paid', 'reason', 'note'],
+    properties: ['session_date', 'status', 'counts', 'cash', 'mobile', 'bank_in', 'closing_items', 'reason', 'note'],
     links: { Business: 'belongs to' },
   },
   LedgerEntry: {

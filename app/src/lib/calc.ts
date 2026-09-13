@@ -27,11 +27,15 @@ export function stockValueOf(products: Product[], counts: Record<string, number>
   return products.reduce((s, p) => s + currentQty(p, counts) * p.cost, 0);
 }
 
-export function moneyReceived(session: Pick<StockSession, 'cash' | 'mobile' | 'bank_in' | 'expenses_paid'>): number {
-  return Number(session.cash || 0) + Number(session.mobile || 0) + Number(session.bank_in || 0) + Number(session.expenses_paid || 0);
+export function closingItemsTotal(session: Pick<StockSession, 'closing_items'>): number {
+  return (session.closing_items || []).reduce((s, it) => s + Number(it.amount || 0), 0);
 }
 
-export function diffOf(products: Product[], counts: Record<string, number>, session: Pick<StockSession, 'cash' | 'mobile' | 'bank_in' | 'expenses_paid'>): number {
+export function moneyReceived(session: Pick<StockSession, 'cash' | 'mobile' | 'bank_in' | 'closing_items'>): number {
+  return Number(session.cash || 0) + Number(session.mobile || 0) + Number(session.bank_in || 0) + closingItemsTotal(session);
+}
+
+export function diffOf(products: Product[], counts: Record<string, number>, session: Pick<StockSession, 'cash' | 'mobile' | 'bank_in' | 'closing_items'>): number {
   return expectedSales(products, counts) - moneyReceived(session);
 }
 

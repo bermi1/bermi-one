@@ -44,7 +44,7 @@ export function AI() {
 
   function answer(q: string): string {
     const l = q.toLowerCase();
-    const sessionMoney = { cash: session?.cash || 0, mobile: session?.mobile || 0, bank_in: session?.bank_in || 0, expenses_paid: session?.expenses_paid || 0 };
+    const sessionMoney = { cash: session?.cash || 0, mobile: session?.mobile || 0, bank_in: session?.bank_in || 0, closing_items: session?.closing_items || [] };
     if (l.includes('stock') || l.includes('bidhaa')) {
       const low = products.filter((p) => currentQty(p, counts) < p.low).map((p) => p.name);
       return (lang === 'sw' ? 'Bidhaa zilizopungua: ' : 'Below reorder: ') + (low.join(', ') || '—');

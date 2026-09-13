@@ -7,7 +7,7 @@ import { useData } from '../state/DataContext';
 import { useToast } from '../state/ToastContext';
 import { KIND_ICON, KIND_SIGN, tintVars, type AccountId, type EntryKind } from '../lib/types';
 
-const KINDS: EntryKind[] = ['sale', 'payment', 'purchase', 'expense', 'withdrawal', 'loss'];
+const KINDS: EntryKind[] = ['sale', 'payment', 'purchase', 'expense', 'withdrawal', 'loss', 'debt'];
 
 interface Line {
   amount: string;
@@ -25,15 +25,17 @@ export function Money() {
   const [lines, setLines] = useState<Line[]>([{ amount: '', note: '' }]);
 
   const kindLabel: Record<EntryKind, string> = {
-    sale: L.sale, payment: L.payment, purchase: L.purchase, expense: L.expense, withdrawal: L.withdrawal, loss: L.rLoss, stock: L.stock,
+    sale: L.sale, payment: L.payment, purchase: L.purchase, expense: L.expense, withdrawal: L.withdrawal, loss: L.rLoss, stock: L.stock, debt: L.rDebt,
   };
   const accountLabel: Record<AccountId, string> = { cash: L.cash, mobile: L.mobileMoney, bank: L.bank };
 
   const opexToday = useMemo(() => ledger.filter((e) => e.kind === 'expense').reduce((s, e) => s + Math.abs(e.amount), 0), [ledger]);
+  const lossesToday = useMemo(() => ledger.filter((e) => e.kind === 'loss').reduce((s, e) => s + Math.abs(e.amount), 0), [ledger]);
+  const debtToday = useMemo(() => ledger.filter((e) => e.kind === 'debt').reduce((s, e) => s + Math.abs(e.amount), 0), [ledger]);
   const draws = useMemo(() => ledger.filter((e) => e.kind === 'withdrawal').reduce((s, e) => s + Math.abs(e.amount), 0), [ledger]);
   const salesTotal = useMemo(() => ledger.filter((e) => e.kind === 'sale' || e.kind === 'payment').reduce((s, e) => s + e.amount, 0), [ledger]);
   const cogsEst = Math.round(salesTotal * 0.6);
-  const net = salesTotal - cogsEst - opexToday;
+  const net = salesTotal - cogsEst - opexToday - lossesToday;
 
   function openKindPicker() {
     setKind('expense');
@@ -97,8 +99,10 @@ export function Money() {
             { label: L.revenue, value: fmt(salesTotal) },
             { label: '− ' + L.costOfSales, value: fmt(cogsEst) },
             { label: '− ' + L.opex, value: fmt(opexToday) },
+            ...(lossesToday > 0 ? [{ label: '− ' + L.losses, value: fmt(lossesToday) }] : []),
             { label: '= ' + L.netProfit, value: fmt(net), color: net >= 0 ? 'var(--ok)' : 'var(--bad)', big: true },
             { label: L.withdrawals, value: fmt(draws) },
+            ...(debtToday > 0 ? [{ label: L.staffDebtOutstanding, value: fmt(debtToday) }] : []),
           ].map((r) => (
             <div key={r.label} style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0', fontSize: r.big ? 15 : 13.5 }}>
               <span style={{ color: 'var(--ink2)', fontWeight: r.big ? 800 : 600 }}>{r.label}</span>

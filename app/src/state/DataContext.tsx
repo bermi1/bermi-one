@@ -6,6 +6,8 @@ import { logAction, fetchRecentActions, type ActionLogEntry } from '../ontology/
 import {
   type Accounts,
   type Business,
+  type ClosingItem,
+  type ClosingItemKind,
   type EntryKind,
   type LedgerEntry,
   type Lang,
@@ -21,6 +23,15 @@ interface NewEntryLine {
   label: string;
   amount: number;
   account: 'cash' | 'mobile' | 'bank';
+}
+
+export interface BusinessSummary {
+  business: Business;
+  revenue: number;
+  opex: number;
+  losses: number;
+  debt: number;
+  net: number;
 }
 
 interface DataCtx {
@@ -51,12 +62,15 @@ interface DataCtx {
   addProductsBulk: (rows: { name: string; cat: string; unit: string; cost: number; price: number; opening: number; low: number }[]) => Promise<void>;
 
   setClosingCount: (productId: string, qty: number | null) => Promise<void>;
-  setSessionMoney: (field: 'cash' | 'mobile' | 'bank_in' | 'expenses_paid', value: number) => Promise<void>;
+  setSessionMoney: (field: 'cash' | 'mobile' | 'bank_in', value: number) => Promise<void>;
+  addClosingItem: (kind: ClosingItemKind, amount: number, note: string) => Promise<void>;
+  removeClosingItem: (id: string) => Promise<void>;
   submitSession: (reason: string | null, note: string) => Promise<void>;
   approveSession: () => Promise<void>;
   returnSession: () => Promise<void>;
 
   addLedgerLines: (lines: NewEntryLine[]) => Promise<void>;
+  fetchPortfolioSummary: (days: number) => Promise<BusinessSummary[]>;
 }
 
 const Ctx = createContext<DataCtx | null>(null);
@@ -284,7 +298,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
     if (!activeBusiness) return null;
     const { data } = await supabase
       .from('stock_sessions')
-      .insert({ business_id: activeBusiness.id, session_date: todayIso(), status: 'open', counts: {} })
+      .insert({ business_id: activeBusiness.id, session_date: todayIso(), status: 'open', counts: {}, closing_items: [] })
       .select()
       .single();
     if (data) setSession(data as StockSession);
@@ -305,13 +319,36 @@ export function DataProvider({ children }: { children: ReactNode }) {
   );
 
   const setSessionMoney = useCallback(
-    async (field: 'cash' | 'mobile' | 'bank_in' | 'expenses_paid', value: number) => {
+    async (field: 'cash' | 'mobile' | 'bank_in', value: number) => {
       const s = (await ensureSession()) || session;
       if (!s) return;
       setSession({ ...s, [field]: value });
       await supabase.from('stock_sessions').update({ [field]: value }).eq('id', s.id);
     },
     [ensureSession, session],
+  );
+
+  const addClosingItem = useCallback(
+    async (kind: ClosingItemKind, amount: number, note: string) => {
+      if (amount <= 0) return;
+      const s = (await ensureSession()) || session;
+      if (!s) return;
+      const item: ClosingItem = { id: crypto.randomUUID(), kind, amount, note };
+      const closing_items = [...(s.closing_items || []), item];
+      setSession({ ...s, closing_items });
+      await supabase.from('stock_sessions').update({ closing_items }).eq('id', s.id);
+    },
+    [ensureSession, session],
+  );
+
+  const removeClosingItem = useCallback(
+    async (id: string) => {
+      if (!session) return;
+      const closing_items = (session.closing_items || []).filter((it) => it.id !== id);
+      setSession({ ...session, closing_items });
+      await supabase.from('stock_sessions').update({ closing_items }).eq('id', session.id);
+    },
+    [session],
   );
 
   const addLedgerLines = useCallback(
@@ -364,15 +401,45 @@ export function DataProvider({ children }: { children: ReactNode }) {
     setSession({ ...session, ...patch });
     await supabase.from('stock_sessions').update(patch).eq('id', session.id);
 
+    const closingItemLabel: Record<ClosingItemKind, string> = { expense: 'Expense', loss: 'Loss / breakage', debt: 'Staff debt' };
     const lines: NewEntryLine[] = [];
     if (session.cash > 0) lines.push({ kind: 'sale', label: 'Closing sales — cash', amount: session.cash, account: 'cash' });
     if (session.mobile > 0) lines.push({ kind: 'sale', label: 'Closing sales — mobile', amount: session.mobile, account: 'mobile' });
     if (session.bank_in > 0) lines.push({ kind: 'sale', label: 'Closing sales — bank', amount: session.bank_in, account: 'bank' });
-    if (session.expenses_paid > 0) lines.push({ kind: 'expense', label: 'Closing expenses paid', amount: -session.expenses_paid, account: 'cash' });
+    for (const item of session.closing_items || []) {
+      if (item.amount <= 0) continue;
+      lines.push({ kind: item.kind, label: item.note || closingItemLabel[item.kind], amount: -item.amount, account: 'cash' });
+    }
     if (lines.length) await addLedgerLines(lines);
 
     await record({ businessId: activeBusiness.id, actionType: 'session.approve', objectId: session.id, summary: "Approved and locked today's closing", actorName: profile?.full_name });
   }, [session, profile, addLedgerLines, activeBusiness, record]);
+
+  const fetchPortfolioSummary = useCallback<DataCtx['fetchPortfolioSummary']>(
+    async (days) => {
+      if (businesses.length === 0) return [];
+      const cutoff = new Date();
+      cutoff.setDate(cutoff.getDate() - days);
+      const ids = businesses.map((b) => b.id);
+      const { data } = await supabase
+        .from('ledger_entries')
+        .select('business_id, kind, amount')
+        .in('business_id', ids)
+        .gte('created_at', cutoff.toISOString());
+      const rows = (data || []) as { business_id: string; kind: EntryKind; amount: number }[];
+      return businesses.map((business) => {
+        const own = rows.filter((r) => r.business_id === business.id);
+        const revenue = own.filter((r) => r.kind === 'sale' || r.kind === 'payment').reduce((s, r) => s + r.amount, 0);
+        const opex = own.filter((r) => r.kind === 'expense').reduce((s, r) => s + Math.abs(r.amount), 0);
+        const losses = own.filter((r) => r.kind === 'loss').reduce((s, r) => s + Math.abs(r.amount), 0);
+        const debt = own.filter((r) => r.kind === 'debt').reduce((s, r) => s + Math.abs(r.amount), 0);
+        const cogs = Math.round(revenue * 0.6);
+        const net = revenue - cogs - opex - losses;
+        return { business, revenue, opex, losses, debt, net };
+      });
+    },
+    [businesses],
+  );
 
   const returnSession = useCallback(async () => {
     if (!session || !activeBusiness) return;
@@ -409,10 +476,13 @@ export function DataProvider({ children }: { children: ReactNode }) {
     addProductsBulk,
     setClosingCount,
     setSessionMoney,
+    addClosingItem,
+    removeClosingItem,
     submitSession,
     approveSession,
     returnSession,
     addLedgerLines,
+    fetchPortfolioSummary,
   };
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;

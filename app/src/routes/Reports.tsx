@@ -1,8 +1,8 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { ScreenHeader } from '../components/ScreenHeader';
 import { Icon } from '../lib/icons';
 import { useSettings } from '../lib/useSettings';
-import { useData } from '../state/DataContext';
+import { useData, type BusinessSummary } from '../state/DataContext';
 import { soldOf } from '../lib/calc';
 import { tintVars } from '../lib/types';
 
@@ -10,8 +10,8 @@ const PERIODS = [7, 30, 90];
 
 export function Reports() {
   const { L, fmt, short, lang } = useSettings();
-  const { products, session, ledger } = useData();
-  const [mode, setMode] = useState<'business' | 'products'>('business');
+  const { products, session, ledger, businesses, activeBusiness, fetchPortfolioSummary } = useData();
+  const [mode, setMode] = useState<'business' | 'products' | 'portfolio'>('business');
   const [periodIx, setPeriodIx] = useState(0);
   const period = PERIODS[periodIx];
   const counts = session?.counts || {};
@@ -25,10 +25,12 @@ export function Reports() {
   const inPeriod = useMemo(() => ledger.filter((e) => e.created_at >= cutoff), [ledger, cutoff]);
   const revenue = useMemo(() => inPeriod.filter((e) => e.kind === 'sale' || e.kind === 'payment').reduce((s, e) => s + e.amount, 0), [inPeriod]);
   const opex = useMemo(() => inPeriod.filter((e) => e.kind === 'expense').reduce((s, e) => s + Math.abs(e.amount), 0), [inPeriod]);
+  const losses = useMemo(() => inPeriod.filter((e) => e.kind === 'loss').reduce((s, e) => s + Math.abs(e.amount), 0), [inPeriod]);
+  const staffDebt = useMemo(() => inPeriod.filter((e) => e.kind === 'debt').reduce((s, e) => s + Math.abs(e.amount), 0), [inPeriod]);
   const draws = useMemo(() => inPeriod.filter((e) => e.kind === 'withdrawal').reduce((s, e) => s + Math.abs(e.amount), 0), [inPeriod]);
   const cogs = Math.round(revenue * 0.6);
   const gross = revenue - cogs;
-  const net = gross - opex;
+  const net = gross - opex - losses;
 
   const pct = (a: number, b: number) => (b ? Math.round((a / b) * 100) + '%' : '—');
 
@@ -37,6 +39,7 @@ export function Reports() {
     { label: '− ' + L.costOfSales, value: fmt(cogs) },
     { label: '= ' + L.grossProfit, value: fmt(gross), big: true },
     { label: '− ' + L.opex, value: fmt(opex) },
+    ...(losses > 0 ? [{ label: '− ' + L.losses, value: fmt(losses) }] : []),
     { label: '= ' + L.netProfit, value: fmt(net), color: net >= 0 ? 'var(--ok)' : 'var(--bad)', big: true },
     { label: L.withdrawals, value: fmt(draws) },
   ];
@@ -55,20 +58,78 @@ export function Reports() {
     [products, counts],
   );
 
+  const [portfolio, setPortfolio] = useState<BusinessSummary[] | null>(null);
+  const [portfolioLoading, setPortfolioLoading] = useState(false);
+  const canCombine = businesses.length > 1;
+  const mixedCurrencies = useMemo(() => new Set(businesses.map((b) => b.country_code)).size > 1, [businesses]);
+
+  useEffect(() => {
+    if (mode !== 'portfolio' || !canCombine) return;
+    let cancelled = false;
+    setPortfolioLoading(true);
+    fetchPortfolioSummary(period).then((rows) => {
+      if (!cancelled) {
+        setPortfolio(rows);
+        setPortfolioLoading(false);
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [mode, period, canCombine, fetchPortfolioSummary]);
+
+  const periodLabel = `${period} ${lang === 'sw' ? 'siku' : 'days'}`;
+
+  function shareToWhatsapp() {
+    let text: string;
+    if (mode === 'portfolio' && portfolio) {
+      const totalRevenue = portfolio.reduce((s, b) => s + b.revenue, 0);
+      const totalNet = portfolio.reduce((s, b) => s + b.net, 0);
+      const totalDebt = portfolio.reduce((s, b) => s + b.debt, 0);
+      const lines = portfolio.map((b) => `• ${b.business.name}: ${L.revenue} ${fmt(b.revenue)} · ${L.netProfit} ${fmt(b.net)}`);
+      text = `${L.portfolio} — ${periodLabel}\n\n${lines.join('\n')}\n\n${L.portfolioTotal}: ${L.revenue} ${fmt(totalRevenue)} · ${L.netProfit} ${fmt(totalNet)}`;
+      if (totalDebt > 0) text += `\n${L.staffDebtOutstanding}: ${fmt(totalDebt)}`;
+    } else {
+      const lines = [
+        `${activeBusiness?.name || L.appName} — ${periodLabel}`,
+        '',
+        `${L.revenue}: ${fmt(revenue)}`,
+        `${L.costOfSales}: ${fmt(cogs)}`,
+        `${L.grossProfit}: ${fmt(gross)}`,
+        `${L.opex}: ${fmt(opex)}`,
+      ];
+      if (losses > 0) lines.push(`${L.losses}: ${fmt(losses)}`);
+      lines.push(`${L.netProfit}: ${fmt(net)}`);
+      if (staffDebt > 0) lines.push(`${L.staffDebtOutstanding}: ${fmt(staffDebt)}`);
+      text = lines.join('\n');
+    }
+    window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, '_blank');
+  }
+
+  const modeTabs: { id: 'business' | 'products' | 'portfolio'; label: string }[] = [
+    { id: 'business', label: L.wholeBusiness },
+    { id: 'products', label: L.perProduct },
+    ...(canCombine ? [{ id: 'portfolio' as const, label: L.allBusinesses }] : []),
+  ];
+
   return (
     <div className="screen sb">
       <ScreenHeader title={L.reports} sub={L.reportsSub} />
 
       <div style={{ display: 'flex', background: 'var(--card)', border: '1px solid var(--line)', borderRadius: 14, padding: 4, marginBottom: 16 }}>
-        <button className="tap" onClick={() => setMode('business')} style={{ flex: 1, padding: '9px 0', borderRadius: 10, fontSize: 13, fontWeight: 700, background: mode === 'business' ? 'var(--card2)' : 'transparent', color: mode === 'business' ? 'var(--ink)' : 'var(--ink3)' }}>
-          {L.wholeBusiness}
-        </button>
-        <button className="tap" onClick={() => setMode('products')} style={{ flex: 1, padding: '9px 0', borderRadius: 10, fontSize: 13, fontWeight: 700, background: mode === 'products' ? 'var(--card2)' : 'transparent', color: mode === 'products' ? 'var(--ink)' : 'var(--ink3)' }}>
-          {L.perProduct}
-        </button>
+        {modeTabs.map((t) => (
+          <button
+            key={t.id}
+            className="tap"
+            onClick={() => setMode(t.id)}
+            style={{ flex: 1, padding: '9px 0', borderRadius: 10, fontSize: 13, fontWeight: 700, background: mode === t.id ? 'var(--card2)' : 'transparent', color: mode === t.id ? 'var(--ink)' : 'var(--ink3)' }}
+          >
+            {t.label}
+          </button>
+        ))}
       </div>
 
-      {mode === 'business' ? (
+      {mode === 'business' && (
         <>
           <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
             {PERIODS.map((p, i) => (
@@ -96,7 +157,7 @@ export function Reports() {
             ))}
           </div>
 
-          <div className="card" style={{ padding: 18 }}>
+          <div className="card" style={{ padding: 18, marginBottom: 16 }}>
             <div style={{ fontSize: 13.5, fontWeight: 800, marginBottom: 10 }}>{L.incomeStatement}</div>
             {pnlRows.map((r, i) => (
               <div key={r.label} style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0', fontSize: r.big ? 15 : 13.5, borderTop: i > 0 ? '1px solid var(--line)' : 'none' }}>
@@ -104,9 +165,22 @@ export function Reports() {
                 <span style={{ fontWeight: 800, color: r.color || 'var(--ink)' }}>{r.value}</span>
               </div>
             ))}
+            {staffDebt > 0 && (
+              <div style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0 0', marginTop: 4, borderTop: '1px solid var(--line)', fontSize: 13.5 }}>
+                <span style={{ color: 'var(--ink2)', fontWeight: 600 }}>{L.staffDebtOutstanding}</span>
+                <span style={{ fontWeight: 800, color: 'var(--warn)' }}>{fmt(staffDebt)}</span>
+              </div>
+            )}
           </div>
+
+          <button className="btn-ghost tap" style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }} onClick={shareToWhatsapp}>
+            <Icon name="share" size={15} />
+            {L.shareWhatsapp}
+          </button>
         </>
-      ) : (
+      )}
+
+      {mode === 'products' && (
         <div className="card" style={{ padding: 6 }}>
           {productAnalysis.map(({ p, units, rev, profit, costW, profitW }, i) => {
             const tv = tintVars(i);
@@ -135,6 +209,82 @@ export function Reports() {
             );
           })}
         </div>
+      )}
+
+      {mode === 'portfolio' && (
+        <>
+          {!canCombine ? (
+            <div className="card" style={{ padding: 40, textAlign: 'center', color: 'var(--ink3)', fontSize: 13 }}>{L.needMoreBusinesses}</div>
+          ) : (
+            <>
+              <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
+                {PERIODS.map((p, i) => (
+                  <button
+                    key={p}
+                    className="tap"
+                    onClick={() => setPeriodIx(i)}
+                    style={{ flex: 1, padding: '9px 0', borderRadius: 12, fontSize: 12.5, fontWeight: 700, background: periodIx === i ? 'var(--brand)' : 'var(--card)', color: periodIx === i ? 'var(--brandInk)' : 'var(--ink2)', border: '1px solid var(--line)' }}
+                  >
+                    {p} {lang === 'sw' ? 'siku' : 'days'}
+                  </button>
+                ))}
+              </div>
+
+              {portfolioLoading || !portfolio ? (
+                <div className="card" style={{ padding: 30, textAlign: 'center', color: 'var(--ink3)', fontSize: 13 }}>{L.loading}</div>
+              ) : (
+                <>
+                  {mixedCurrencies && (
+                    <div style={{ fontSize: 11.5, color: 'var(--ink3)', marginBottom: 10 }}>
+                      {lang === 'sw' ? 'Kumbuka: biashara zako ziko katika nchi tofauti — kiasi hapa hakijabadilishwa sarafu.' : 'Note: your businesses are in different countries — amounts here are not currency-converted.'}
+                    </div>
+                  )}
+                  <div className="card" style={{ padding: 18, marginBottom: 16 }}>
+                    <div style={{ fontSize: 13.5, fontWeight: 800, marginBottom: 10 }}>{L.portfolioTotal}</div>
+                    {[
+                      { label: L.revenue, value: fmt(portfolio.reduce((s, b) => s + b.revenue, 0)) },
+                      { label: '− ' + L.opex, value: fmt(portfolio.reduce((s, b) => s + b.opex, 0)) },
+                      ...(portfolio.some((b) => b.losses > 0) ? [{ label: '− ' + L.losses, value: fmt(portfolio.reduce((s, b) => s + b.losses, 0)) }] : []),
+                      { label: '= ' + L.netProfit, value: fmt(portfolio.reduce((s, b) => s + b.net, 0)), big: true, color: 'var(--ok)' },
+                    ].map((r, i) => (
+                      <div key={r.label} style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0', fontSize: r.big ? 15 : 13.5, borderTop: i > 0 ? '1px solid var(--line)' : 'none' }}>
+                        <span style={{ color: 'var(--ink2)', fontWeight: r.big ? 800 : 600 }}>{r.label}</span>
+                        <span style={{ fontWeight: 800, color: r.color || 'var(--ink)' }}>{r.value}</span>
+                      </div>
+                    ))}
+                    {portfolio.some((b) => b.debt > 0) && (
+                      <div style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0 0', marginTop: 4, borderTop: '1px solid var(--line)', fontSize: 13.5 }}>
+                        <span style={{ color: 'var(--ink2)', fontWeight: 600 }}>{L.staffDebtOutstanding}</span>
+                        <span style={{ fontWeight: 800, color: 'var(--warn)' }}>{fmt(portfolio.reduce((s, b) => s + b.debt, 0))}</span>
+                      </div>
+                    )}
+                  </div>
+
+                  <div style={{ fontSize: 13, fontWeight: 800, color: 'var(--ink2)', textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 10 }}>{L.perBusiness}</div>
+                  <div className="card" style={{ padding: 6, marginBottom: 16 }}>
+                    {portfolio.map((b, i) => (
+                      <div key={b.business.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '12px 10px', borderBottom: i === portfolio.length - 1 ? 'none' : '1px solid var(--line)' }}>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ fontSize: 13.5, fontWeight: 700 }}>{b.business.name}</div>
+                          <div style={{ fontSize: 11, color: 'var(--ink3)', fontWeight: 600 }}>{L.revenue} {short(b.revenue)}</div>
+                        </div>
+                        <div style={{ textAlign: 'right' }}>
+                          <div style={{ fontSize: 13, fontWeight: 800, color: b.net >= 0 ? 'var(--ok)' : 'var(--bad)' }}>{short(b.net)}</div>
+                          {b.debt > 0 && <div style={{ fontSize: 10.5, color: 'var(--warn)', fontWeight: 700 }}>{L.staffDebtOutstanding.split(' ')[0]} {short(b.debt)}</div>}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+
+                  <button className="btn-ghost tap" style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }} onClick={shareToWhatsapp}>
+                    <Icon name="share" size={15} />
+                    {L.shareWhatsapp}
+                  </button>
+                </>
+              )}
+            </>
+          )}
+        </>
       )}
     </div>
   );

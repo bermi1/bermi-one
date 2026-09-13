@@ -14,7 +14,7 @@ export function Approval() {
   const { flash } = useToast();
 
   const counts = session?.counts || {};
-  const sessionMoney = { cash: session?.cash || 0, mobile: session?.mobile || 0, bank_in: session?.bank_in || 0, expenses_paid: session?.expenses_paid || 0 };
+  const sessionMoney = { cash: session?.cash || 0, mobile: session?.mobile || 0, bank_in: session?.bank_in || 0, closing_items: session?.closing_items || [] };
   const expected = expectedSales(products, counts);
   const cogs = cogsOf(products, counts);
   const gross = expected - cogs;
@@ -38,12 +38,18 @@ export function Approval() {
   }
 
   const approved = session.status === 'approved';
+  const closingItems = session.closing_items || [];
+  const itemsByKind = { expense: 0, loss: 0, debt: 0 };
+  for (const it of closingItems) itemsByKind[it.kind] += it.amount;
 
   const summaryRows = [
     { label: L.sales, value: fmt(expected) },
     { label: L.cash, value: fmt(session.cash) },
     { label: L.mobileMoney, value: fmt(session.mobile) },
     { label: L.bank, value: fmt(session.bank_in) },
+    ...(itemsByKind.expense > 0 ? [{ label: L.rExpense, value: fmt(itemsByKind.expense) }] : []),
+    ...(itemsByKind.loss > 0 ? [{ label: L.rLoss, value: fmt(itemsByKind.loss) }] : []),
+    ...(itemsByKind.debt > 0 ? [{ label: L.rDebt, value: fmt(itemsByKind.debt) }] : []),
     { label: L.difference, value: fmt(Math.abs(diff)), color: diff === 0 ? 'var(--ok)' : 'var(--bad)' },
     { label: L.grossProfit, value: fmt(gross), color: 'var(--ok)' },
   ];
