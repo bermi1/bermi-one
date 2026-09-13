@@ -94,6 +94,7 @@ export interface StockSession {
   closing_items: ClosingItem[];
   reason: string | null;
   note: string | null;
+  owner_comments: string | null;
   submitted_by_name: string | null;
   submitted_at: string | null;
   approved_by_name: string | null;

@@ -75,6 +75,7 @@ export type ActionTypeName =
   | 'session.submit'
   | 'session.approve'
   | 'session.return'
+  | 'session.delete'
   | 'ledger.recordLines'
   | 'business.create'
   | 'business.update'
@@ -96,6 +97,7 @@ export const ACTION_TYPES: Record<ActionTypeName, ActionTypeDef> = {
   'session.submit': { label: 'Submit closing', objectType: 'StockSession' },
   'session.approve': { label: 'Approve closing', objectType: 'StockSession' },
   'session.return': { label: 'Return closing for correction', objectType: 'StockSession' },
+  'session.delete': { label: 'Delete closing', objectType: 'StockSession' },
   'ledger.recordLines': { label: 'Record money entry', objectType: 'LedgerEntry' },
   'business.create': { label: 'Create business', objectType: 'Business' },
   'business.update': { label: 'Update business profile', objectType: 'Business' },

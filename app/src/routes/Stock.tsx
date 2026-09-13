@@ -10,13 +10,25 @@ import { currentQty, groupByCategory, stockValueOf } from '../lib/calc';
 import { tintVars, type Product } from '../lib/types';
 import { parseTable, buildRows, FIELD_LABELS, type FieldKey, type ParsedTable } from '../lib/csv';
 import { openStockSheet } from '../lib/stockSheet';
+import { SessionHistory } from '../components/SessionHistory';
+
+/** The canonical bar stock template — the same columns the business exports. */
+function toCsv(products: Product[]): string {
+  const head = 'product_name,unit,opening_stock,item_price,item_profit,category,sort_order';
+  const cell = (s: string) => (/[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s);
+  const rows = products.map((p, i) =>
+    [cell(p.name), cell(p.unit), p.opening, p.price, p.profit, cell(p.cat), i].join(','),
+  );
+  return [head, ...rows].join('\n');
+}
 
 export function Stock() {
-  const { L, fmt, short, lang } = useSettings();
+  const { L, fmt, short, lang, owner } = useSettings();
   const { products, session, activeBusiness, addStock, reorderProducts, addProduct, addProductsBulk, updateProductFields } = useData();
   const { flash } = useToast();
   const counts = session?.counts || {};
 
+  const [tab, setTab] = useState<'items' | 'sessions'>('items');
   const [query, setQuery] = useState('');
   const [cat, setCat] = useState('All');
   const [expanded, setExpanded] = useState<string | null>(null);
@@ -27,6 +39,10 @@ export function Stock() {
   const [reorderMode, setReorderMode] = useState(false);
   const [addOpen, setAddOpen] = useState(false);
   const [newP, setNewP] = useState({ name: '', cat: '', unit: 'bottle', price: '', profit: '', low: '' });
+
+  const [editAllMode, setEditAllMode] = useState(false);
+  const [edits, setEdits] = useState<Record<string, Partial<Product>>>({});
+  const [savingAll, setSavingAll] = useState(false);
 
   const [bulkOpen, setBulkOpen] = useState(false);
   const [bulkText, setBulkText] = useState('');
@@ -124,13 +140,85 @@ export function Stock() {
     e.target.value = '';
   }
 
+  /**
+   * A re-uploaded sheet is usually the same product list with fresh counts, so
+   * rows that match an existing product by name update it in place; only
+   * genuinely new names are added. That makes "upload today's sheet" safe to
+   * repeat without piling up duplicates.
+   */
+  const bulkSplit = useMemo(() => {
+    const byName = new Map(products.map((p) => [p.name.trim().toLowerCase(), p]));
+    const updates: { product: Product; row: (typeof bulkRows)[number] }[] = [];
+    const fresh: typeof bulkRows = [];
+    for (const row of bulkRows) {
+      const hit = byName.get(row.name.trim().toLowerCase());
+      if (hit) updates.push({ product: hit, row });
+      else fresh.push(row);
+    }
+    return { updates, fresh };
+  }, [bulkRows, products]);
+
   async function confirmBulkImport() {
     if (!bulkRows.length) return;
     setBulkBusy(true);
-    await addProductsBulk(bulkRows);
+    for (const { product, row } of bulkSplit.updates) {
+      await updateProductFields(product.id, {
+        cat: row.cat, unit: row.unit, price: row.price, profit: row.profit, opening: row.opening, low: row.low,
+      });
+    }
+    if (bulkSplit.fresh.length) await addProductsBulk(bulkSplit.fresh);
     setBulkBusy(false);
     setBulkOpen(false);
-    flash(`${bulkRows.length} ${L.rowsReady}`);
+    const parts: string[] = [];
+    if (bulkSplit.fresh.length) parts.push(`${bulkSplit.fresh.length} ${lang === 'sw' ? 'mpya' : 'new'}`);
+    if (bulkSplit.updates.length) parts.push(`${bulkSplit.updates.length} ${lang === 'sw' ? 'zimesasishwa' : 'updated'}`);
+    flash(parts.join(' · '));
+  }
+
+  function editField(id: string, patch: Partial<Product>) {
+    setEdits((e) => ({ ...e, [id]: { ...e[id], ...patch } }));
+  }
+
+  /** Only fields that actually differ from what's stored get written back. */
+  function pendingFor(p: Product): Partial<Product> | null {
+    const e = edits[p.id];
+    if (!e) return null;
+    const diff: Partial<Product> = {};
+    for (const [k, v] of Object.entries(e) as [keyof Product, never][]) {
+      if (p[k] !== v) diff[k] = v;
+    }
+    return Object.keys(diff).length ? diff : null;
+  }
+
+  const pendingCount = products.filter((p) => pendingFor(p)).length;
+
+  async function saveAll() {
+    setSavingAll(true);
+    for (const p of products) {
+      const diff = pendingFor(p);
+      if (diff) await updateProductFields(p.id, diff);
+    }
+    setSavingAll(false);
+    setEdits({});
+    setEditAllMode(false);
+    flash(`${pendingCount} ${lang === 'sw' ? 'zimesasishwa' : 'updated'}`);
+  }
+
+  function cancelEditAll() {
+    setEdits({});
+    setEditAllMode(false);
+  }
+
+  function exportCsv() {
+    const csv = toCsv(products);
+    const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `stock_${(activeBusiness?.name || 'business').replace(/\s+/g, '')}_${new Date().toISOString().slice(0, 10)}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
   }
 
   function printSheet() {
@@ -146,12 +234,33 @@ export function Stock() {
         title={L.stock}
         sub={`${products.length} ${L.products} · ${cats.length - 1} ${lang === 'sw' ? 'aina' : 'categories'}`}
         right={
-          <button className="chip tap" onClick={() => setReorderMode((v) => !v)}>
-            {reorderMode ? L.doneEditing : L.reorderProducts}
-          </button>
+          tab === 'items' && !editAllMode ? (
+            <button className="chip tap" onClick={() => setReorderMode((v) => !v)}>
+              {reorderMode ? L.doneEditing : L.reorderProducts}
+            </button>
+          ) : undefined
         }
       />
 
+      {owner && (
+        <div style={{ display: 'flex', background: 'var(--card)', border: '1px solid var(--line)', borderRadius: 14, padding: 4, marginBottom: 14 }}>
+          {([['items', L.tabItems], ['sessions', L.tabSessions]] as const).map(([id, label]) => (
+            <button
+              key={id}
+              className="tap"
+              onClick={() => setTab(id)}
+              style={{ flex: 1, padding: '9px 0', borderRadius: 10, fontSize: 13, fontWeight: 700, background: tab === id ? 'var(--card2)' : 'transparent', color: tab === id ? 'var(--ink)' : 'var(--ink3)' }}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {tab === 'sessions' && owner ? (
+        <SessionHistory />
+      ) : (
+      <>
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 16 }}>
         <div className="card" style={{ padding: 14 }}>
           <div style={{ fontSize: 11, color: 'var(--ink3)', fontWeight: 700 }}>{L.totalStock}</div>
@@ -163,7 +272,19 @@ export function Stock() {
         </div>
       </div>
 
-      {!reorderMode && (
+      {editAllMode && (
+        <div className="card" style={{ padding: 12, marginBottom: 12, display: 'flex', alignItems: 'center', gap: 10, background: 'var(--brandSoft)' }}>
+          <div style={{ flex: 1, fontSize: 12.5, fontWeight: 700, color: 'var(--brand)' }}>
+            {pendingCount} {L.changed}
+          </div>
+          <button className="chip tap" style={{ padding: '6px 12px', fontSize: 12 }} onClick={cancelEditAll}>{L.cancel}</button>
+          <button className="btn-primary tap" style={{ padding: '7px 14px', fontSize: 12.5 }} data-disabled={!pendingCount || savingAll} onClick={saveAll}>
+            {L.saveAll}
+          </button>
+        </div>
+      )}
+
+      {!reorderMode && !editAllMode && (
         <>
           <label className="card" style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '12px 14px', marginBottom: 10 }}>
             <Icon name="search" size={16} style={{ color: 'var(--ink3)' }} />
@@ -222,6 +343,54 @@ export function Stock() {
                   const qty = currentQty(p, counts);
                   const isOpen = expanded === p.id;
                   const editing = editId === p.id;
+                  const e = edits[p.id] || {};
+                  const num = (v: unknown, fallback: number) => (v === undefined ? String(fallback) : String(v));
+
+                  if (editAllMode) {
+                    const dirty = !!pendingFor(p);
+                    return (
+                      <div key={p.id} style={{ padding: '10px 8px', borderBottom: i === items.length - 1 ? 'none' : '1px solid var(--line)', background: dirty ? 'var(--warnSoft)' : 'transparent', borderRadius: 10 }}>
+                        <input
+                          value={e.name !== undefined ? e.name : p.name}
+                          onChange={(ev) => editField(p.id, { name: ev.target.value })}
+                          style={{ width: '100%', padding: '7px 9px', borderRadius: 8, border: '1px solid var(--line)', background: 'var(--card2)', fontSize: 13, fontWeight: 700, marginBottom: 6 }}
+                        />
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 6 }}>
+                          {([
+                            ['opening', L.opening, p.opening],
+                            ['price', L.price, p.price],
+                            ['profit', L.profitPerUnit, p.profit],
+                          ] as const).map(([key, label, fallback]) => (
+                            <label key={key} style={{ display: 'block' }}>
+                              <span style={{ fontSize: 9.5, color: 'var(--ink3)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.3 }}>{label}</span>
+                              <input
+                                inputMode="numeric"
+                                value={num(e[key], fallback)}
+                                onChange={(ev) => editField(p.id, { [key]: Number(ev.target.value.replace(/[^0-9]/g, '') || 0) })}
+                                style={{ width: '100%', padding: '6px 8px', borderRadius: 8, border: '1px solid var(--line)', background: 'var(--card2)', fontSize: 12.5, fontWeight: 700 }}
+                              />
+                            </label>
+                          ))}
+                        </div>
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6, marginTop: 6 }}>
+                          <input
+                            list="cat-options"
+                            value={e.cat !== undefined ? e.cat : p.cat}
+                            onChange={(ev) => editField(p.id, { cat: ev.target.value })}
+                            placeholder={L.category}
+                            style={{ padding: '6px 8px', borderRadius: 8, border: '1px solid var(--line)', background: 'var(--card2)', fontSize: 12 }}
+                          />
+                          <input
+                            value={e.unit !== undefined ? e.unit : p.unit}
+                            onChange={(ev) => editField(p.id, { unit: ev.target.value })}
+                            placeholder={lang === 'sw' ? 'Kipimo' : 'Unit'}
+                            style={{ padding: '6px 8px', borderRadius: 8, border: '1px solid var(--line)', background: 'var(--card2)', fontSize: 12 }}
+                          />
+                        </div>
+                      </div>
+                    );
+                  }
+
                   return (
                     <div key={p.id} style={{ borderBottom: i === items.length - 1 ? 'none' : '1px solid var(--line)' }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 8px' }}>
@@ -302,7 +471,7 @@ export function Stock() {
         })
       )}
 
-      {!reorderMode && (
+      {!reorderMode && !editAllMode && (
         <>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginTop: 12 }}>
             <button className="btn-ghost tap" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }} onClick={() => setAddOpen(true)}>
@@ -313,12 +482,26 @@ export function Stock() {
               <Icon name="upload" size={16} />
               {L.bulkUpload}
             </button>
+            {owner && (
+              <button className="btn-ghost tap" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }} onClick={() => setEditAllMode(true)}>
+                <Icon name="edit" size={16} />
+                {L.bulkEdit}
+              </button>
+            )}
+            {owner && (
+              <button className="btn-ghost tap" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }} onClick={exportCsv}>
+                <Icon name="download" size={16} />
+                {L.exportCsv}
+              </button>
+            )}
           </div>
           <button className="btn-ghost tap" style={{ width: '100%', marginTop: 8, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }} onClick={printSheet}>
             <Icon name="doc" size={16} />
             {L.printStockSheet}
           </button>
         </>
+      )}
+      </>
       )}
       <input ref={fileInputRef} type="file" accept=".csv,.txt" style={{ display: 'none' }} onChange={onFilePicked} />
 
@@ -397,6 +580,22 @@ export function Stock() {
             <div style={{ fontSize: 12, color: 'var(--warn)', display: 'flex', flexDirection: 'column', gap: 2 }}>
               {bulkErrors.slice(0, 5).map((e, i) => <div key={i}>{e}</div>)}
             </div>
+          )}
+
+          {bulkRows.length > 0 && (
+            <div style={{ display: 'flex', gap: 8 }}>
+              <div className="card" style={{ flex: 1, padding: 10, textAlign: 'center' }}>
+                <div style={{ fontSize: 16, fontWeight: 800, color: 'var(--brand)' }}>{bulkSplit.fresh.length}</div>
+                <div style={{ fontSize: 10, color: 'var(--ink3)', fontWeight: 700 }}>{lang === 'sw' ? 'MPYA' : 'NEW'}</div>
+              </div>
+              <div className="card" style={{ flex: 1, padding: 10, textAlign: 'center' }}>
+                <div style={{ fontSize: 16, fontWeight: 800, color: 'var(--ok)' }}>{bulkSplit.updates.length}</div>
+                <div style={{ fontSize: 10, color: 'var(--ink3)', fontWeight: 700 }}>{(lang === 'sw' ? 'SASISHO' : 'UPDATES')}</div>
+              </div>
+            </div>
+          )}
+          {bulkRows.length > 0 && bulkSplit.updates.length > 0 && (
+            <div style={{ fontSize: 11, color: 'var(--ink3)' }}>{L.matchedByName}</div>
           )}
 
           {bulkRows.length > 0 ? (

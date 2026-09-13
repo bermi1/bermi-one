@@ -51,6 +51,16 @@ export function Close() {
     <div className="screen sb">
       <ScreenHeader title={L.closeToday} sub={L.closeSub} />
 
+      {session?.owner_comments && session.status === 'open' && (
+        <div className="card" style={{ padding: 14, marginBottom: 14, background: 'var(--warnSoft)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <Icon name="alert" size={15} style={{ color: 'var(--warn)' }} />
+            <div style={{ fontSize: 12, fontWeight: 800, color: 'var(--warn)', textTransform: 'uppercase', letterSpacing: 0.4 }}>{L.ownerComments}</div>
+          </div>
+          <div style={{ marginTop: 6, fontSize: 13.5, fontWeight: 600, color: 'var(--ink)' }}>{session.owner_comments}</div>
+        </div>
+      )}
+
       {groups.map(({ cat, items }, gi) => {
         const tv = tintVars(gi);
         const catSold = items.reduce((s, p) => s + soldOf(p, counts), 0);

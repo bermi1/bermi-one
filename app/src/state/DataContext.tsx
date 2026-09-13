@@ -70,7 +70,9 @@ interface DataCtx {
   removeClosingItem: (id: string) => Promise<void>;
   submitSession: (reason: string | null, note: string) => Promise<void>;
   approveSession: () => Promise<void>;
-  returnSession: () => Promise<void>;
+  returnSession: (comments?: string) => Promise<void>;
+  fetchSessions: (limit?: number) => Promise<StockSession[]>;
+  deleteSession: (id: string) => Promise<void>;
 
   addLedgerLines: (lines: NewEntryLine[]) => Promise<void>;
   fetchPortfolioSummary: (days: number) => Promise<BusinessSummary[]>;
@@ -436,8 +438,28 @@ export function DataProvider({ children }: { children: ReactNode }) {
     }
     if (lines.length) await addLedgerLines(lines);
 
-    await record({ businessId: activeBusiness.id, actionType: 'session.approve', objectId: session.id, summary: "Approved and locked today's closing", actorName: profile?.full_name });
-  }, [session, profile, addLedgerLines, activeBusiness, record]);
+    // Roll the counted closing forward: what was left on the shelf tonight is
+    // what the business opens with tomorrow, and the day's additions are now
+    // baked into that figure. Without this the opening never moves and every
+    // later day's "sold" is computed off a stale baseline.
+    const counted = products.filter((p) => session.counts[p.id] !== undefined);
+    if (counted.length) {
+      const rolled = counted.map((p) => ({ id: p.id, opening: Number(session.counts[p.id]) }));
+      setProducts((ps) => ps.map((p) => {
+        const r = rolled.find((x) => x.id === p.id);
+        return r ? { ...p, opening: r.opening, added: 0 } : p;
+      }));
+      for (const r of rolled) {
+        await supabase.from('products').update({ opening: r.opening, added: 0 }).eq('id', r.id);
+      }
+    }
+
+    await record({
+      businessId: activeBusiness.id, actionType: 'session.approve', objectId: session.id,
+      summary: `Approved and locked ${session.session_date}'s closing`,
+      payload: { rolledForward: counted.length }, actorName: profile?.full_name,
+    });
+  }, [session, profile, addLedgerLines, activeBusiness, record, products]);
 
   const fetchPortfolioSummary = useCallback<DataCtx['fetchPortfolioSummary']>(
     async (days) => {
@@ -496,13 +518,49 @@ export function DataProvider({ children }: { children: ReactNode }) {
     [activeBusiness, staffMembers, record, profile],
   );
 
-  const returnSession = useCallback(async () => {
-    if (!session || !activeBusiness) return;
-    const patch = { status: 'open' as const };
-    setSession({ ...session, ...patch });
-    await supabase.from('stock_sessions').update(patch).eq('id', session.id);
-    await record({ businessId: activeBusiness.id, actionType: 'session.return', objectId: session.id, summary: "Returned today's closing for correction", actorName: profile?.full_name });
-  }, [session, activeBusiness, record, profile]);
+  const returnSession = useCallback<DataCtx['returnSession']>(
+    async (comments) => {
+      if (!session || !activeBusiness) return;
+      const patch = { status: 'open' as const, owner_comments: comments?.trim() || null };
+      setSession({ ...session, ...patch });
+      await supabase.from('stock_sessions').update(patch).eq('id', session.id);
+      await record({
+        businessId: activeBusiness.id, actionType: 'session.return', objectId: session.id,
+        summary: comments?.trim()
+          ? `Returned the closing for correction: ${comments.trim()}`
+          : 'Returned the closing for correction',
+        payload: { comments: comments?.trim() || null }, actorName: profile?.full_name,
+      });
+    },
+    [session, activeBusiness, record, profile],
+  );
+
+  const fetchSessions = useCallback<DataCtx['fetchSessions']>(
+    async (limit = 60) => {
+      if (!activeBusiness) return [];
+      const { data } = await supabase
+        .from('stock_sessions')
+        .select('*')
+        .eq('business_id', activeBusiness.id)
+        .order('session_date', { ascending: false })
+        .limit(limit);
+      return (data || []) as StockSession[];
+    },
+    [activeBusiness],
+  );
+
+  const deleteSession = useCallback<DataCtx['deleteSession']>(
+    async (id) => {
+      if (!activeBusiness) return;
+      await supabase.from('stock_sessions').delete().eq('id', id);
+      if (session?.id === id) setSession(null);
+      await record({
+        businessId: activeBusiness.id, actionType: 'session.delete', objectId: id,
+        summary: 'Deleted a closing session', actorName: profile?.full_name,
+      });
+    },
+    [activeBusiness, session, record, profile],
+  );
 
   const displayName = profile?.full_name || authSession?.user?.email?.split('@')[0] || 'there';
 
@@ -538,6 +596,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
     submitSession,
     approveSession,
     returnSession,
+    fetchSessions,
+    deleteSession,
     addLedgerLines,
     fetchPortfolioSummary,
     addStaffMember,

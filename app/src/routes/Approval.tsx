@@ -1,17 +1,28 @@
+import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ScreenHeader } from '../components/ScreenHeader';
+import { Sheet } from '../components/Sheet';
 import { Icon } from '../lib/icons';
 import { useSettings } from '../lib/useSettings';
 import { useData } from '../state/DataContext';
 import { useToast } from '../state/ToastContext';
 import { diffOf, expectedSales, profitOf, soldOf } from '../lib/calc';
 import { tintVars } from '../lib/types';
+import { openSessionReport } from '../lib/sessionReport';
 
 export function Approval() {
   const nav = useNavigate();
   const { L, fmt, owner, lang } = useSettings();
-  const { products, session, approveSession, returnSession } = useData();
+  const { products, session, activeBusiness, approveSession, returnSession } = useData();
   const { flash } = useToast();
+  const [rejectOpen, setRejectOpen] = useState(false);
+  const [rejectNote, setRejectNote] = useState('');
+
+  function printReport() {
+    if (!activeBusiness || !session) return;
+    const ok = openSessionReport({ business: activeBusiness, products, session, lang });
+    if (!ok) flash(lang === 'sw' ? 'Ruhusu dirisha jipya' : 'Allow pop-ups to open the report');
+  }
 
   const counts = session?.counts || {};
   const sessionMoney = { cash: session?.cash || 0, mobile: session?.mobile || 0, bank_in: session?.bank_in || 0, closing_items: session?.closing_items || [] };
@@ -112,11 +123,7 @@ export function Approval() {
           <button
             className="btn-ghost tap"
             style={{ flex: 1 }}
-            onClick={async () => {
-              await returnSession();
-              flash(L.returnCorrection);
-              nav('/home');
-            }}
+            onClick={() => setRejectOpen(true)}
           >
             {L.returnCorrection}
           </button>
@@ -132,10 +139,42 @@ export function Approval() {
           </button>
         </div>
       ) : (
-        <button className="btn-primary tap" style={{ width: '100%' }} onClick={() => nav('/reports')}>
-          {L.seeReports}
-        </button>
+        <div style={{ display: 'flex', gap: 10 }}>
+          <button className="btn-ghost tap" style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }} onClick={printReport}>
+            <Icon name="doc" size={15} />
+            {L.report}
+          </button>
+          <button className="btn-primary tap" style={{ flex: 1 }} onClick={() => nav('/reports')}>
+            {L.seeReports}
+          </button>
+        </div>
       )}
+
+      <Sheet open={rejectOpen} onClose={() => setRejectOpen(false)} title={L.returnCorrection} sub={L.returnCorrectionSub}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          <textarea
+            autoFocus
+            rows={3}
+            placeholder={L.whatNeedsFixing}
+            value={rejectNote}
+            onChange={(e) => setRejectNote(e.target.value)}
+            className="card"
+            style={{ width: '100%', padding: 14, border: 'none', fontSize: 14, resize: 'vertical' }}
+          />
+          <button
+            className="btn-primary tap"
+            style={{ width: '100%' }}
+            onClick={async () => {
+              await returnSession(rejectNote);
+              setRejectOpen(false);
+              flash(L.returnCorrection);
+              nav('/home');
+            }}
+          >
+            {L.returnCorrection}
+          </button>
+        </div>
+      </Sheet>
     </div>
   );
 }
