@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { BrowserRouter, Navigate, Route, Routes, useLocation } from 'react-router-dom';
 import { AuthProvider, useAuth } from './state/AuthContext';
 import { DataProvider, useData } from './state/DataContext';
@@ -20,6 +20,9 @@ import { AI } from './routes/AI';
 import { Manage } from './routes/Manage';
 import { BusinessProfile } from './routes/BusinessProfile';
 import { Staff } from './routes/Staff';
+import { Admin } from './routes/Admin';
+import { Suspended } from './routes/Suspended';
+import { checkPlatformAdmin } from './lib/platform';
 
 function ThemeRoot() {
   const { profile } = useData();
@@ -38,19 +41,32 @@ function Spinner() {
 
 function AppRoutes() {
   const { session, loading: authLoading } = useAuth();
-  const { ready, profile } = useData();
+  const { ready, profile, activeBusiness } = useData();
   const location = useLocation();
   const owner = profile?.role === 'owner';
+
+  // Bermi Techs staff. This only decides what the interface offers — the admin
+  // function re-checks it server side, and RLS decides what the data allows.
+  const [isStaff, setIsStaff] = useState(false);
+  useEffect(() => {
+    if (!session) { setIsStaff(false); return; }
+    void checkPlatformAdmin().then(setIsStaff);
+  }, [session]);
 
   if (authLoading || (session && !ready)) return <Spinner />;
   if (!session) return <AuthScreen />;
   if (!profile?.onboarded) return <Onboarding />;
+
+  // A lapsed subscription stops the product, not the console: staff need to get
+  // into /admin to lift the block in the first place.
+  if (activeBusiness?.suspended && !isStaff) return <Suspended />;
 
   // Money stays open to staff — it is where they record their own entries, and
   // the screen already withholds the profit summary from them. Everything else
   // in this list is owner business.
   const isOwnerOnly = ['/reports', '/ai', '/manage', '/business', '/staff'].includes(location.pathname) && !owner;
   if (isOwnerOnly) return <Navigate to="/home" replace />;
+  if (location.pathname === '/admin' && !isStaff) return <Navigate to="/home" replace />;
 
   return (
     <div className="app-shell">
@@ -69,6 +85,7 @@ function AppRoutes() {
           <Route path="/manage" element={<Manage />} />
           <Route path="/business" element={<BusinessProfile />} />
           <Route path="/staff" element={<Staff />} />
+          <Route path="/admin" element={<Admin />} />
           <Route path="*" element={<Navigate to="/home" replace />} />
         </Routes>
       </div>

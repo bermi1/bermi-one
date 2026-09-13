@@ -439,9 +439,14 @@ export function Stock() {
                               </button>
                             </div>
                           ) : (
-                            <div style={{ fontSize: 12, color: 'var(--ink3)', fontWeight: 600, display: 'flex', alignItems: 'center', gap: 6 }}>
+                            <div style={{ fontSize: 12, color: 'var(--ink3)', fontWeight: 600, display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', marginTop: 2 }}>
                               {fmt(p.price)}
                               {owner && <> · {lang === 'sw' ? 'faida' : 'profit'} {fmt(p.profit)}</>}
+                              {p.incoming > 0 && (
+                                <span style={{ fontSize: 9.5, fontWeight: 800, textTransform: 'uppercase', letterSpacing: 0.3, color: 'var(--warn)', background: 'var(--warnSoft)', padding: '2px 6px', borderRadius: 5, whiteSpace: 'nowrap' }}>
+                                  +{p.incoming} {L.heldForNextCount}
+                                </span>
+                              )}
                               {owner && (
                                 <Icon
                                   name="edit"
@@ -456,7 +461,7 @@ export function Stock() {
                         <div style={{ textAlign: 'right' }}>
                           <div style={{ fontSize: 14, fontWeight: 800, color: qty < p.low ? 'var(--warn)' : 'var(--ink)' }}>{qty || '—'}</div>
                           <div style={{ fontSize: 10.5, color: 'var(--ink3)', fontWeight: 600 }}>
-                            {p.unit}{p.added > 0 ? ` · +${p.added}` : ''}{p.incoming > 0 ? ` · +${p.incoming} ${L.heldForNextCount}` : ''}
+                            {p.unit}{p.added > 0 ? ` · +${p.added}` : ''}
                           </div>
                         </div>
                       </div>

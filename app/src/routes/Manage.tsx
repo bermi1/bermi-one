@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ScreenHeader } from '../components/ScreenHeader';
 import { Sheet } from '../components/Sheet';
@@ -9,6 +9,7 @@ import { useAuth } from '../state/AuthContext';
 import { useToast } from '../state/ToastContext';
 import { BUSINESS_TYPES, bizMeta, tintVars } from '../lib/types';
 import { ComingSoonType } from '../components/ComingSoonType';
+import { checkPlatformAdmin } from '../lib/platform';
 import { COUNTRIES } from '../lib/countries';
 
 export function Manage() {
@@ -19,6 +20,10 @@ export function Manage() {
   const { flash } = useToast();
 
   const [addOpen, setAddOpen] = useState(false);
+
+  // Only Bermi Techs staff see the console entry. The route guards itself too.
+  const [isStaff, setIsStaff] = useState(false);
+  useEffect(() => { void checkPlatformAdmin().then(setIsStaff); }, []);
   const [newName, setNewName] = useState('');
   const [newType, setNewType] = useState('retail');
   const [newCountryIx, setNewCountryIx] = useState(0);
@@ -53,6 +58,21 @@ export function Manage() {
   return (
     <div className="screen sb">
       <ScreenHeader title={L.manage} sub={displayName} />
+
+      {isStaff && (
+        <div className="card tap" onClick={() => nav('/admin')} style={{ padding: 16, marginBottom: 12, display: 'flex', alignItems: 'center', gap: 12, background: 'var(--ink)', color: '#fff' }}>
+          <div style={{ width: 38, height: 38, borderRadius: 12, background: 'rgba(255,255,255,.16)', display: 'grid', placeItems: 'center' }}>
+            <Icon name="shield" size={18} />
+          </div>
+          <div style={{ flex: 1 }}>
+            <div style={{ fontSize: 14.5, fontWeight: 800 }}>Bermi Techs</div>
+            <div style={{ marginTop: 2, fontSize: 11.5, opacity: 0.72 }}>
+              {lang === 'sw' ? 'Usimamizi wa wateja wote' : 'Clients, subscriptions and access'}
+            </div>
+          </div>
+          <Icon name="right" size={16} style={{ opacity: 0.7 }} />
+        </div>
+      )}
 
       <div className="card tap" onClick={() => nav('/ai')} style={{ padding: 16, marginBottom: 16, display: 'flex', alignItems: 'center', gap: 12, background: 'var(--grad)' }}>
         <div style={{ width: 38, height: 38, borderRadius: 12, background: 'rgba(255,255,255,.2)', display: 'grid', placeItems: 'center', color: '#fff' }}>

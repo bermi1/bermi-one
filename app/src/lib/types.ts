@@ -31,6 +31,9 @@ export interface Business {
   country_code: string;
   answers: Record<string, boolean | null>;
   sort_order: number;
+  /** Set by Bermi Techs when a subscription lapses. Reads stay open; writes stop. */
+  suspended?: boolean;
+  suspended_reason?: string | null;
 }
 
 export interface Product {

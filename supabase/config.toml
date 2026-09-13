@@ -1,0 +1,14 @@
+project_id = "uqmzbhymqgcwselvzabg"
+
+[functions.admin]
+# The Bermi Techs console. Runs with the service role, so the caller's JWT is
+# what proves they are staff — verification stays on, and the function checks
+# is_platform_admin() before it touches anything.
+verify_jwt = true
+
+[functions.payme-webhook]
+# Payme Africa has no Supabase session. Its callbacks are authenticated by the
+# X-Middleware-Signature HMAC instead, which the function checks before it
+# reads a single field. Leaving JWT verification on here would reject every
+# real callback.
+verify_jwt = false
