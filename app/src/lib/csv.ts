@@ -93,21 +93,35 @@ function detectDelimiter(lines: string[]): string {
   return best;
 }
 
-// Ordered so more specific phrases are checked before generic ones
-// (e.g. "cost price" before a bare "price").
+// Checked in this order — the specific field types first, "name" last —
+// because "name" keywords like "product"/"item" are common substrings of
+// compound headers that actually mean something else (e.g. "item_price",
+// "product_id"). Checking those more specific patterns first stops a
+// header like "item_price" from being misread as the product name.
 const FIELD_KEYWORDS: [FieldKey, RegExp][] = [
-  ['name', /\b(product|item|description|desc|goods|stock\s*name)\b/i],
   ['cost', /\b(cost|buy(ing)?|purchase|wholesale)\s*price\b|\bcost\b|\bbuying\b|\bunit\s*cost\b/i],
   ['price', /\b(sell(ing)?|retail|sale)\s*price\b|\bprice\b|\bsrp\b/i],
   ['opening', /\b(opening|current|available|in\s*stock|on\s*hand|qty|quantity|stock\s*level|balance)\b/i],
   ['low', /\b(low|reorder|min(imum)?|re-?order)\s*(level|point|qty|quantity)?\b/i],
   ['unit', /\b(unit|uom|measure|pack(aging)?)\b/i],
   ['cat', /\b(cat(egory)?|type|group|dept|department)\b/i],
+  ['name', /\b(product|item|description|desc|goods|stock\s*name)\b/i],
   ['name', /\bname\b/i],
 ];
 
+// Headers often join words with "_" or "-" (product_name) or camelCase
+// (productName) instead of spaces — neither breaks a regex \b boundary,
+// so normalize both into spaces before running the keyword match.
+function normalizeHeaderText(cell: string): string {
+  return cell
+    .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
+    .replace(/[_-]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
 function guessFieldFromHeader(cell: string): FieldKey | null {
-  const c = cell.trim();
+  const c = normalizeHeaderText(cell);
   if (!c) return null;
   for (const [field, re] of FIELD_KEYWORDS) {
     if (re.test(c)) return field;
