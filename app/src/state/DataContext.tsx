@@ -2,7 +2,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState, t
 import { supabase } from '../lib/supabase';
 import { useAuth } from './AuthContext';
 import { businessDayIso, soldOf } from '../lib/calc';
-import { logAction, fetchRecentActions, type ActionLogEntry } from '../ontology/actions';
+import { logAction, fetchRecentActions, purgeActions, type ActionLogEntry } from '../ontology/actions';
 import {
   type AccountId,
   type Accounts,
@@ -64,6 +64,8 @@ interface DataCtx {
   addProduct: (input: { name: string; cat: string; unit: string; price: number; profit: number; low: number }) => Promise<void>;
   addProductsBulk: (rows: { name: string; cat: string; unit: string; cost: number; price: number; profit: number; opening: number; low: number }[]) => Promise<void>;
   updateProductFields: (productId: string, patch: Partial<Pick<Product, 'name' | 'cat' | 'unit' | 'price' | 'profit' | 'low' | 'opening'>>) => Promise<void>;
+  /** Permanently removes a product from the stock list. */
+  deleteProduct: (productId: string) => Promise<void>;
 
   setClosingCount: (productId: string, qty: number | null) => Promise<void>;
   setSessionMoney: (field: 'cash' | 'mobile' | 'bank_in' | 'amount_to_bank', value: number) => Promise<void>;
@@ -77,6 +79,8 @@ interface DataCtx {
   returnSession: (comments?: string) => Promise<void>;
   fetchSessions: (limit?: number) => Promise<StockSession[]>;
   deleteSession: (id: string) => Promise<void>;
+  /** Permanently removes one money entry and undoes what it did to the balances. */
+  deleteLedgerEntry: (id: string) => Promise<void>;
   fetchReportSource: (businessIds: string[], from: string, to: string) => Promise<{ sessions: StockSession[]; ledger: LedgerEntry[] }>;
 
   addLedgerLines: (lines: NewEntryLine[], sessionId?: string) => Promise<void>;
@@ -320,6 +324,26 @@ export function DataProvider({ children }: { children: ReactNode }) {
       });
     },
     [products, activeBusiness, record, profile],
+  );
+
+  /**
+   * Removing a product from the list for good.
+   *
+   * Worth knowing what this costs: a closing stores its counts keyed by product
+   * id, so a past day that counted this item will no longer show the line when
+   * it is reprinted — the money it made is gone from that sheet. The screen
+   * says so before asking. Nothing is archived; the row is deleted.
+   */
+  const deleteProduct = useCallback<DataCtx['deleteProduct']>(
+    async (productId) => {
+      const prior = products.find((p) => p.id === productId);
+      if (!prior || !activeBusiness) return;
+      setProducts((ps) => ps.filter((p) => p.id !== productId));
+      await supabase.from('products').delete().eq('id', productId);
+      await purgeActions(activeBusiness.id, [productId]);
+      setActionLog((log) => log.filter((a) => a.object_id !== productId));
+    },
+    [products, activeBusiness],
   );
 
   const addProductsBulk = useCallback<DataCtx['addProductsBulk']>(
@@ -657,13 +681,42 @@ export function DataProvider({ children }: { children: ReactNode }) {
       if (gone.size) setLedger((l) => l.filter((e) => !gone.has(e.id)));
       if (session?.id === id) setSession(null);
 
-      await record({
-        businessId: activeBusiness.id, actionType: 'session.delete', objectId: id,
-        summary: `Deleted a closing session and its ${rows.length} ledger ${rows.length === 1 ? 'entry' : 'entries'}`,
-        payload: { reversedEntries: rows.length }, actorName: profile?.full_name,
-      });
+      // Permanent means permanent: the session row, its ledger lines and the
+      // history that describes them all go. A deleted day must not keep
+      // narrating its own takings from the action log.
+      await purgeActions(activeBusiness.id, [id, ...rows.map((r) => r.id)]);
+      setActionLog((log) => log.filter((a) => a.object_id !== id && !gone.has(a.object_id || '')));
     },
     [activeBusiness, session, record, profile, accounts],
+  );
+
+  /**
+   * Deleting one money entry.
+   *
+   * A ledger line is not just a row — it moved an account balance when it was
+   * written, so removing it has to move that balance back or the cash book
+   * starts lying. There is no soft delete and no tombstone: the row, and the
+   * history describing it, are gone.
+   */
+  const deleteLedgerEntry = useCallback<DataCtx['deleteLedgerEntry']>(
+    async (id) => {
+      if (!activeBusiness) return;
+      const entry = ledger.find((e) => e.id === id);
+      if (!entry) return;
+
+      if (accounts) {
+        const next = { ...accounts, [entry.account]: accounts[entry.account] - Number(entry.amount) };
+        setAccounts(next);
+        await supabase.from('accounts').update({ cash: next.cash, mobile: next.mobile, bank: next.bank }).eq('business_id', activeBusiness.id);
+      }
+
+      await supabase.from('ledger_entries').delete().eq('id', id);
+      setLedger((l) => l.filter((e) => e.id !== id));
+
+      await purgeActions(activeBusiness.id, [id]);
+      setActionLog((log) => log.filter((a) => a.object_id !== id));
+    },
+    [activeBusiness, ledger, accounts],
   );
 
   const displayName = profile?.full_name || authSession?.user?.email?.split('@')[0] || 'there';
@@ -693,6 +746,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
     addProduct,
     addProductsBulk,
     updateProductFields,
+    deleteProduct,
     setClosingCount,
     setSessionMoney,
     addClosingItem,
@@ -704,6 +758,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
     resumeSession,
     fetchSessions,
     deleteSession,
+    deleteLedgerEntry,
     fetchReportSource,
     addLedgerLines,
     fetchPortfolioSummary,

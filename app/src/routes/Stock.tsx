@@ -25,7 +25,7 @@ function toCsv(products: Product[]): string {
 
 export function Stock() {
   const { L, fmt, fmt0, short, lang, owner } = useSettings();
-  const { products, session, activeBusiness, reorderProducts, addProduct, addProductsBulk, updateProductFields } = useData();
+  const { products, session, activeBusiness, reorderProducts, addProduct, addProductsBulk, updateProductFields, deleteProduct } = useData();
   const { flash } = useToast();
   const counts = session?.counts || {};
 
@@ -39,6 +39,11 @@ export function Stock() {
   const [reorderMode, setReorderMode] = useState(false);
   const [addOpen, setAddOpen] = useState(false);
   const [newP, setNewP] = useState({ name: '', cat: '', unit: 'bottle', price: '', profit: '', low: '' });
+
+  // Any record can be removed, stock included — but a product carries history
+  // with it, so this one states the consequence before it asks.
+  const [confirmDelete, setConfirmDelete] = useState<Product | null>(null);
+  const [deletingProduct, setDeletingProduct] = useState(false);
 
   const [editAllMode, setEditAllMode] = useState(false);
   const [edits, setEdits] = useState<Record<string, Partial<Product>>>({});
@@ -455,6 +460,14 @@ export function Stock() {
                                   onClick={(e) => { e.stopPropagation(); startEdit(p); }}
                                 />
                               )}
+                              {owner && (
+                                <Icon
+                                  name="x"
+                                  size={12}
+                                  style={{ color: 'var(--ink3)' }}
+                                  onClick={(e) => { e.stopPropagation(); setConfirmDelete(p); }}
+                                />
+                              )}
                             </div>
                           )}
                         </div>
@@ -510,6 +523,35 @@ export function Stock() {
       </>
       )}
       <input ref={fileInputRef} type="file" accept=".csv,.txt" style={{ display: 'none' }} onChange={onFilePicked} />
+
+      <Sheet open={!!confirmDelete} onClose={() => setConfirmDelete(null)} title={L.deleteProduct} sub={confirmDelete?.name}>
+        {confirmDelete && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+            <div className="card" style={{ padding: 14, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <span style={{ fontSize: 13, color: 'var(--ink2)', fontWeight: 600, textTransform: 'capitalize' }}>{confirmDelete.cat}</span>
+              <span style={{ fontSize: 14, fontWeight: 800 }}>{currentQty(confirmDelete, counts)} {confirmDelete.unit}</span>
+            </div>
+            <div style={{ fontSize: 13.5, color: 'var(--ink2)', lineHeight: 1.5 }}>{L.deleteProductWarning}</div>
+            <div style={{ display: 'flex', gap: 10 }}>
+              <button className="btn-ghost tap" style={{ flex: 1 }} onClick={() => setConfirmDelete(null)}>{L.cancel}</button>
+              <button
+                className="btn-primary tap"
+                style={{ flex: 1, background: 'var(--bad)' }}
+                data-disabled={deletingProduct}
+                onClick={async () => {
+                  setDeletingProduct(true);
+                  await deleteProduct(confirmDelete.id);
+                  setDeletingProduct(false);
+                  setConfirmDelete(null);
+                  flash(L.deletedPermanently);
+                }}
+              >
+                {L.delete}
+              </button>
+            </div>
+          </div>
+        )}
+      </Sheet>
 
       <ReceiveStock open={receiveOpen} onClose={() => setReceiveOpen(false)} note={stockDestinationNote} heldForNext={heldForNext} />
 

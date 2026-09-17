@@ -16,7 +16,7 @@ interface Line {
 
 export function Money() {
   const { L, fmt, fmt0, short, owner, lang } = useSettings();
-  const { accounts, ledger, businesses, activeBusiness, addLedgerLines, fetchBooks } = useData();
+  const { accounts, ledger, businesses, activeBusiness, addLedgerLines, deleteLedgerEntry, fetchBooks } = useData();
   const { flash } = useToast();
 
   /**
@@ -52,6 +52,10 @@ export function Money() {
       )
     : { cash: accounts?.cash || 0, mobile: accounts?.mobile || 0, bank: accounts?.bank || 0 };
   const bizName = new Map(businesses.map((b) => [b.id, b.name]));
+
+  // Any entry can be removed, and removal is final — so it asks first, once.
+  const [confirmDelete, setConfirmDelete] = useState<LedgerEntry | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
   const [sheetStep, setSheetStep] = useState<'closed' | 'kinds' | 'entry'>('closed');
   const [kind, setKind] = useState<EntryKind>('expense');
@@ -198,10 +202,49 @@ export function Money() {
               <div style={{ fontSize: 13, fontWeight: 800, color: e.amount > 0 ? 'var(--ok)' : e.amount < 0 ? 'var(--ink)' : 'var(--ink3)' }}>
                 {e.amount === 0 ? '—' : (e.amount > 0 ? '+' : '−') + short(e.amount)}
               </div>
+              {!isCombined && (
+                <button
+                  className="icon-btn tap"
+                  style={{ width: 28, height: 28, flexShrink: 0, color: 'var(--ink3)' }}
+                  aria-label={L.deleteEntry}
+                  onClick={() => setConfirmDelete(e)}
+                >
+                  <Icon name="x" size={13} />
+                </button>
+              )}
             </div>
           );
         })}
       </div>
+
+      <Sheet open={!!confirmDelete} onClose={() => setConfirmDelete(null)} title={L.deleteEntry} sub={confirmDelete?.label}>
+        {confirmDelete && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+            <div className="card" style={{ padding: 14, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <span style={{ fontSize: 13, color: 'var(--ink2)', fontWeight: 600 }}>{accountLabel[confirmDelete.account]}</span>
+              <span style={{ fontSize: 16, fontWeight: 800 }}>{fmt(Math.abs(confirmDelete.amount))}</span>
+            </div>
+            <div style={{ fontSize: 13.5, color: 'var(--ink2)', lineHeight: 1.5 }}>{L.deleteEntryWarning}</div>
+            <div style={{ display: 'flex', gap: 10 }}>
+              <button className="btn-ghost tap" style={{ flex: 1 }} onClick={() => setConfirmDelete(null)}>{L.cancel}</button>
+              <button
+                className="btn-primary tap"
+                style={{ flex: 1, background: 'var(--bad)' }}
+                data-disabled={deleting}
+                onClick={async () => {
+                  setDeleting(true);
+                  await deleteLedgerEntry(confirmDelete.id);
+                  setDeleting(false);
+                  setConfirmDelete(null);
+                  flash(L.deletedPermanently);
+                }}
+              >
+                {L.delete}
+              </button>
+            </div>
+          </div>
+        )}
+      </Sheet>
 
       <Sheet open={sheetStep !== 'closed'} onClose={() => setSheetStep('closed')} title={sheetStep === 'kinds' ? L.whatHappened : kindLabel[kind]} sub={sheetStep === 'kinds' ? L.whatHappenedSub : undefined}>
         {sheetStep === 'kinds' && (

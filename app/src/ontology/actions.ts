@@ -53,3 +53,18 @@ export async function fetchRecentActions(businessId: string, limit = 40): Promis
     .limit(limit);
   return (data as ActionLogEntry[]) || [];
 }
+
+/**
+ * Erase every trace of an object from the history.
+ *
+ * The action log is normally append-only — that is the whole point of it. This
+ * is the one sanctioned exception: when a record is deleted permanently, the
+ * log lines that describe it are part of that record. Leaving them behind
+ * would mean a "permanently deleted" session still narrates its own sales
+ * figures to anyone reading the history, or to Bermi AI.
+ */
+export async function purgeActions(businessId: string, objectIds: string[]): Promise<void> {
+  const ids = objectIds.filter(Boolean);
+  if (ids.length === 0) return;
+  await supabase.from('action_log').delete().eq('business_id', businessId).in('object_id', ids);
+}
