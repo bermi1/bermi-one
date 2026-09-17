@@ -22,9 +22,8 @@ export function Suspended() {
   const [sub, setSub] = useState<Subscription | null>(null);
 
   useEffect(() => {
-    if (!activeBusiness) return;
-    void fetchMySubscription(activeBusiness.id).then(setSub);
-  }, [activeBusiness]);
+    void fetchMySubscription().then(setSub);
+  }, []);
 
   const sw = lang === 'sw';
   const amount = sub?.subscription_plans?.amount ?? 0;

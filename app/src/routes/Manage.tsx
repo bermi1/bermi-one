@@ -10,12 +10,13 @@ import { useToast } from '../state/ToastContext';
 import { BUSINESS_TYPES, bizMeta, tintVars } from '../lib/types';
 import { ComingSoonType } from '../components/ComingSoonType';
 import { checkPlatformAdmin } from '../lib/platform';
+import { localPrice } from '../lib/plans';
 import { COUNTRIES } from '../lib/countries';
 
 export function Manage() {
   const nav = useNavigate();
   const { L, lang, theme } = useSettings();
-  const { businesses, activeBusiness, switchBusiness, addBusiness, setLang, setTheme, displayName, staffMembers } = useData();
+  const { businesses, activeBusiness, switchBusiness, addBusiness, setLang, setTheme, displayName, staffMembers, plan, trialDays, onTrial } = useData();
   const { signOut } = useAuth();
   const { flash } = useToast();
 
@@ -32,7 +33,14 @@ export function Manage() {
 
   async function submitAdd() {
     if (!newName.trim()) return;
-    await addBusiness({ name: newName.trim(), type: newType, city: '', countryCode: COUNTRIES[newCountryIx].code });
+    const problem = await addBusiness({ name: newName.trim(), type: newType, city: '', countryCode: COUNTRIES[newCountryIx].code });
+    if (problem === 'PLAN_LIMIT_BUSINESSES') {
+      setAddOpen(false);
+      flash(L.planLimitBusinesses);
+      nav('/pricing');
+      return;
+    }
+    if (problem) { flash(problem); return; }
     setAddOpen(false);
     setNewName('');
     flash(L.addBusiness);
@@ -58,6 +66,21 @@ export function Manage() {
   return (
     <div className="screen sb">
       <ScreenHeader title={L.manage} sub={displayName} />
+
+      <div className="card tap" onClick={() => nav('/pricing')} style={{ padding: 16, marginBottom: 12, display: 'flex', alignItems: 'center', gap: 12 }}>
+        <div style={{ width: 38, height: 38, borderRadius: 12, background: onTrial ? 'var(--brandSoft)' : 'var(--okSoft)', color: onTrial ? 'var(--brand)' : 'var(--ok)', display: 'grid', placeItems: 'center' }}>
+          <Icon name={onTrial ? 'spark' : 'check'} size={18} />
+        </div>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontSize: 14.5, fontWeight: 800 }}>{L.billing}</div>
+          <div style={{ marginTop: 2, fontSize: 11.5, color: 'var(--ink3)', fontWeight: 600 }}>
+            {onTrial
+              ? trialDays > 0 ? `${trialDays} ${L.trialEndsIn}` : L.trialEnded
+              : `${plan.name} · ${localPrice(plan.usd, activeBusiness?.country_code || 'TZ')}`}
+          </div>
+        </div>
+        <Icon name="right" size={16} style={{ color: 'var(--ink3)' }} />
+      </div>
 
       {isStaff && (
         <div className="card tap" onClick={() => nav('/admin')} style={{ padding: 16, marginBottom: 12, display: 'flex', alignItems: 'center', gap: 12, background: 'var(--ink)', color: '#fff' }}>

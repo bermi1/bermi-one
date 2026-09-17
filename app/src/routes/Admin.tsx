@@ -4,7 +4,7 @@ import { Sheet } from '../components/Sheet';
 import { Icon } from '../lib/icons';
 import { useSettings } from '../lib/useSettings';
 import { useToast } from '../state/ToastContext';
-import { countryByCode, formatMoney } from '../lib/countries';
+
 import {
   chargeSubscription, fetchClient, fetchClients, fetchOverview, fetchPlans, fetchAllPayments,
   resetPassword, setSubscription, setSuspended,
@@ -23,9 +23,14 @@ const STATUS_LABEL: Record<SubscriptionStatus, string> = {
   active: 'Active', trialing: 'Trial', past_due: 'Past due', suspended: 'Suspended', cancelled: 'Cancelled',
 };
 
-/** Platform money is always TSh — this is Bermi Techs' own book, not a client's. */
-const TZ = countryByCode('TZ');
-const tsh = (n: number) => formatMoney(n, TZ);
+/**
+ * Platform money is USD: that is what the plans are priced in, and mixing a
+ * dollar plan with a shilling total on one screen is how a founder ends up
+ * quoting the wrong number on a call.
+ */
+const usd = (n: number) => '$' + Math.round(n).toLocaleString('en-US');
+/** Gateway collections come back in the currency they were taken in. */
+const tzs = (n: number) => 'TSh ' + Math.round(n).toLocaleString('en-US');
 
 /**
  * The Bermi Techs console: every client on the platform, what they pay, whether
@@ -134,12 +139,14 @@ export function Admin() {
       {tab === 'overview' && overview && (
         <>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 10 }}>
-            {kpi('Monthly recurring', tsh(overview.mrr), 'var(--ok)')}
-            {kpi('Collected, 30 days', tsh(overview.collectedLast30))}
-            {kpi('Clients', String(overview.businesses))}
-            {kpi('Active, 30 days', `${overview.activeLast30} / ${overview.businesses}`)}
+            {kpi('Monthly recurring', usd(overview.mrr), 'var(--ok)')}
+            {kpi('Collected, 30 days', tzs(overview.collectedLast30))}
+            {kpi('Accounts', String(overview.accounts))}
+            {kpi('Businesses', `${overview.activeLast30} active / ${overview.businesses}`)}
             {kpi('Closings, 30 days', String(overview.closingsLast30))}
             {kpi('Verified', String(overview.verifiedLast30))}
+            {kpi('On trial', String(overview.subscriptions.trialing), 'var(--brand)')}
+            {kpi('Blocked', String(overview.suspended), overview.suspended ? 'var(--bad)' : undefined)}
           </div>
 
           <div style={{ fontSize: 13, fontWeight: 800, color: 'var(--ink2)', textTransform: 'uppercase', letterSpacing: 0.4, margin: '18px 0 10px' }}>
@@ -193,7 +200,12 @@ export function Admin() {
                           )}
                         </div>
                         <div style={{ marginTop: 4, fontSize: 11.5, color: 'var(--ink3)', fontWeight: 600 }}>
-                          {[c.owner_name, c.city, c.subscription?.subscription_plans?.name].filter(Boolean).join(' · ') || '—'}
+                          {[
+                            c.owner_name,
+                            c.city,
+                            c.subscription?.subscription_plans?.name,
+                            c.account_businesses > 1 ? `${c.account_businesses} businesses on this account` : null,
+                          ].filter(Boolean).join(' · ') || '—'}
                         </div>
                         <div style={{ marginTop: 3, fontSize: 11, color: 'var(--ink3)' }}>
                           {c.last_closing ? `Last closing ${c.last_closing}` : 'No closing yet'}
@@ -231,7 +243,7 @@ export function Admin() {
                     {new Date(p.created_at).toLocaleDateString()} · {p.msisdn || '—'}{p.sandbox ? ' · sandbox' : ''}
                   </div>
                 </div>
-                <div style={{ fontSize: 13, fontWeight: 800, color: ink }}>{tsh(p.amount)}</div>
+                <div style={{ fontSize: 13, fontWeight: 800, color: ink }}>{tzs(p.amount)}</div>
               </div>
             );
           })}
@@ -287,11 +299,12 @@ function ClientSheet({ detail, plans, busy, onClose, onSuspend, onPlan, onStatus
         <div className="card" style={{ padding: 14 }}>
           {[
             ['Subscription', STATUS_LABEL[status]],
-            ['Plan', subscription?.subscription_plans?.name || '—'],
+            ['Plan', subscription?.subscription_plans ? `${subscription.subscription_plans.name} · $${subscription.subscription_plans.amount}/mo` : '—'],
+            ['Businesses on account', String(detail.account_businesses.length || 1)],
             ['Renews', subscription?.current_period_end ? new Date(subscription.current_period_end).toLocaleDateString() : '—'],
             ['Last sign in', owner.last_sign_in_at ? new Date(owner.last_sign_in_at).toLocaleDateString() : '—'],
             ['Closings on file', `${sessions.length} · ${verified} verified`],
-            ['Turnover, last 30', tsh(turnover)],
+            ['Turnover, last 30', tzs(turnover)],
           ].map(([k, v]) => (
             <div key={k} style={{ display: 'flex', justifyContent: 'space-between', padding: '5px 0', fontSize: 13 }}>
               <span style={{ color: 'var(--ink2)', fontWeight: 600 }}>{k}</span>
@@ -313,7 +326,7 @@ function ClientSheet({ detail, plans, busy, onClose, onSuspend, onPlan, onStatus
                   onClick={() => onPlan(p.id)}
                   style={{ flexShrink: 0, padding: '9px 14px', borderRadius: 12, fontSize: 12.5, fontWeight: 700, background: on ? 'var(--brand)' : 'var(--card2)', color: on ? 'var(--brandInk)' : 'var(--ink2)', border: '1px solid var(--line)' }}
                 >
-                  {p.name} · {tsh(p.amount)}
+                  {p.name} · ${p.amount}
                 </button>
               );
             })}

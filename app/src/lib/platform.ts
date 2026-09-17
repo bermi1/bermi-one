@@ -22,7 +22,8 @@ export interface Plan {
 
 export interface Subscription {
   id: string;
-  business_id: string;
+  owner_id: string;
+  business_id: string | null;
   plan_id: string | null;
   status: SubscriptionStatus;
   trial_ends_at: string | null;
@@ -45,15 +46,19 @@ export interface ClientRow {
   suspended_reason: string | null;
   created_at: string;
   subscription: Subscription | null;
+  /** How many businesses the whole account runs — the number the plan is priced on. */
+  account_businesses: number;
   last_closing: string | null;
 }
 
 export interface Overview {
   businesses: number;
+  accounts: number;
   suspended: number;
   newThisMonth: number;
   subscriptions: { active: number; trialing: number; pastDue: number; suspended: number; cancelled: number };
   mrr: number;
+  currency: string;
   activeLast30: number;
   closingsLast30: number;
   verifiedLast30: number;
@@ -64,6 +69,7 @@ export interface ClientDetail {
   business: ClientRow & { suspended_at: string | null };
   owner: { id: string; full_name: string | null; email: string | null; last_sign_in_at: string | null };
   subscription: (Subscription & { subscription_plans: Plan | null }) | null;
+  account_businesses: { id: string; name: string; suspended: boolean }[];
   payments: PlatformPayment[];
   sessions: { session_date: string; status: string; total_calculated_sales: number }[];
 }
@@ -130,12 +136,24 @@ export async function fetchPlans(): Promise<Plan[]> {
   return (data || []) as Plan[];
 }
 
-/** What a client's own copy of the app needs to know about their bill. */
-export async function fetchMySubscription(businessId: string): Promise<Subscription | null> {
+/**
+ * What a client's own copy of the app needs to know about their bill.
+ *
+ * Keyed by account, not business: one plan covers everything the person owns,
+ * so there is exactly one row to find and row level security already scopes it
+ * to whoever is asking.
+ */
+export async function fetchMySubscription(): Promise<Subscription | null> {
   const { data } = await supabase
     .from('subscriptions')
     .select('*, subscription_plans(code, name, amount)')
-    .eq('business_id', businessId)
     .maybeSingle();
   return (data as Subscription) || null;
+}
+
+/** Whole days left on a trial — never negative, and 0 once it has run out. */
+export function trialDaysLeft(sub: Subscription | null): number {
+  if (!sub || sub.status !== 'trialing' || !sub.trial_ends_at) return 0;
+  const ms = new Date(sub.trial_ends_at).getTime() - Date.now();
+  return Math.max(0, Math.ceil(ms / 86_400_000));
 }

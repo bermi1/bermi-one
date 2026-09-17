@@ -5,6 +5,10 @@
 // caller is a platform admin, using their own session and their own RLS. If
 // that check is not the first gate, this function is a hole straight through
 // every tenant's data.
+//
+// A subscription belongs to an ACCOUNT, not a business: Standard covers three
+// businesses for $30, so billing per business would charge that person $90 for
+// what they were sold as $30. Every join below goes through businesses.owner_id.
 
 import { createClient } from 'jsr:@supabase/supabase-js@2';
 
@@ -35,6 +39,7 @@ interface Body {
     | 'query_payment'
     | 'payments';
   business_id?: string;
+  owner_id?: string;
   user_id?: string;
   email?: string;
   suspended?: boolean;
@@ -74,30 +79,37 @@ Deno.serve(async (req) => {
     return json({ error: 'Bad JSON' }, 400);
   }
 
+  /** Resolve the account behind a business, since billing lives on the account. */
+  async function ownerOf(businessId: string): Promise<string | null> {
+    const { data } = await admin.from('businesses').select('owner_id').eq('id', businessId).maybeSingle();
+    return data?.owner_id ?? null;
+  }
+
   switch (body.action) {
     case 'overview': {
       const since = new Date(Date.now() - 30 * 86_400_000).toISOString();
       const [businesses, subs, sessions, payments] = await Promise.all([
-        admin.from('businesses').select('id, suspended, created_at'),
-        admin.from('subscriptions').select('status, current_period_end, plan_id, subscription_plans(amount)'),
+        admin.from('businesses').select('id, owner_id, suspended, created_at'),
+        admin.from('subscriptions').select('status, current_period_end, trial_ends_at, plan_id, subscription_plans(amount, currency)'),
         admin.from('stock_sessions').select('business_id, session_date, status').gte('session_date', since.slice(0, 10)),
         admin.from('payments').select('amount, status, created_at').gte('created_at', since),
       ]);
 
       const biz = businesses.data ?? [];
-      const subRows = (subs.data ?? []) as { status: string; current_period_end: string | null; subscription_plans: { amount: number } | null }[];
+      const subRows = (subs.data ?? []) as { status: string; subscription_plans: { amount: number } | null }[];
       const active = subRows.filter((s) => s.status === 'active');
-      // Monthly recurring revenue counts only subscriptions that are actually
-      // paying — trials and suspended clients are not revenue yet.
+      // Monthly recurring revenue counts only accounts that are actually
+      // paying. Trials and suspended clients are pipeline, not revenue, and
+      // mixing the two is how a dashboard starts lying to the people running
+      // the company on it.
       const mrr = active.reduce((sum, s) => sum + (s.subscription_plans?.amount ?? 0), 0);
 
       const sess = sessions.data ?? [];
-      const activeBusinessIds = new Set(sess.map((s) => s.business_id));
-
       const paid = (payments.data ?? []).filter((p) => p.status === 'COMPLETED');
 
       return json({
         businesses: biz.length,
+        accounts: new Set(biz.map((b) => b.owner_id)).size,
         suspended: biz.filter((b) => b.suspended).length,
         newThisMonth: biz.filter((b) => b.created_at >= since).length,
         subscriptions: {
@@ -108,7 +120,8 @@ Deno.serve(async (req) => {
           cancelled: subRows.filter((s) => s.status === 'cancelled').length,
         },
         mrr,
-        activeLast30: activeBusinessIds.size,
+        currency: 'USD',
+        activeLast30: new Set(sess.map((s) => s.business_id)).size,
         closingsLast30: sess.length,
         verifiedLast30: sess.filter((s) => s.status === 'verified').length,
         collectedLast30: paid.reduce((sum, p) => sum + p.amount, 0),
@@ -120,7 +133,7 @@ Deno.serve(async (req) => {
         .from('businesses')
         .select('id, name, type, city, country_code, owner_id, suspended, suspended_reason, created_at')
         .order('created_at', { ascending: false })
-        .limit(body.limit ?? 200);
+        .limit(body.limit ?? 300);
       const businesses = biz ?? [];
       if (businesses.length === 0) return json({ clients: [] });
 
@@ -128,21 +141,25 @@ Deno.serve(async (req) => {
       const ownerIds = Array.from(new Set(businesses.map((b) => b.owner_id)));
 
       const [{ data: subs }, { data: owners }, { data: lastSessions }] = await Promise.all([
-        admin.from('subscriptions').select('*, subscription_plans(code, name, amount)').in('business_id', ids),
+        admin.from('subscriptions').select('*, subscription_plans(code, name, amount, currency)').in('owner_id', ownerIds),
         admin.from('profiles').select('id, full_name').in('id', ownerIds),
         admin.from('stock_sessions').select('business_id, session_date').in('business_id', ids).order('session_date', { ascending: false }),
       ]);
 
-      const subBy = new Map((subs ?? []).map((s) => [s.business_id, s]));
+      const subBy = new Map((subs ?? []).map((s) => [s.owner_id, s]));
       const ownerBy = new Map((owners ?? []).map((o) => [o.id, o.full_name]));
       const lastBy = new Map<string, string>();
       for (const s of lastSessions ?? []) if (!lastBy.has(s.business_id)) lastBy.set(s.business_id, s.session_date);
+
+      const siblings = new Map<string, number>();
+      for (const b of businesses) siblings.set(b.owner_id, (siblings.get(b.owner_id) ?? 0) + 1);
 
       return json({
         clients: businesses.map((b) => ({
           ...b,
           owner_name: ownerBy.get(b.owner_id) ?? null,
-          subscription: subBy.get(b.id) ?? null,
+          subscription: subBy.get(b.owner_id) ?? null,
+          account_businesses: siblings.get(b.owner_id) ?? 1,
           last_closing: lastBy.get(b.id) ?? null,
         })),
       });
@@ -150,21 +167,23 @@ Deno.serve(async (req) => {
 
     case 'client': {
       if (!body.business_id) return json({ error: 'business_id is required' }, 400);
-      const [{ data: business }, { data: subscription }, { data: payments }, { data: sessions }] = await Promise.all([
-        admin.from('businesses').select('*').eq('id', body.business_id).maybeSingle(),
-        admin.from('subscriptions').select('*, subscription_plans(*)').eq('business_id', body.business_id).maybeSingle(),
-        admin.from('payments').select('*').eq('business_id', body.business_id).order('created_at', { ascending: false }).limit(20),
-        admin.from('stock_sessions').select('session_date, status, total_calculated_sales').eq('business_id', body.business_id).order('session_date', { ascending: false }).limit(30),
-      ]);
+      const { data: business } = await admin.from('businesses').select('*').eq('id', body.business_id).maybeSingle();
       if (!business) return json({ error: 'Not found' }, 404);
 
-      const { data: owner } = await admin.from('profiles').select('id, full_name').eq('id', business.owner_id).maybeSingle();
-      const { data: authUser } = await admin.auth.admin.getUserById(business.owner_id);
+      const [{ data: subscription }, { data: payments }, { data: sessions }, { data: owner }, { data: authUser }, { data: siblings }] = await Promise.all([
+        admin.from('subscriptions').select('*, subscription_plans(*)').eq('owner_id', business.owner_id).maybeSingle(),
+        admin.from('payments').select('*').eq('business_id', body.business_id).order('created_at', { ascending: false }).limit(20),
+        admin.from('stock_sessions').select('session_date, status, total_calculated_sales').eq('business_id', body.business_id).order('session_date', { ascending: false }).limit(30),
+        admin.from('profiles').select('id, full_name').eq('id', business.owner_id).maybeSingle(),
+        admin.auth.admin.getUserById(business.owner_id),
+        admin.from('businesses').select('id, name, suspended').eq('owner_id', business.owner_id),
+      ]);
 
       return json({
         business,
         owner: { ...owner, email: authUser?.user?.email ?? null, last_sign_in_at: authUser?.user?.last_sign_in_at ?? null },
         subscription,
+        account_businesses: siblings ?? [],
         payments: payments ?? [],
         sessions: sessions ?? [],
       });
@@ -183,35 +202,45 @@ Deno.serve(async (req) => {
         .eq('id', body.business_id);
       if (error) return json({ error: error.message }, 400);
 
-      // Keep the subscription in step, so the console never shows an active
-      // subscription on a client who cannot use the product.
-      await admin
-        .from('subscriptions')
-        .update({ status: suspended ? 'suspended' : 'active', updated_at: new Date().toISOString() })
-        .eq('business_id', body.business_id);
+      // The subscription only follows when the WHOLE account is blocked.
+      // Suspending one bar out of three is a support action, not a billing
+      // event, and flipping the account's status would cut off the others.
+      const owner = await ownerOf(body.business_id);
+      if (owner) {
+        const { data: all } = await admin.from('businesses').select('suspended').eq('owner_id', owner);
+        const everyOneBlocked = (all ?? []).length > 0 && (all ?? []).every((b) => b.suspended);
+        if (everyOneBlocked || !suspended) {
+          await admin
+            .from('subscriptions')
+            .update({ status: everyOneBlocked ? 'suspended' : 'active', updated_at: new Date().toISOString() })
+            .eq('owner_id', owner);
+        }
+      }
 
       return json({ ok: true, suspended });
     }
 
     case 'set_subscription': {
-      if (!body.business_id) return json({ error: 'business_id is required' }, 400);
-      const patch: Record<string, unknown> = { business_id: body.business_id, updated_at: new Date().toISOString() };
+      const owner = body.owner_id ?? (body.business_id ? await ownerOf(body.business_id) : null);
+      if (!owner) return json({ error: 'business_id or owner_id is required' }, 400);
+
+      const patch: Record<string, unknown> = { owner_id: owner, updated_at: new Date().toISOString() };
       if (body.plan_id) patch.plan_id = body.plan_id;
       if (body.status) patch.status = body.status;
       if (body.billing_phone !== undefined) patch.billing_phone = body.billing_phone;
       if (body.notes !== undefined) patch.notes = body.notes;
       if (body.period_days) {
         const start = new Date();
-        const end = new Date(start.getTime() + body.period_days * 86_400_000);
         patch.current_period_start = start.toISOString();
-        patch.current_period_end = end.toISOString();
+        patch.current_period_end = new Date(start.getTime() + body.period_days * 86_400_000).toISOString();
       }
-      const { data, error } = await admin.from('subscriptions').upsert(patch, { onConflict: 'business_id' }).select().single();
+      const { data, error } = await admin.from('subscriptions').upsert(patch, { onConflict: 'owner_id' }).select().single();
       if (error) return json({ error: error.message }, 400);
 
-      // Paying up un-suspends: the reason for the block is gone.
+      // Paying up lifts the block on every business in the account: the reason
+      // for it is gone, and leaving one bar dark would be a support ticket.
       if (body.status === 'active') {
-        await admin.from('businesses').update({ suspended: false, suspended_reason: null, suspended_at: null }).eq('id', body.business_id);
+        await admin.from('businesses').update({ suspended: false, suspended_reason: null, suspended_at: null }).eq('owner_id', owner);
       }
       return json({ subscription: data });
     }
@@ -240,16 +269,25 @@ Deno.serve(async (req) => {
 
     case 'charge_subscription': {
       if (!body.business_id) return json({ error: 'business_id is required' }, 400);
+      const owner = await ownerOf(body.business_id);
+      if (!owner) return json({ error: 'Not found' }, 404);
+
       const { data: sub } = await admin
         .from('subscriptions')
-        .select('*, subscription_plans(amount, name)')
-        .eq('business_id', body.business_id)
+        .select('*, subscription_plans(amount, currency, name)')
+        .eq('owner_id', owner)
         .maybeSingle();
-      if (!sub) return json({ error: 'This client has no subscription yet.' }, 400);
+      if (!sub) return json({ error: 'This account has no subscription yet.' }, 400);
 
       const phone = body.billing_phone || sub.billing_phone;
-      const amount = Math.round(Number(body.amount ?? sub.subscription_plans?.amount ?? 0));
-      if (!phone) return json({ error: 'No billing phone on file for this client.' }, 400);
+      if (!phone) return json({ error: 'No billing phone on file for this account.' }, 400);
+
+      // The plan is priced in USD; the gateway collects TZS. Converting here,
+      // at charge time, is the only place a rate should ever be applied — the
+      // stored price must not drift with the market.
+      const usd = Number(sub.subscription_plans?.amount ?? 0);
+      const rate = Number(Deno.env.get('USD_TZS_RATE') ?? '2650');
+      const amount = Math.round(Number(body.amount ?? usd * rate));
       if (amount <= 0) return json({ error: 'Nothing to charge — the plan has no amount.' }, 400);
 
       const appId = Deno.env.get('PAYME_APP_ID') ?? '';
@@ -278,7 +316,7 @@ Deno.serve(async (req) => {
         amount,
         msisdn: phone,
         channel: 'CASHIN',
-        label: `Bermi One — ${sub.subscription_plans?.name ?? 'subscription'}`,
+        label: `Bermi One — ${sub.subscription_plans?.name ?? 'subscription'} ($${usd})`,
         sandbox,
         request_payload: payload,
         created_by: auth.user.id,
@@ -316,7 +354,7 @@ Deno.serve(async (req) => {
         })
         .eq('reference', reference);
 
-      return json({ reference, amount, response: out });
+      return json({ reference, amount, usd, response: out });
     }
 
     case 'query_payment': {

@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { ScreenHeader } from '../components/ScreenHeader';
 import { Sheet } from '../components/Sheet';
 import { Icon } from '../lib/icons';
@@ -8,6 +9,7 @@ import { useToast } from '../state/ToastContext';
 import { tintVars } from '../lib/types';
 
 export function Staff() {
+  const nav = useNavigate();
   const { L, lang } = useSettings();
   const { staffMembers, addStaffMember, removeStaffMember } = useData();
   const { flash } = useToast();
@@ -28,7 +30,9 @@ export function Staff() {
   async function save() {
     if (!name.trim()) return;
     setBusy(true);
-    await addStaffMember({ name, phone, title });
+    const problem = await addStaffMember({ name, phone, title });
+    if (problem === 'PLAN_LIMIT_STAFF') { flash(L.planLimitStaff); nav('/pricing'); return; }
+    if (problem) { flash(problem); return; }
     setBusy(false);
     setAddOpen(false);
     flash(lang === 'sw' ? 'Mfanyakazi ameongezwa' : 'Staff member added');

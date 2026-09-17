@@ -3,6 +3,8 @@ import { supabase } from '../lib/supabase';
 import { useAuth } from './AuthContext';
 import { businessDayIso, soldOf } from '../lib/calc';
 import { logAction, fetchRecentActions, purgeActions, type ActionLogEntry } from '../ontology/actions';
+import { fetchMySubscription, trialDaysLeft, type Subscription } from '../lib/platform';
+import { planByCode, type Plan } from '../lib/plans';
 import {
   type AccountId,
   type Accounts,
@@ -47,6 +49,12 @@ interface DataCtx {
   session: StockSession | null;
   actionLog: ActionLogEntry[];
   staffMembers: StaffMember[];
+  /** The account's plan, what it allows, and how long any trial has left. */
+  subscription: Subscription | null;
+  plan: Plan;
+  trialDays: number;
+  onTrial: boolean;
+  refreshSubscription: () => Promise<void>;
 
   setLang: (l: Lang) => void;
   setTheme: (t: Theme) => void;
@@ -54,7 +62,7 @@ interface DataCtx {
   displayName: string;
 
   completeOnboarding: (input: { name: string; type: string; city: string; countryCode: string; answers: Record<string, boolean | null> }) => Promise<void>;
-  addBusiness: (input: { name: string; type: string; city: string; countryCode: string }) => Promise<void>;
+  addBusiness: (input: { name: string; type: string; city: string; countryCode: string }) => Promise<string | null>;
   updateBusiness: (patch: Partial<Pick<Business, 'name' | 'city' | 'type' | 'country_code' | 'answers'>>) => Promise<void>;
   switchBusiness: (id: string) => Promise<void>;
 
@@ -88,7 +96,7 @@ interface DataCtx {
   /** Cash/mobile/bank balances for several businesses at once — the combined cash book. */
   fetchBooks: (businessIds: string[]) => Promise<{ accounts: Accounts[]; ledger: LedgerEntry[] }>;
 
-  addStaffMember: (input: { name: string; phone: string; title: string }) => Promise<void>;
+  addStaffMember: (input: { name: string; phone: string; title: string }) => Promise<string | null>;
   removeStaffMember: (id: string) => Promise<void>;
 }
 
@@ -106,6 +114,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
   const [ledger, setLedger] = useState<LedgerEntry[]>([]);
   const [session, setSession] = useState<StockSession | null>(null);
   const [actionLog, setActionLog] = useState<ActionLogEntry[]>([]);
+  const [subscription, setSubscription] = useState<Subscription | null>(null);
   const [staffMembers, setStaffMembers] = useState<StaffMember[]>([]);
 
   const activeBusiness = useMemo(
@@ -199,22 +208,56 @@ export function DataProvider({ children }: { children: ReactNode }) {
     [uid, businesses.length, patchProfile, loadBusinessData, record, profile],
   );
 
+  const refreshSubscription = useCallback(async () => {
+    setSubscription(await fetchMySubscription());
+  }, []);
+
+  useEffect(() => {
+    if (!uid) { setSubscription(null); return; }
+    void refreshSubscription();
+  }, [uid, refreshSubscription]);
+
+  const onTrial = subscription?.status === 'trialing';
+  const trialDays = trialDaysLeft(subscription);
+  /**
+   * A trial behaves as the top tier — the point of fourteen days is to find out
+   * whether the product runs your business, and a trial that blocks the second
+   * bar on day two answers a different question. The database agrees: its
+   * business_allowance() lifts every ceiling while status is 'trialing'.
+   */
+  const plan = onTrial ? planByCode('premium') : planByCode(subscription?.subscription_plans?.code);
+
+  /**
+   * Returns null on success, or a message to show the person.
+   *
+   * The plan ceiling is enforced by a database trigger, so the error can arrive
+   * from the server even when the interface thought there was room — two tabs,
+   * a stale plan, a direct API call. Translating that error here is what turns
+   * a silent no-op into "you are on Starter, which covers one business".
+   */
   const addBusiness = useCallback<DataCtx['addBusiness']>(
     async ({ name, type, city, countryCode }) => {
-      if (!uid) return;
-      const { data: biz } = await supabase
+      if (!uid) return 'Not signed in';
+      const { data: biz, error } = await supabase
         .from('businesses')
         .insert({ owner_id: uid, name, type, city, country_code: countryCode, answers: {}, sort_order: businesses.length })
         .select()
         .single();
-      if (!biz) return;
+      if (error) {
+        return error.message.includes('PLAN_LIMIT_BUSINESSES')
+          ? `PLAN_LIMIT_BUSINESSES`
+          : error.message;
+      }
+      if (!biz) return 'Could not create the business';
       await supabase.from('accounts').insert({ business_id: biz.id, cash: 0, mobile: 0, bank: 0 });
       setBusinesses((bs) => [...bs, biz as Business]);
       await patchProfile({ active_business_id: biz.id });
       await loadBusinessData(biz.id);
       await record({ businessId: biz.id, actionType: 'business.create', objectId: biz.id, summary: `Added ${name} to the portfolio`, payload: { name, type, city }, actorName: profile?.full_name });
+      await refreshSubscription();
+      return null;
     },
-    [uid, businesses.length, patchProfile, loadBusinessData, record, profile],
+    [uid, businesses.length, patchProfile, loadBusinessData, record, profile, refreshSubscription],
   );
 
   const updateBusiness = useCallback(
@@ -354,12 +397,24 @@ export function DataProvider({ children }: { children: ReactNode }) {
         business_id: activeBusiness.id, name: r.name, cat: r.cat, unit: r.unit, cost: r.cost, price: r.price, profit: r.profit,
         low: r.low, icon: 'box', opening: r.opening, added: 0, incoming: 0, wk: 0, sort_order: startIx + i,
       }));
-      const { data } = await supabase.from('products').insert(toInsert).select();
-      if (data) setProducts((ps) => [...ps, ...(data as Product[])]);
+      // Migrations arrive in the thousands, and one insert of ten thousand rows
+      // is a request big enough to be refused or to time out halfway — which
+      // would leave a half-imported catalogue nobody can reason about. Chunking
+      // keeps each request small and makes a partial failure visible and
+      // re-runnable: the smart re-upload matches on name, so running the same
+      // file again fixes the gap instead of duplicating what landed.
+      const CHUNK = 500;
+      const inserted: Product[] = [];
+      for (let i = 0; i < toInsert.length; i += CHUNK) {
+        const { data, error } = await supabase.from('products').insert(toInsert.slice(i, i + CHUNK)).select();
+        if (error) break;
+        if (data) inserted.push(...(data as Product[]));
+      }
+      if (inserted.length) setProducts((ps) => [...ps, ...inserted]);
       await record({
         businessId: activeBusiness.id, actionType: 'stock.bulkImport',
-        summary: `Imported ${rows.length} product${rows.length === 1 ? '' : 's'} from a file`,
-        payload: { count: rows.length }, actorName: profile?.full_name,
+        summary: `Imported ${inserted.length} product${inserted.length === 1 ? '' : 's'} from a file`,
+        payload: { requested: rows.length, imported: inserted.length }, actorName: profile?.full_name,
       });
     },
     [activeBusiness, products.length, record, profile],
@@ -580,7 +635,10 @@ export function DataProvider({ children }: { children: ReactNode }) {
 
   const addStaffMember = useCallback<DataCtx['addStaffMember']>(
     async ({ name, phone, title }) => {
-      if (!activeBusiness || !name.trim()) return;
+      if (!activeBusiness || !name.trim()) return 'Enter a name';
+      if (plan.limits.maxStaff >= 0 && staffMembers.length >= plan.limits.maxStaff) {
+        return 'PLAN_LIMIT_STAFF';
+      }
       const { data: member } = await supabase
         .from('staff_members')
         .insert({ business_id: activeBusiness.id, name: name.trim(), phone: phone.trim() || null, title: title.trim() || null, sort_order: staffMembers.length })
@@ -591,8 +649,9 @@ export function DataProvider({ children }: { children: ReactNode }) {
         businessId: activeBusiness.id, actionType: 'staff.add', objectId: member?.id,
         summary: `Added ${name.trim()} to the team`, payload: { name, phone, title }, actorName: profile?.full_name,
       });
+      return null;
     },
-    [activeBusiness, staffMembers.length, record, profile],
+    [activeBusiness, staffMembers, record, profile, plan],
   );
 
   const removeStaffMember = useCallback<DataCtx['removeStaffMember']>(
@@ -732,6 +791,11 @@ export function DataProvider({ children }: { children: ReactNode }) {
     session,
     actionLog,
     staffMembers,
+    subscription,
+    plan,
+    trialDays,
+    onTrial,
+    refreshSubscription,
     setLang,
     setTheme,
     setRole,

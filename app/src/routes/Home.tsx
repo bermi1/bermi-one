@@ -14,7 +14,7 @@ function dayKey(d: Date) {
 export function Home() {
   const nav = useNavigate();
   const { L, fmt, fmt0, short, lang } = useSettings();
-  const { products, session, ledger, displayName } = useData();
+  const { products, session, ledger, displayName, trialDays, onTrial } = useData();
 
   const counts = session?.counts || {};
   const counted = isCounted(counts);
@@ -97,6 +97,25 @@ export function Home() {
           </div>
         </div>
       </div>
+
+      {onTrial && trialDays <= 7 && (
+        <div
+          className="card tap"
+          onClick={() => nav('/pricing')}
+          style={{ marginTop: 14, padding: 14, display: 'flex', alignItems: 'center', gap: 12, background: trialDays <= 3 ? 'var(--warnSoft)' : 'var(--brandSoft)' }}
+        >
+          <div style={{ width: 34, height: 34, borderRadius: 11, background: 'rgba(255,255,255,.55)', color: trialDays <= 3 ? 'var(--warn)' : 'var(--brand)', display: 'grid', placeItems: 'center', flexShrink: 0 }}>
+            <Icon name="spark" size={16} />
+          </div>
+          <div style={{ flex: 1 }}>
+            <div style={{ fontSize: 13.5, fontWeight: 800 }}>
+              {trialDays > 0 ? `${trialDays} ${L.trialEndsIn}` : L.trialEnded}
+            </div>
+            <div style={{ marginTop: 2, fontSize: 11.5, color: 'var(--ink2)' }}>{L.choosePlan}</div>
+          </div>
+          <Icon name="right" size={16} style={{ color: 'var(--ink3)' }} />
+        </div>
+      )}
 
       <div className="card tap" onClick={() => nav(alertGo)} style={{ marginTop: 14, padding: 14, display: 'flex', alignItems: 'center', gap: 12 }}>
         <div style={{ width: 34, height: 34, borderRadius: 11, background: 'var(--warnSoft)', color: 'var(--warn)', display: 'grid', placeItems: 'center', flexShrink: 0 }}>

@@ -16,7 +16,7 @@ interface Line {
 
 export function Money() {
   const { L, fmt, fmt0, short, owner, lang } = useSettings();
-  const { accounts, ledger, businesses, activeBusiness, addLedgerLines, deleteLedgerEntry, fetchBooks } = useData();
+  const { accounts, ledger, businesses, activeBusiness, addLedgerLines, deleteLedgerEntry, fetchBooks, plan } = useData();
   const { flash } = useToast();
 
   /**
@@ -114,7 +114,7 @@ export function Money() {
         </button>
       } />
 
-      {owner && businesses.length > 1 && (
+      {owner && businesses.length > 1 && plan.limits.combinedReporting && (
         <div className="sb" style={{ display: 'flex', gap: 8, overflowX: 'auto', paddingBottom: 4, marginBottom: 12 }}>
           {businesses.map((b) => {
             const on = picked.includes(b.id);

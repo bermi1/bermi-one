@@ -22,6 +22,7 @@ import { BusinessProfile } from './routes/BusinessProfile';
 import { Staff } from './routes/Staff';
 import { Admin } from './routes/Admin';
 import { Suspended } from './routes/Suspended';
+import { Pricing } from './routes/Pricing';
 import { checkPlatformAdmin } from './lib/platform';
 
 function ThemeRoot() {
@@ -64,7 +65,7 @@ function AppRoutes() {
   // Money stays open to staff — it is where they record their own entries, and
   // the screen already withholds the profit summary from them. Everything else
   // in this list is owner business.
-  const isOwnerOnly = ['/reports', '/ai', '/manage', '/business', '/staff'].includes(location.pathname) && !owner;
+  const isOwnerOnly = ['/reports', '/ai', '/manage', '/business', '/staff', '/pricing'].includes(location.pathname) && !owner;
   if (isOwnerOnly) return <Navigate to="/home" replace />;
   if (location.pathname === '/admin' && !isStaff) return <Navigate to="/home" replace />;
 
@@ -85,6 +86,7 @@ function AppRoutes() {
           <Route path="/manage" element={<Manage />} />
           <Route path="/business" element={<BusinessProfile />} />
           <Route path="/staff" element={<Staff />} />
+          <Route path="/pricing" element={<Pricing />} />
           <Route path="/admin" element={<Admin />} />
           <Route path="*" element={<Navigate to="/home" replace />} />
         </Routes>

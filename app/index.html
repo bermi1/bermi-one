@@ -2,11 +2,67 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+
     <title>Bermi One</title>
+    <meta name="description" content="Stock, cash and reporting for African small business. One system." />
+
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
+    <link rel="manifest" href="/manifest.webmanifest" />
+
+    <!-- Installed-app chrome. The theme colour follows the app's own light and
+         dark grounds so the status bar never fights the screen under it. -->
+    <meta name="theme-color" media="(prefers-color-scheme: light)" content="#f4f6fd" />
+    <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#0b0f1a" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <meta name="apple-mobile-web-app-title" content="Bermi One" />
+
+    <!-- The boot screen is inline on purpose: it has to be on the glass before
+         a single byte of JavaScript is parsed, which is the whole point of a
+         splash. main.tsx removes it once React has painted. -->
+    <style>
+      :root { color-scheme: light dark; }
+      html, body { margin: 0; height: 100%; }
+      #boot {
+        position: fixed; inset: 0; z-index: 9999;
+        display: grid; place-items: center; gap: 22px; align-content: center;
+        background: #f4f6fd;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+        transition: opacity .34s ease;
+      }
+      #boot[data-done] { opacity: 0; pointer-events: none; }
+      #boot img { width: 116px; height: 116px; animation: rise .6s cubic-bezier(.2,.8,.2,1) both; }
+      #boot .word { font-size: 19px; font-weight: 800; letter-spacing: -0.4px; color: #14161c;
+                    animation: rise .6s .08s cubic-bezier(.2,.8,.2,1) both; }
+      #boot .slogan { margin-top: -14px; font-size: 12.5px; font-weight: 600; color: #6b7280;
+                      animation: rise .6s .16s cubic-bezier(.2,.8,.2,1) both; }
+      #boot .bar { width: 116px; height: 3px; border-radius: 99px; background: #e2e6f3; overflow: hidden; }
+      #boot .bar i { display: block; height: 100%; width: 40%; border-radius: 99px;
+                     background: linear-gradient(90deg, #0433cf, #029dff); animation: slide 1.1s ease-in-out infinite; }
+      @keyframes rise { from { opacity: 0; transform: translateY(9px) scale(.97); } to { opacity: 1; transform: none; } }
+      @keyframes slide { 0% { transform: translateX(-110%); } 100% { transform: translateX(360%); } }
+      @media (prefers-reduced-motion: reduce) {
+        #boot img, #boot .word, #boot .slogan { animation: none; }
+        #boot .bar i { animation: none; width: 100%; }
+      }
+      @media (prefers-color-scheme: dark) {
+        #boot { background: #0b0f1a; }
+        #boot .word { color: #f3f5fb; }
+        #boot .slogan { color: #8a93a6; }
+        #boot .bar { background: #1c2333; }
+      }
+    </style>
   </head>
   <body>
+    <div id="boot">
+      <img src="/icons/bermi-mark.svg" alt="" />
+      <div class="word">Bermi One</div>
+      <div class="slogan">Your business. One system.</div>
+      <div class="bar"><i></i></div>
+    </div>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
