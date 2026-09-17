@@ -16,6 +16,16 @@ export interface HqCopy {
   ontology: string;
   payments: string;
   audit: string;
+  messages: string;
+  messagesSub: string;
+  webhooks: string;
+  webhooksSub: string;
+  sent: string;
+  queued: string;
+  failedLabel: string;
+  skipped: string;
+  rejected: string;
+  accepted: string;
 
   live: string;
   reconnecting: string;
@@ -95,6 +105,12 @@ export const HQ: Record<Lang, HqCopy> = {
     ontology: 'Ontology',
     payments: 'Payments',
     audit: 'Audit',
+    messages: 'Messages',
+    messagesSub: 'SMS and email the platform has sent on a client\'s behalf, and anything still waiting.',
+    webhooks: 'Webhooks',
+    webhooksSub: 'Every callback Payme Africa sent, including the ones we turned away.',
+    sent: 'Sent', queued: 'Queued', failedLabel: 'Failed', skipped: 'Skipped',
+    rejected: 'Rejected', accepted: 'Accepted',
 
     live: 'Live',
     reconnecting: 'Reconnecting',
@@ -173,6 +189,12 @@ export const HQ: Record<Lang, HqCopy> = {
     ontology: 'Ontolojia',
     payments: 'Malipo',
     audit: 'Ukaguzi',
+    messages: 'Ujumbe',
+    messagesSub: 'SMS na barua pepe ambazo mfumo umetuma kwa niaba ya mteja, na zinazosubiri.',
+    webhooks: 'Webhooks',
+    webhooksSub: 'Kila majibu Payme Africa waliyotuma, pamoja na yale tuliyokataa.',
+    sent: 'Imetumwa', queued: 'Inasubiri', failedLabel: 'Imeshindikana', skipped: 'Imerukwa',
+    rejected: 'Imekataliwa', accepted: 'Imepokelewa',
 
     live: 'Moja kwa moja',
     reconnecting: 'Inaunganisha tena',

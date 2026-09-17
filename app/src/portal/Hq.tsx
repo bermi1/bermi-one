@@ -8,9 +8,10 @@ import { useRealtimeInserts } from './useRealtime';
 import { ClientDrawer } from './ClientDrawer';
 import { ACTION_TYPES, OBJECT_TYPES, type ObjectTypeName } from '../ontology/schema';
 import {
-  fetchActivity, fetchAllPayments, fetchAudit, fetchClients, fetchOntology, fetchOverview, fetchPlans,
-  type ActivityRow, type AuditRow, type ClientRow, type OntologySnapshot, type Overview, type Plan, type PlatformPayment,
-  type SubscriptionStatus,
+  fetchActivity, fetchAllPayments, fetchAudit, fetchClients, fetchNotifications, fetchOntology,
+  fetchOverview, fetchPlans, fetchWebhookEvents,
+  type ActivityRow, type AuditRow, type ClientRow, type NotificationRow, type OntologySnapshot,
+  type Overview, type Plan, type PlatformPayment, type SubscriptionStatus, type WebhookEventRow,
 } from '../lib/platform';
 
 const usd = (n: number) => '$' + Math.round(n).toLocaleString('en-US');
@@ -55,6 +56,8 @@ export function Hq() {
   const [ontology, setOntology] = useState<OntologySnapshot | null>(null);
   const [payments, setPayments] = useState<PlatformPayment[] | null>(null);
   const [audit, setAudit] = useState<AuditRow[] | null>(null);
+  const [messages, setMessages] = useState<NotificationRow[] | null>(null);
+  const [hooks, setHooks] = useState<WebhookEventRow[] | null>(null);
 
   const [query, setQuery] = useState('');
   const [objectFilter, setObjectFilter] = useState<ObjectTypeName | null>(null);
@@ -81,7 +84,9 @@ export function Hq() {
     if (section === 'ontology' && !ontology) void fetchOntology().then(setOntology).catch((e) => setError(String(e)));
     if (section === 'payments' && !payments) void fetchAllPayments().then(setPayments).catch((e) => setError(String(e)));
     if (section === 'audit' && !audit) void fetchAudit().then(setAudit).catch((e) => setError(String(e)));
-  }, [section, activity, ontology, payments, audit]);
+    if (section === 'messages' && !messages) void fetchNotifications().then(setMessages).catch((e) => setError(String(e)));
+    if (section === 'webhooks' && !hooks) void fetchWebhookEvents().then(setHooks).catch((e) => setError(String(e)));
+  }, [section, activity, ontology, payments, audit, messages, hooks]);
 
   useEffect(() => {
     if (section !== 'activity') return;
@@ -97,6 +102,11 @@ export function Hq() {
   const live = useRealtimeInserts<ActivityRow>('action_log', (row) => {
     markFresh(row.id);
     setActivity((prev) => (prev ? [row, ...prev].slice(0, 200) : prev));
+  });
+
+  useRealtimeInserts<NotificationRow>('notifications', (row) => {
+    markFresh(row.id);
+    setMessages((prev) => (prev ? [row, ...prev].slice(0, 200) : prev));
   });
 
   useRealtimeInserts<PlatformPayment>('payments', (row) => {
@@ -124,6 +134,7 @@ export function Hq() {
   function refresh() {
     void load();
     setActivity(null); setOntology(null); setPayments(null); setAudit(null);
+    setMessages(null); setHooks(null);
   }
 
   return (
@@ -346,6 +357,73 @@ export function Hq() {
             })}
           </div>
         )
+      )}
+
+      {section === 'messages' && (
+        <>
+          <div>
+            <div className="hq-section-title">{T.messages}</div>
+            <div className="hq-section-sub">{T.messagesSub}</div>
+          </div>
+          {messages === null ? <div className="hq-empty">{T.loading}…</div>
+          : messages.length === 0 ? <div className="hq-empty">{T.nothingYet}</div>
+          : (
+            <div className="hq-list">
+              {messages.map((m) => {
+                const tone = m.status === 'sent' ? { ink: 'var(--ok)', label: T.sent }
+                  : m.status === 'queued' ? { ink: 'var(--warn)', label: T.queued }
+                  : m.status === 'skipped' ? { ink: 'var(--ink3)', label: T.skipped }
+                  : { ink: 'var(--bad)', label: T.failedLabel };
+                return (
+                  <div key={m.id} className={`hq-row${freshIds.has(m.id) ? ' hq-new' : ''}`}>
+                    <Icon name={m.channel === 'email' ? 'mail' : 'phone'} size={15} style={{ color: tone.ink }} />
+                    <div className="hq-row-main">
+                      {/* The first line of the summary is the business and the
+                          date, which is exactly what identifies the message. */}
+                      <div className="hq-row-title">{m.body.split('\n')[0] || m.subject || m.kind}</div>
+                      <div className="hq-row-meta">
+                        {[m.businesses?.name, m.recipient, m.provider, m.attempts > 1 ? `${m.attempts} tries` : null, m.provider_message]
+                          .filter(Boolean).join(' · ')}
+                      </div>
+                    </div>
+                    <div className="hq-row-num" style={{ color: tone.ink, fontSize: 11 }}>{tone.label}</div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </>
+      )}
+
+      {section === 'webhooks' && (
+        <>
+          <div>
+            <div className="hq-section-title">{T.webhooks}</div>
+            <div className="hq-section-sub">{T.webhooksSub}</div>
+          </div>
+          {hooks === null ? <div className="hq-empty">{T.loading}…</div>
+          : hooks.length === 0 ? <div className="hq-empty">{T.nothingYet}</div>
+          : (
+            <div className="hq-list">
+              {hooks.map((h) => (
+                <div key={h.id} className="hq-row">
+                  <Icon
+                    name={h.signature_ok ? (h.handled ? 'check' : 'clock') : 'alert'}
+                    size={15}
+                    style={{ color: h.signature_ok ? (h.handled ? 'var(--ok)' : 'var(--warn)') : 'var(--bad)' }}
+                  />
+                  <div className="hq-row-main">
+                    <div className="hq-row-title">{h.outcome || h.reference || h.source}</div>
+                    <div className="hq-row-meta">
+                      {[h.reference, h.signature_ok ? T.accepted : T.rejected].filter(Boolean).join(' · ')}
+                    </div>
+                  </div>
+                  <div className="hq-row-num" style={{ color: 'var(--ink3)', fontWeight: 600 }}>{when(h.created_at, lang)}</div>
+                </div>
+              ))}
+            </div>
+          )}
+        </>
       )}
 
       {section === 'audit' && (

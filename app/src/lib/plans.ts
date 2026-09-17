@@ -35,6 +35,16 @@ export interface Plan {
 
 export const TRIAL_DAYS = 14;
 
+/**
+ * The SMS add-on.
+ *
+ * Priced per business rather than per account, because the thing being sent is
+ * one business's closing summary — an owner with three bars who only wants
+ * texts from the busy one should pay for one. Billing still lands on the
+ * account: it pays $5 for each business that has this switched on.
+ */
+export const SMS_ADDON_USD = 5;
+
 export const PLANS: Plan[] = [
   {
     code: 'starter',
@@ -174,6 +184,11 @@ export function localPriceNote(lang: Lang, countryCode: string): string {
   return lang === 'sw'
     ? 'Bei ni ya kadirio; malipo hufanyika kwa dola za Kimarekani.'
     : 'Local figure is indicative — billing is in US dollars.';
+}
+
+/** What the account pays this month: the plan, plus $5 per SMS-enabled business. */
+export function monthlyTotalUsd(plan: Plan, smsBusinesses: number): number {
+  return plan.usd + smsBusinesses * SMS_ADDON_USD;
 }
 
 export function isUnlimited(n: number): boolean {

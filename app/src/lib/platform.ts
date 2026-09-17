@@ -280,3 +280,54 @@ export async function updateSubscription(ownerId: string, patch: {
   }
   return null;
 }
+
+export interface NotificationRow {
+  id: string;
+  business_id: string | null;
+  channel: 'sms' | 'email' | 'push';
+  kind: string;
+  recipient: string;
+  subject: string | null;
+  body: string;
+  status: 'queued' | 'sent' | 'failed' | 'skipped';
+  attempts: number;
+  provider: string | null;
+  provider_message: string | null;
+  sent_at: string | null;
+  created_at: string;
+  businesses?: { name: string } | null;
+}
+
+export interface WebhookEventRow {
+  id: string;
+  source: string;
+  reference: string | null;
+  signature_ok: boolean;
+  handled: boolean;
+  outcome: string | null;
+  created_at: string;
+}
+
+/** What has been sent, what is waiting, and what failed trying. */
+export async function fetchNotifications(limit = 80): Promise<NotificationRow[]> {
+  const { data } = await supabase
+    .from('notifications')
+    .select('*, businesses(name)')
+    .order('created_at', { ascending: false })
+    .limit(limit);
+  return (data || []) as NotificationRow[];
+}
+
+/**
+ * Every callback the gateway sent, including the rejected ones — which are the
+ * whole reason to keep this: a signature that stops matching is invisible
+ * otherwise until someone notices payments have quietly stopped settling.
+ */
+export async function fetchWebhookEvents(limit = 60): Promise<WebhookEventRow[]> {
+  const { data } = await supabase
+    .from('webhook_events')
+    .select('id, source, reference, signature_ok, handled, outcome, created_at')
+    .order('created_at', { ascending: false })
+    .limit(limit);
+  return (data || []) as WebhookEventRow[];
+}

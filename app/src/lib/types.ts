@@ -34,6 +34,10 @@ export interface Business {
   /** Set by Bermi Techs when a subscription lapses. Reads stay open; writes stop. */
   suspended?: boolean;
   suspended_reason?: string | null;
+  /** The paid SMS add-on, and where the summary goes. */
+  sms_alerts?: boolean;
+  alerts_phone?: string | null;
+  alerts_email?: string | null;
 }
 
 export interface Product {
