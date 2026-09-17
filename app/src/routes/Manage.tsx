@@ -83,7 +83,7 @@ export function Manage() {
       </div>
 
       {isStaff && (
-        <div className="card tap" onClick={() => nav('/admin')} style={{ padding: 16, marginBottom: 12, display: 'flex', alignItems: 'center', gap: 12, background: 'var(--ink)', color: '#fff' }}>
+        <div className="card tap" onClick={() => nav('/hq')} style={{ padding: 16, marginBottom: 12, display: 'flex', alignItems: 'center', gap: 12, background: 'var(--ink)', color: '#fff' }}>
           <div style={{ width: 38, height: 38, borderRadius: 12, background: 'rgba(255,255,255,.16)', display: 'grid', placeItems: 'center' }}>
             <Icon name="shield" size={18} />
           </div>

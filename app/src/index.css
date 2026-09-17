@@ -67,3 +67,136 @@ button{background:none;border:none;cursor:pointer;-webkit-tap-highlight-color:tr
   .bottom-nav{display:none}
   .screen{padding-bottom:40px}
 }
+
+/* ===========================================================================
+   Bermi Techs control panel.
+   Its own shell, not the tenant app's: a fixed rail, a dense grid, and a dark
+   ground that makes it obvious at a glance which room you are standing in.
+   =========================================================================== */
+
+.hq {
+  min-height: 100dvh;
+  display: grid;
+  grid-template-columns: 236px 1fr;
+  background: var(--bg);
+  color: var(--ink);
+}
+
+.hq-rail {
+  position: sticky;
+  top: 0;
+  height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  padding: 18px 14px;
+  background: var(--card);
+  border-right: 1px solid var(--line);
+}
+
+.hq-brand { display: flex; align-items: center; gap: 10px; padding: 4px 6px 0; }
+.hq-brand-name { font-size: 14.5px; font-weight: 800; letter-spacing: -0.2px; }
+.hq-brand-sub { font-size: 10.5px; font-weight: 700; color: var(--ink3); text-transform: uppercase; letter-spacing: 0.7px; margin-top: 1px; }
+
+.hq-nav { display: flex; flex-direction: column; gap: 2px; }
+.hq-rail-foot { margin-top: auto; display: flex; flex-direction: column; gap: 2px; }
+
+.hq-nav-item {
+  display: flex; align-items: center; gap: 10px;
+  width: 100%; padding: 9px 11px; border: none; border-radius: 10px;
+  background: transparent; color: var(--ink2);
+  font: inherit; font-size: 13px; font-weight: 600; text-align: left; cursor: pointer;
+}
+.hq-nav-item:hover { background: var(--card2); color: var(--ink); }
+.hq-nav-item[data-on] { background: var(--brandSoft); color: var(--brand); font-weight: 800; }
+
+.hq-who { padding: 9px 11px; border-radius: 10px; background: var(--card2); margin-bottom: 4px; }
+.hq-who-label { font-size: 9.5px; font-weight: 800; letter-spacing: 0.6px; text-transform: uppercase; color: var(--ink3); }
+.hq-who-name { font-size: 12.5px; font-weight: 700; margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.hq-main { min-width: 0; display: flex; flex-direction: column; }
+
+.hq-head {
+  position: sticky; top: 0; z-index: 5;
+  display: flex; align-items: center; gap: 12px;
+  padding: 14px 22px;
+  background: color-mix(in srgb, var(--bg) 88%, transparent);
+  backdrop-filter: blur(10px);
+  border-bottom: 1px solid var(--line);
+}
+.hq-title { margin: 0; font-size: 18px; font-weight: 800; letter-spacing: -0.4px; }
+
+.hq-live {
+  display: inline-flex; align-items: center; gap: 7px;
+  font-size: 11px; font-weight: 700; color: var(--ink3);
+  padding: 5px 10px; border-radius: 99px; border: 1px solid var(--line);
+}
+.hq-dot { width: 7px; height: 7px; border-radius: 50%; animation: hq-pulse 2s ease-in-out infinite; }
+@keyframes hq-pulse { 0%, 100% { opacity: 1; } 50% { opacity: .35; } }
+@media (prefers-reduced-motion: reduce) { .hq-dot { animation: none; } }
+
+.hq-icon-btn {
+  width: 32px; height: 32px; display: grid; place-items: center;
+  border: 1px solid var(--line); border-radius: 9px;
+  background: var(--card); color: var(--ink2); cursor: pointer;
+}
+.hq-icon-btn:hover { color: var(--ink); }
+
+.hq-burger { display: none; }
+.hq-scrim { display: none; }
+
+.hq-body { padding: 20px 22px 40px; display: flex; flex-direction: column; gap: 18px; }
+
+/* Dense, readable blocks — this console is read at speed, not browsed. */
+.hq-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 11px; }
+.hq-card { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 15px; }
+.hq-k { font-size: 10px; font-weight: 800; letter-spacing: 0.7px; text-transform: uppercase; color: var(--ink3); }
+.hq-v { margin-top: 6px; font-size: 22px; font-weight: 800; letter-spacing: -0.6px; font-variant-numeric: tabular-nums; }
+.hq-sub { margin-top: 3px; font-size: 11.5px; color: var(--ink3); font-weight: 600; }
+
+.hq-section-title { font-size: 12px; font-weight: 800; letter-spacing: 0.7px; text-transform: uppercase; color: var(--ink3); }
+.hq-section-sub { margin-top: 4px; font-size: 12.5px; color: var(--ink2); line-height: 1.5; }
+
+.hq-list { background: var(--card); border: 1px solid var(--line); border-radius: 14px; overflow: hidden; }
+.hq-row { display: flex; align-items: center; gap: 12px; padding: 11px 14px; border-bottom: 1px solid var(--line); }
+.hq-row:last-child { border-bottom: none; }
+.hq-row[data-tap] { cursor: pointer; }
+.hq-row[data-tap]:hover { background: var(--card2); }
+.hq-row-main { flex: 1; min-width: 0; }
+.hq-row-title { font-size: 13.5px; font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.hq-row-meta { margin-top: 2px; font-size: 11.5px; color: var(--ink3); font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.hq-row-num { font-size: 13px; font-weight: 800; font-variant-numeric: tabular-nums; white-space: nowrap; }
+
+.hq-tag {
+  font-size: 9.5px; font-weight: 800; letter-spacing: 0.5px; text-transform: uppercase;
+  padding: 3px 7px; border-radius: 6px; white-space: nowrap;
+}
+
+.hq-input {
+  width: 100%; padding: 10px 13px; font: inherit; font-size: 13.5px;
+  border: 1px solid var(--line); border-radius: 11px;
+  background: var(--card); color: var(--ink);
+}
+.hq-input::placeholder { color: var(--ink3); }
+
+.hq-empty { padding: 44px 20px; text-align: center; color: var(--ink3); font-size: 13px; }
+
+.hq-new { animation: hq-land .5s ease; }
+@keyframes hq-land { from { background: var(--brandSoft); } to { background: transparent; } }
+@media (prefers-reduced-motion: reduce) { .hq-new { animation: none; } }
+
+@media (max-width: 860px) {
+  .hq { grid-template-columns: 1fr; }
+  .hq-rail {
+    position: fixed; inset: 0 auto 0 0; width: 250px; z-index: 30;
+    transform: translateX(-100%); transition: transform .22s ease;
+  }
+  .hq-rail[data-open] { transform: none; }
+  .hq-scrim { display: block; position: fixed; inset: 0; z-index: 20; background: rgba(0,0,0,.5); }
+  .hq-burger {
+    display: grid; place-items: center; width: 32px; height: 32px;
+    border: 1px solid var(--line); border-radius: 9px; background: var(--card); color: var(--ink2); cursor: pointer;
+  }
+  .hq-body { padding: 16px 14px 36px; }
+  .hq-head { padding: 12px 14px; }
+}

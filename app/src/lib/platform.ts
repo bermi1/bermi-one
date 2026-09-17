@@ -157,3 +157,126 @@ export function trialDaysLeft(sub: Subscription | null): number {
   const ms = new Date(sub.trial_ends_at).getTime() - Date.now();
   return Math.max(0, Math.ceil(ms / 86_400_000));
 }
+
+// ---------------------------------------------------------------------------
+// The portal's own data layer.
+//
+// These read straight from the database as the signed-in administrator rather
+// than through the admin function. Row level security is already the
+// authority — is_platform_admin() gates every one of these tables and RPCs —
+// so routing them through an edge function would add a hop and a second
+// implementation of the same rule. It also means Realtime, which enforces the
+// same policies, delivers the same rows to the same person.
+// ---------------------------------------------------------------------------
+
+import type { ActionTypeName, ObjectTypeName } from '../ontology/schema';
+
+export interface ActivityRow {
+  id: string;
+  business_id: string;
+  object_type: ObjectTypeName;
+  action_type: ActionTypeName;
+  object_id: string | null;
+  summary: string;
+  payload: Record<string, unknown>;
+  actor_name: string | null;
+  created_at: string;
+  businesses?: { name: string } | null;
+}
+
+export interface AuditRow {
+  id: string;
+  actor_id: string | null;
+  actor_name: string | null;
+  action: string;
+  business_id: string | null;
+  owner_id: string | null;
+  summary: string;
+  payload: Record<string, unknown>;
+  created_at: string;
+  businesses?: { name: string } | null;
+}
+
+export interface OntologySnapshot {
+  objects: Partial<Record<ObjectTypeName, number>>;
+  actions: { action_type: string; n: number; last_at: string }[];
+}
+
+export async function fetchActivity(opts: {
+  limit?: number;
+  objectType?: ObjectTypeName | null;
+  businessId?: string | null;
+} = {}): Promise<ActivityRow[]> {
+  let q = supabase
+    .from('action_log')
+    .select('*, businesses(name)')
+    .order('created_at', { ascending: false })
+    .limit(opts.limit ?? 80);
+  if (opts.objectType) q = q.eq('object_type', opts.objectType);
+  if (opts.businessId) q = q.eq('business_id', opts.businessId);
+  const { data } = await q;
+  return (data || []) as ActivityRow[];
+}
+
+export async function fetchAudit(limit = 80): Promise<AuditRow[]> {
+  const { data } = await supabase
+    .from('admin_audit')
+    .select('*, businesses(name)')
+    .order('created_at', { ascending: false })
+    .limit(limit);
+  return (data || []) as AuditRow[];
+}
+
+/** Platform-wide counts per noun, and per verb over a window. */
+export async function fetchOntology(sinceDays = 30): Promise<OntologySnapshot> {
+  const [{ data: objects }, { data: actions }] = await Promise.all([
+    supabase.rpc('platform_ontology_counts'),
+    supabase.rpc('platform_action_counts', { since_days: sinceDays }),
+  ]);
+  return {
+    objects: (objects || {}) as Partial<Record<ObjectTypeName, number>>,
+    actions: ((actions || []) as { action_type: string; n: number; last_at: string }[]),
+  };
+}
+
+/** Suspending and restoring, done directly so the audit trigger sees who did it. */
+export async function setBusinessSuspended(businessId: string, suspended: boolean, reason?: string): Promise<string | null> {
+  const { error } = await supabase
+    .from('businesses')
+    .update({
+      suspended,
+      suspended_reason: suspended ? (reason?.trim() || null) : null,
+      suspended_at: suspended ? new Date().toISOString() : null,
+    })
+    .eq('id', businessId);
+  return error?.message ?? null;
+}
+
+export async function updateSubscription(ownerId: string, patch: {
+  plan_id?: string;
+  status?: SubscriptionStatus;
+  period_days?: number;
+  billing_phone?: string;
+}): Promise<string | null> {
+  const row: Record<string, unknown> = { owner_id: ownerId, updated_at: new Date().toISOString() };
+  if (patch.plan_id) row.plan_id = patch.plan_id;
+  if (patch.status) row.status = patch.status;
+  if (patch.billing_phone !== undefined) row.billing_phone = patch.billing_phone;
+  if (patch.period_days) {
+    const start = new Date();
+    row.current_period_start = start.toISOString();
+    row.current_period_end = new Date(start.getTime() + patch.period_days * 86_400_000).toISOString();
+  }
+  const { error } = await supabase.from('subscriptions').upsert(row, { onConflict: 'owner_id' });
+  if (error) return error.message;
+
+  // Paying up lifts the block on every business in the account — the reason
+  // for it is gone, and leaving one bar dark would be a support ticket.
+  if (patch.status === 'active') {
+    await supabase
+      .from('businesses')
+      .update({ suspended: false, suspended_reason: null, suspended_at: null })
+      .eq('owner_id', ownerId);
+  }
+  return null;
+}

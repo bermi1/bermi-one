@@ -20,7 +20,7 @@ import { AI } from './routes/AI';
 import { Manage } from './routes/Manage';
 import { BusinessProfile } from './routes/BusinessProfile';
 import { Staff } from './routes/Staff';
-import { Admin } from './routes/Admin';
+import { Hq } from './portal/Hq';
 import { Suspended } from './routes/Suspended';
 import { Pricing } from './routes/Pricing';
 import { checkPlatformAdmin } from './lib/platform';
@@ -58,8 +58,20 @@ function AppRoutes() {
   if (!session) return <AuthScreen />;
   if (!profile?.onboarded) return <Onboarding />;
 
+  /*
+    The control panel is its own application.
+
+    It renders before the tenant shell and outside it — no bottom nav, no
+    business switcher, no "close the day" button under a page about platform
+    revenue. Staff running the company are not running a bar, and the two
+    should not share furniture.
+  */
+  if (location.pathname.startsWith('/hq') || location.pathname === '/admin') {
+    return isStaff ? <Hq /> : <Navigate to="/home" replace />;
+  }
+
   // A lapsed subscription stops the product, not the console: staff need to get
-  // into /admin to lift the block in the first place.
+  // into the panel to lift the block in the first place.
   if (activeBusiness?.suspended && !isStaff) return <Suspended />;
 
   // Money stays open to staff — it is where they record their own entries, and
@@ -67,7 +79,7 @@ function AppRoutes() {
   // in this list is owner business.
   const isOwnerOnly = ['/reports', '/ai', '/manage', '/business', '/staff', '/pricing'].includes(location.pathname) && !owner;
   if (isOwnerOnly) return <Navigate to="/home" replace />;
-  if (location.pathname === '/admin' && !isStaff) return <Navigate to="/home" replace />;
+
 
   return (
     <div className="app-shell">
@@ -87,7 +99,6 @@ function AppRoutes() {
           <Route path="/business" element={<BusinessProfile />} />
           <Route path="/staff" element={<Staff />} />
           <Route path="/pricing" element={<Pricing />} />
-          <Route path="/admin" element={<Admin />} />
           <Route path="*" element={<Navigate to="/home" replace />} />
         </Routes>
       </div>

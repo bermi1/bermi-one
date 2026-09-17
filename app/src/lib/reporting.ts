@@ -167,7 +167,15 @@ export function buildReport(input: {
 
   const days = Array.from(byDate.values()).sort((a, b) => a.date.localeCompare(b.date));
   for (const d of days) {
-    d.balance = d.sales - (d.cash + d.mobile + d.banked + d.sessionExpenses + d.sessionPurchases + d.otherExpenses + d.staffDebts + d.losses);
+    /*
+      Balance is what the day's sales did NOT turn into something accounted for.
+      Amount banked is deliberately absent: it is cash that was already counted
+      under `cash`, moved to the bank afterwards. Subtracting both charges the
+      same shillings twice and shows a healthy day as short by exactly whatever
+      was deposited. It stays in the report as its own column, because knowing
+      how much reached the bank matters — it is just not a second outflow.
+    */
+    d.balance = d.sales - (d.cash + d.mobile + d.sessionExpenses + d.sessionPurchases + d.otherExpenses + d.staffDebts + d.losses);
   }
 
   const totals = days.reduce<ReportTotals>((acc, d) => ({

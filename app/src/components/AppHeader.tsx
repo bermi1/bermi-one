@@ -15,9 +15,15 @@ export function AppHeader() {
     <>
       <div className="top-bar">
         <div className="row tap" style={{ gap: 10, minWidth: 0 }} onClick={() => setSwitching(true)}>
-          <div style={{ width: 38, height: 38, borderRadius: 12, background: 'var(--grad)', display: 'grid', placeItems: 'center', color: '#fff', flexShrink: 0 }}>
-            {meta ? <Icon name={meta.icon} size={17} /> : <span style={{ fontWeight: 800 }}>B</span>}
-          </div>
+          {/* The business's own type icon once there is a business; the Bermi
+              mark before that, so the app is never wearing a placeholder. */}
+          {meta ? (
+            <div style={{ width: 38, height: 38, borderRadius: 12, background: 'var(--grad)', display: 'grid', placeItems: 'center', color: '#fff', flexShrink: 0 }}>
+              <Icon name={meta.icon} size={17} />
+            </div>
+          ) : (
+            <img src="/icons/bermi-mark.svg" alt="" width={38} height={38} style={{ flexShrink: 0 }} />
+          )}
           <div style={{ minWidth: 0 }}>
             <div style={{ fontSize: 14.5, fontWeight: 800, color: 'var(--ink)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
               {activeBusiness?.name || 'Bermi One'}
