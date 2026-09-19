@@ -14,9 +14,9 @@ const SECTIONS: { id: HqSection; icon: string }[] = [
   { id: 'activity', icon: 'trend' },
   { id: 'ontology', icon: 'layers' },
   { id: 'payments', icon: 'cash' },
-  { id: 'inquiries', icon: 'spark' },
-  { id: 'messages', icon: 'mail' },
-  { id: 'webhooks', icon: 'swap' },
+  { id: 'inquiries', icon: 'users' },
+  { id: 'messages', icon: 'chat' },
+  { id: 'webhooks', icon: 'link' },
   { id: 'audit', icon: 'shield' },
 ];
 
@@ -112,7 +112,7 @@ export function PortalShell({ section, onSection, live, onRefresh, children }: {
           )}
           {onRefresh && (
             <button className="hq-icon-btn" onClick={onRefresh} aria-label={T.refresh}>
-              <Icon name="swap" size={15} />
+              <Icon name="refresh" size={15} />
             </button>
           )}
         </header>

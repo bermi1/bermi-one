@@ -4,9 +4,10 @@
 // Supabase session. The X-Middleware-Signature HMAC is the authentication, and
 // it is checked before a single field of the body is read or trusted.
 //
-// A completed charge extends the client's subscription period and lifts any
-// suspension. It never touches a client's own books: this is Bermi Techs
-// collecting its fee, not the bar taking money over the counter.
+// A completed charge moves the account onto the plan that was paid for,
+// extends its period and lifts any suspension. It never touches a client's own
+// books — this is Bermi Techs collecting its fee, not the bar taking money
+// over the counter.
 
 import { createClient } from 'jsr:@supabase/supabase-js@2';
 import { normaliseStatus, verifyCallback } from './payme_shared.ts';
@@ -56,7 +57,7 @@ Deno.serve(async (req) => {
   // whatever else the edge happens to attach, which is not ours to retain.
   const headers = {
     'x-timestamp': timestamp,
-    'x-middleware-signature': signature ? signature.slice(0, 12) + '\u2026' : '',
+    'x-middleware-signature': signature ? signature.slice(0, 12) + '…' : '',
     'content-type': req.headers.get('content-type') ?? '',
     'user-agent': req.headers.get('user-agent') ?? '',
   };
@@ -109,7 +110,7 @@ Deno.serve(async (req) => {
     });
   }
 
-  const status = normaliseStatus(String(body.result || ''), String(body.payment_status || ''));
+  const status = normaliseStatus(String(body.result ?? ''), String(body.payment_status ?? ''));
 
   // Callbacks can arrive twice. A subscription that extended its period once
   // must not extend it again on a repeat delivery.
@@ -120,38 +121,64 @@ Deno.serve(async (req) => {
 
   let outcome = `status_${status.toLowerCase()}`;
 
-  if (status === 'COMPLETED' && payment.purpose === 'subscription' && payment.subscription_id) {
-    const { data: sub } = await admin
-      .from('subscriptions')
-      .select('*, subscription_plans(interval_days)')
-      .eq('id', payment.subscription_id)
-      .maybeSingle();
+  if (status === 'COMPLETED' && payment.purpose === 'subscription') {
+    // Find the account behind this payment. A self-serve payment carries
+    // paid_by; one taken by support is attached to a business.
+    let ownerId: string | null = payment.paid_by ?? null;
+    if (!ownerId && payment.business_id) {
+      const { data: biz } = await admin.from('businesses').select('owner_id').eq('id', payment.business_id).maybeSingle();
+      ownerId = biz?.owner_id ?? null;
+    }
 
-    if (sub) {
-      // Extend from whichever is later: the end of the period they already paid
-      // for, or now. Paying early should add time, not throw the rest away;
-      // paying late should not back-date the new period into the past.
-      const days = sub.subscription_plans?.interval_days ?? 30;
-      const existingEnd = sub.current_period_end ? new Date(sub.current_period_end) : null;
-      const base = existingEnd && existingEnd > new Date() ? existingEnd : new Date();
-      const end = new Date(base.getTime() + days * 86_400_000);
+    if (ownerId) {
+      // The plan that was actually paid for, when one was named. Extending
+      // whatever they were already on would take Premium money and leave the
+      // account on Starter.
+      let planId: string | null = null;
+      let intervalDays = 30;
+      if (payment.plan_code) {
+        const { data: plan } = await admin
+          .from('subscription_plans')
+          .select('id, interval_days')
+          .eq('code', payment.plan_code)
+          .maybeSingle();
+        if (plan) {
+          planId = plan.id;
+          intervalDays = plan.interval_days ?? 30;
+        }
+      }
 
-      await admin
+      const { data: sub } = await admin
         .from('subscriptions')
-        .update({
-          status: 'active',
-          current_period_start: new Date().toISOString(),
-          current_period_end: end.toISOString(),
-          updated_at: new Date().toISOString(),
-        })
-        .eq('id', sub.id);
+        .select('*, subscription_plans(interval_days)')
+        .eq('owner_id', ownerId)
+        .maybeSingle();
 
-      // Settling the bill lifts the block. Nothing else here reads suspension,
-      // so this is the one place that has to remember to clear it.
+      if (!planId) intervalDays = sub?.subscription_plans?.interval_days ?? 30;
+
+      // Extend from whichever is later: the end of the period already paid
+      // for, or now. Paying early should add time rather than throw the rest
+      // away; paying late should not back-date the new period into the past.
+      const existingEnd = sub?.current_period_end ? new Date(sub.current_period_end) : null;
+      const base = existingEnd && existingEnd > new Date() ? existingEnd : new Date();
+      const end = new Date(base.getTime() + intervalDays * 86_400_000);
+
+      await admin.from('subscriptions').upsert({
+        owner_id: ownerId,
+        ...(planId ? { plan_id: planId } : {}),
+        status: 'active',
+        current_period_start: new Date().toISOString(),
+        current_period_end: end.toISOString(),
+        updated_at: new Date().toISOString(),
+      }, { onConflict: 'owner_id' });
+
+      // Settling the bill lifts the block on every business in the account.
       await admin
         .from('businesses')
         .update({ suspended: false, suspended_reason: null, suspended_at: null })
-        .eq('id', payment.business_id);
+        .eq('owner_id', ownerId);
+
+      outcome = planId ? 'subscription_activated' : 'subscription_extended';
     }
   }
 
