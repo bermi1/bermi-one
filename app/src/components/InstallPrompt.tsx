@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Icon } from '../lib/icons';
 import { useSettings } from '../lib/useSettings';
+import { isNative } from '../lib/native';
 
 interface InstallEvent extends Event {
   prompt: () => Promise<void>;
@@ -31,6 +32,10 @@ export function InstallPrompt() {
 
   useEffect(() => {
     // Already installed, or previously waved away.
+    // Inside the downloaded app there is nothing to install. Asking would be
+    // absurd, and on iOS the fallback instructions would show regardless.
+    if (isNative()) return;
+
     const standalone = window.matchMedia('(display-mode: standalone)').matches
       || (window.navigator as unknown as { standalone?: boolean }).standalone === true;
     if (standalone) return;

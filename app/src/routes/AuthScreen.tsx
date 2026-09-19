@@ -5,13 +5,14 @@ import { T } from '../lib/i18n';
 import { Icon } from '../lib/icons';
 
 export function AuthScreen() {
-  const { signIn, signUp } = useAuth();
+  const { signIn, signUp, sendReset } = useAuth();
   const [lang, setLang] = useState<'en' | 'sw'>('en');
   const L = T[lang];
   const [mode, setMode] = useState<'login' | 'signup'>('login');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
+  const [notice, setNotice] = useState('');
   const [busy, setBusy] = useState(false);
 
   async function submit(e: React.FormEvent) {
@@ -21,6 +22,25 @@ export function AuthScreen() {
     const err = mode === 'login' ? await signIn(email, password) : await signUp(email, password);
     setBusy(false);
     if (err) setError(err);
+  }
+
+  /*
+    Forgotten passwords.
+
+    Without this the only way back into an account is to write to support, which
+    is a poor experience on the web and an outright rejection risk in a store:
+    a reviewer who creates an account, signs out, and finds no way back is
+    looking at an app that traps people.
+  */
+  async function forgot() {
+    setError('');
+    setNotice('');
+    if (!email.trim()) { setError(L.resetNeedEmail); return; }
+    setBusy(true);
+    const err = await sendReset(email.trim());
+    setBusy(false);
+    if (err) setError(err);
+    else setNotice(L.resetSent);
   }
 
   return (
@@ -70,6 +90,7 @@ export function AuthScreen() {
             />
           </label>
           {error && <div style={{ color: 'var(--bad)', fontSize: 13, fontWeight: 600 }}>{error}</div>}
+          {notice && <div style={{ color: 'var(--ok)', fontSize: 13, fontWeight: 600, lineHeight: 1.5 }}>{notice}</div>}
           <button className="btn-primary tap" type="submit" disabled={busy} style={{ marginTop: 6, border: 'none' }}>
             {busy ? L.loading : mode === 'login' ? L.login : L.signup}
           </button>
@@ -85,6 +106,17 @@ export function AuthScreen() {
         >
           {mode === 'login' ? L.noAccount : L.haveAccount}
         </div>
+
+        {mode === 'login' && (
+          <button
+            className="tap"
+            type="button"
+            onClick={() => void forgot()}
+            style={{ width: '100%', marginTop: 12, background: 'none', border: 'none', fontSize: 13, color: 'var(--ink3)', fontWeight: 600 }}
+          >
+            {L.forgotPassword}
+          </button>
+        )}
 
         {/* A store reviewer looks for these here, before they have an account. */}
         <div style={{ textAlign: 'center', marginTop: 26, fontSize: 12, color: 'var(--ink3)', fontWeight: 600 }}>

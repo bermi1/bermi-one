@@ -1,0 +1,10 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Bermi One</string>
+    <string name="title_activity_main">Bermi One</string>
+    <string name="package_name">one.bermi.app</string>
+    <string name="custom_url_scheme">one.bermi.app</string>
+    <!-- The host the App Links are verified against. Must match COMPANY.site in
+         src/lib/company.ts and SITE_URL in the Supabase secrets. -->
+    <string name="app_host">bermione.app</string>
+</resources>

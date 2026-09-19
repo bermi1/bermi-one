@@ -26,6 +26,8 @@ import { Suspended } from './routes/Suspended';
 import { Pricing } from './routes/Pricing';
 import { Help } from './routes/Help';
 import { Legal } from './routes/Legal';
+import { SetPassword } from './routes/SetPassword';
+import { NativeShell } from './components/NativeShell';
 import { checkPlatformAdmin } from './lib/platform';
 
 function ThemeRoot() {
@@ -44,7 +46,7 @@ function Spinner() {
 }
 
 function AppRoutes() {
-  const { session, loading: authLoading } = useAuth();
+  const { session, loading: authLoading, recovering } = useAuth();
   const { ready, profile, activeBusiness } = useData();
   const location = useLocation();
   const owner = profile?.role === 'owner';
@@ -68,6 +70,11 @@ function AppRoutes() {
 
   if (authLoading || (session && !ready)) return <Spinner />;
   if (!session) return <AuthScreen />;
+
+  // A recovery link signs someone in without them knowing their password. This
+  // stands in front of everything until they have chosen one.
+  if (recovering) return <SetPassword />;
+
   if (!profile?.onboarded) return <Onboarding />;
 
   /*
@@ -128,6 +135,9 @@ export default function App() {
         <DataProvider>
           <ToastProvider>
             <IconSprite />
+            {/* Outside the routes, so a recovery link opened while signed out
+                still reaches the handler, and the back button always works. */}
+            <NativeShell />
             <AppRoutes />
           </ToastProvider>
         </DataProvider>

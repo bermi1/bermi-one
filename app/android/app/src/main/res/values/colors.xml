@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Overrides the indigo-and-pink defaults that ship inside capacitor-android.
+    These are the values the app itself uses, so the system chrome that Android
+    tints - the recents card, the ripple on a long press - matches the product
+    rather than announcing which framework built it.
+-->
+<resources>
+    <color name="colorPrimary">#2F5BFF</color>
+    <color name="colorPrimaryDark">#0433CF</color>
+    <color name="colorAccent">#029DFF</color>
+    <color name="bermiInk">#0B1020</color>
+    <color name="bermiPaper">#FFFFFF</color>
+</resources>
