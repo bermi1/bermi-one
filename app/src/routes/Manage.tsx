@@ -51,14 +51,14 @@ export function Manage() {
       title: L.people,
       items: [
         { name: L.staffCount, meta: String(staffMembers.length), icon: 'user', onClick: () => nav('/staff') },
-        { name: L.roles, meta: '2', icon: 'shield' },
+        { name: L.roles, meta: '2', icon: 'shield', onClick: () => nav('/staff') },
       ],
     },
     {
-      title: L.partners,
+      title: L.support,
       items: [
-        { name: L.suppliers, meta: '—', icon: 'truck' },
-        { name: L.customers, meta: '—', icon: 'user' },
+        { name: L.getHelp, meta: '', icon: 'mail', onClick: () => nav('/help') },
+        { name: L.billing, meta: plan.name, icon: 'cash', onClick: () => nav('/pricing') },
       ],
     },
   ];

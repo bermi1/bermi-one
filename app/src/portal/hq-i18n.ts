@@ -16,6 +16,18 @@ export interface HqCopy {
   ontology: string;
   payments: string;
   audit: string;
+  inquiries: string;
+  inquiriesSub: string;
+  waitingOnUs: string;
+  waitingOnThem: string;
+  reply: string;
+  markResolved: string;
+  last30: string;
+  salesTrend: string;
+  closingsTrend: string;
+  paying: string;
+  ofAccounts: string;
+  openThreads: string;
   messages: string;
   messagesSub: string;
   webhooks: string;
@@ -105,6 +117,12 @@ export const HQ: Record<Lang, HqCopy> = {
     ontology: 'Ontology',
     payments: 'Payments',
     audit: 'Audit',
+    inquiries: 'Inquiries',
+    inquiriesSub: 'What clients have asked, and what is still waiting on an answer.',
+    waitingOnUs: 'Waiting on us', waitingOnThem: 'Waiting on them',
+    reply: 'Reply', markResolved: 'Mark resolved',
+    last30: 'Last 30 days', salesTrend: 'Sales across the platform', closingsTrend: 'Closings a day',
+    paying: 'Paying', ofAccounts: 'of accounts', openThreads: 'Open threads',
     messages: 'Messages',
     messagesSub: 'SMS and email the platform has sent on a client\'s behalf, and anything still waiting.',
     webhooks: 'Webhooks',
@@ -189,6 +207,12 @@ export const HQ: Record<Lang, HqCopy> = {
     ontology: 'Ontolojia',
     payments: 'Malipo',
     audit: 'Ukaguzi',
+    inquiries: 'Maswali',
+    inquiriesSub: 'Wateja wameuliza nini, na nini bado kinasubiri jibu.',
+    waitingOnUs: 'Yanatusubiri', waitingOnThem: 'Yanawasubiri',
+    reply: 'Jibu', markResolved: 'Weka kama limetatuliwa',
+    last30: 'Siku 30 zilizopita', salesTrend: 'Mauzo kwenye mfumo mzima', closingsTrend: 'Kufunga kwa siku',
+    paying: 'Wanaolipa', ofAccounts: 'ya akaunti', openThreads: 'Maswali wazi',
     messages: 'Ujumbe',
     messagesSub: 'SMS na barua pepe ambazo mfumo umetuma kwa niaba ya mteja, na zinazosubiri.',
     webhooks: 'Webhooks',

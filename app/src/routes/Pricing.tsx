@@ -5,7 +5,7 @@ import { Icon } from '../lib/icons';
 import { useSettings } from '../lib/useSettings';
 import { useData } from '../state/DataContext';
 import { useToast } from '../state/ToastContext';
-import { PLANS, SMS_ADDON_USD, TRIAL_DAYS, localPrice, localPriceNote, monthlyTotalUsd, requiredPlan, type Plan } from '../lib/plans';
+import { PLANS, TRIAL_DAYS, localPrice, localPriceNote, requiredPlan, type Plan } from '../lib/plans';
 import { COUNTRIES } from '../lib/countries';
 
 /**
@@ -29,8 +29,6 @@ export function Pricing() {
   const sw = lang === 'sw';
 
   const note = localPriceNote(lang, country);
-  const smsCount = businesses.filter((b) => b.sms_alerts).length;
-  const total = monthlyTotalUsd(needed, smsCount);
   const activeCode = onTrial ? null : subscription?.subscription_plans?.code;
 
   return (
@@ -86,39 +84,42 @@ export function Pricing() {
         ))}
       </div>
 
-      {/* The add-on sits below the tiers, where it reads as an addition to a
-          chosen plan rather than a fourth thing to choose between. */}
-      {activeBusiness && (
+      {/* Automation lives with the plan that includes it. Showing the switches
+          to someone whose plan cannot deliver them is how a product teaches
+          people that its settings are decorative. */}
+      {activeBusiness && currentPlan.limits.smsAlerts && (
         <div className="card" style={{ marginTop: 14, padding: 18 }}>
-          <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 }}>
-            <div style={{ minWidth: 0 }}>
-              <div style={{ fontSize: 10, fontWeight: 800, letterSpacing: 0.6, textTransform: 'uppercase', color: 'var(--ink3)' }}>{L.addons}</div>
-              <div style={{ marginTop: 5, fontSize: 15.5, fontWeight: 800 }}>{L.smsAddon}</div>
-              <div style={{ marginTop: 3, fontSize: 12.5, color: 'var(--ink2)', lineHeight: 1.45 }}>{L.smsAddonSub}</div>
-            </div>
-            <div style={{ textAlign: 'right', flexShrink: 0 }}>
-              <div style={{ fontSize: 18, fontWeight: 800, letterSpacing: -0.4 }}>{localPrice(SMS_ADDON_USD, country)}</div>
-              <div style={{ fontSize: 10.5, color: 'var(--ink3)', fontWeight: 700, marginTop: 1 }}>
-                ${SMS_ADDON_USD} · {L.smsAddonPrice}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 9 }}>
+            <Icon name="spark" size={16} style={{ color: 'var(--brand)' }} />
+            <div style={{ fontSize: 15.5, fontWeight: 800 }}>{L.automation}</div>
+          </div>
+          <div style={{ marginTop: 4, fontSize: 12.5, color: 'var(--ink2)', lineHeight: 1.45 }}>{L.automationSub}</div>
+
+          {([
+            ['sms_alerts', L.autoSms, L.autoSmsSub, !!activeBusiness.sms_alerts],
+            ['auto_report_weekly', L.autoWeekly, L.autoWeeklySub, !!activeBusiness.auto_report_weekly],
+            ['auto_report_monthly', L.autoMonthly, L.autoMonthlySub, !!activeBusiness.auto_report_monthly],
+          ] as const).map(([field, label, sub, on]) => (
+            <div
+              key={field}
+              className="tap"
+              onClick={() => {
+                const needsPhone = field === 'sms_alerts' && !activeBusiness.alerts_phone?.trim();
+                const needsEmail = field !== 'sms_alerts' && !activeBusiness.alerts_email?.trim();
+                if (!on && (needsPhone || needsEmail)) { flash(needsPhone ? L.alertsNeedPhone : L.alertsNeedEmail); return; }
+                void updateBusiness({ [field]: !on });
+              }}
+              style={{ marginTop: 10, padding: 13, borderRadius: 14, background: on ? 'var(--okSoft)' : 'var(--card2)', display: 'flex', alignItems: 'center', gap: 12 }}
+            >
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 13.5, fontWeight: 700, color: on ? 'var(--ok)' : 'var(--ink)' }}>{label}</div>
+                <div style={{ marginTop: 2, fontSize: 11.5, color: 'var(--ink3)' }}>{sub}</div>
+              </div>
+              <div style={{ width: 42, height: 24, borderRadius: 99, background: on ? 'var(--ok)' : 'var(--line)', padding: 3, flexShrink: 0 }}>
+                <div style={{ width: 18, height: 18, borderRadius: '50%', background: '#fff', transform: on ? 'translateX(18px)' : 'none', transition: 'transform .15s' }} />
               </div>
             </div>
-          </div>
-
-          <div
-            className="tap"
-            onClick={() => {
-              if (!activeBusiness.sms_alerts && !activeBusiness.alerts_phone?.trim()) { flash(L.alertsNeedPhone); return; }
-              void updateBusiness({ sms_alerts: !activeBusiness.sms_alerts });
-            }}
-            style={{ marginTop: 14, padding: 13, borderRadius: 14, background: activeBusiness.sms_alerts ? 'var(--okSoft)' : 'var(--card2)', display: 'flex', alignItems: 'center', gap: 12 }}
-          >
-            <div style={{ flex: 1, fontSize: 13, fontWeight: 700, color: activeBusiness.sms_alerts ? 'var(--ok)' : 'var(--ink2)' }}>
-              {activeBusiness.sms_alerts ? L.smsAddonOn : activeBusiness.name}
-            </div>
-            <div style={{ width: 42, height: 24, borderRadius: 99, background: activeBusiness.sms_alerts ? 'var(--ok)' : 'var(--line)', padding: 3, flexShrink: 0 }}>
-              <div style={{ width: 18, height: 18, borderRadius: '50%', background: '#fff', transform: activeBusiness.sms_alerts ? 'translateX(18px)' : 'none', transition: 'transform .15s' }} />
-            </div>
-          </div>
+          ))}
 
           <input
             className="card"
@@ -126,7 +127,7 @@ export function Pricing() {
             placeholder={L.alertsPhone}
             defaultValue={activeBusiness.alerts_phone || ''}
             onBlur={(e) => { const v = e.target.value.trim(); if (v !== (activeBusiness.alerts_phone || '')) void updateBusiness({ alerts_phone: v || null }); }}
-            style={{ width: '100%', marginTop: 10, padding: '12px 14px', border: '1px solid var(--line)', fontSize: 13.5 }}
+            style={{ width: '100%', marginTop: 12, padding: '12px 14px', border: '1px solid var(--line)', fontSize: 13.5 }}
           />
           <input
             className="card"
@@ -138,20 +139,6 @@ export function Pricing() {
           />
         </div>
       )}
-
-      {/* What the account actually pays, plan plus add-ons, in one number. */}
-      <div className="card" style={{ marginTop: 12, padding: 16, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
-        <div>
-          <div style={{ fontSize: 13, fontWeight: 800 }}>{L.monthlyTotal}</div>
-          <div style={{ marginTop: 2, fontSize: 11.5, color: 'var(--ink3)', fontWeight: 600 }}>
-            {needed.name}{smsCount > 0 ? ` + ${smsCount} × ${L.smsAddon}` : ''}
-          </div>
-        </div>
-        <div style={{ textAlign: 'right' }}>
-          <div style={{ fontSize: 20, fontWeight: 800, letterSpacing: -0.5 }}>{localPrice(total, country)}</div>
-          <div style={{ fontSize: 10.5, color: 'var(--ink3)', fontWeight: 700 }}>${total} · {sw ? 'kwa mwezi' : 'per month'}</div>
-        </div>
-      </div>
 
       {note && (
         <div style={{ marginTop: 12, fontSize: 11.5, color: 'var(--ink3)', textAlign: 'center', lineHeight: 1.5 }}>

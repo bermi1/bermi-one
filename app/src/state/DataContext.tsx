@@ -63,7 +63,7 @@ interface DataCtx {
 
   completeOnboarding: (input: { name: string; type: string; city: string; countryCode: string; answers: Record<string, boolean | null> }) => Promise<void>;
   addBusiness: (input: { name: string; type: string; city: string; countryCode: string }) => Promise<string | null>;
-  updateBusiness: (patch: Partial<Pick<Business, 'name' | 'city' | 'type' | 'country_code' | 'answers' | 'sms_alerts' | 'alerts_phone' | 'alerts_email'>>) => Promise<void>;
+  updateBusiness: (patch: Partial<Pick<Business, 'name' | 'city' | 'type' | 'country_code' | 'answers' | 'sms_alerts' | 'auto_report_weekly' | 'auto_report_monthly' | 'alerts_phone' | 'alerts_email'>>) => Promise<void>;
   switchBusiness: (id: string) => Promise<void>;
 
   updateProductPrice: (productId: string, price: number) => Promise<void>;
@@ -261,7 +261,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
   );
 
   const updateBusiness = useCallback(
-    async (patch: Partial<Pick<Business, 'name' | 'city' | 'type' | 'country_code' | 'answers' | 'sms_alerts' | 'alerts_phone' | 'alerts_email'>>) => {
+    async (patch: Partial<Pick<Business, 'name' | 'city' | 'type' | 'country_code' | 'answers' | 'sms_alerts' | 'auto_report_weekly' | 'auto_report_monthly' | 'alerts_phone' | 'alerts_email'>>) => {
       if (!activeBusiness) return;
       setBusinesses((bs) => bs.map((b) => (b.id === activeBusiness.id ? { ...b, ...patch } : b)));
       await supabase.from('businesses').update(patch).eq('id', activeBusiness.id);

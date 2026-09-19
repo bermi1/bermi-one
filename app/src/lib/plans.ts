@@ -19,6 +19,10 @@ export interface PlanLimits {
   whatsappShare: boolean;
   csvImport: boolean;
   bulkMigration: boolean;
+  /** The day's summary by SMS and email, the moment a closing is verified. */
+  smsAlerts: boolean;
+  /** Weekly and monthly summaries that arrive without anyone asking. */
+  autoReports: boolean;
   prioritySupport: boolean;
 }
 
@@ -35,16 +39,6 @@ export interface Plan {
 
 export const TRIAL_DAYS = 14;
 
-/**
- * The SMS add-on.
- *
- * Priced per business rather than per account, because the thing being sent is
- * one business's closing summary — an owner with three bars who only wants
- * texts from the busy one should pay for one. Billing still lands on the
- * account: it pays $5 for each business that has this switched on.
- */
-export const SMS_ADDON_USD = 5;
-
 export const PLANS: Plan[] = [
   {
     code: 'starter',
@@ -57,7 +51,7 @@ export const PLANS: Plan[] = [
     limits: {
       maxBusinesses: 1, maxStaff: 3, maxProducts: 400,
       combinedReporting: false, whatsappShare: true, csvImport: true,
-      bulkMigration: false, prioritySupport: false,
+      bulkMigration: false, smsAlerts: false, autoReports: false, prioritySupport: false,
     },
     includes: {
       en: [
@@ -89,7 +83,7 @@ export const PLANS: Plan[] = [
     limits: {
       maxBusinesses: 3, maxStaff: 12, maxProducts: 2000,
       combinedReporting: true, whatsappShare: true, csvImport: true,
-      bulkMigration: true, prioritySupport: false,
+      bulkMigration: true, smsAlerts: false, autoReports: false, prioritySupport: false,
     },
     includes: {
       en: [
@@ -113,26 +107,26 @@ export const PLANS: Plan[] = [
     name: 'Premium',
     usd: 45,
     blurb: {
-      en: 'Four businesses or forty. No ceilings.',
-      sw: 'Biashara nne au arobaini. Hakuna kikomo.',
+      en: 'Stop going to look. The numbers come to you.',
+      sw: 'Acha kwenda kuangalia. Takwimu zinakujia wewe.',
     },
     limits: {
       maxBusinesses: -1, maxStaff: -1, maxProducts: -1,
       combinedReporting: true, whatsappShare: true, csvImport: true,
-      bulkMigration: true, prioritySupport: true,
+      bulkMigration: true, smsAlerts: true, autoReports: true, prioritySupport: true,
     },
     includes: {
       en: [
-        'Unlimited businesses',
-        'Unlimited staff accounts',
-        'Unlimited products per business',
+        'Daily SMS the moment a day is verified',
+        'Weekly and monthly reports by email, automatically',
+        'Unlimited businesses, staff and products',
         'Priority support on WhatsApp',
         'Everything in Standard',
       ],
       sw: [
-        'Biashara bila kikomo',
-        'Wafanyakazi bila kikomo',
-        'Bidhaa bila kikomo kwa kila biashara',
+        'SMS ya kila siku mara siku inapothibitishwa',
+        'Ripoti za wiki na mwezi kwa barua pepe, kiotomatiki',
+        'Biashara, wafanyakazi na bidhaa bila kikomo',
         'Msaada wa haraka kwa WhatsApp',
         'Kila kitu cha Standard',
       ],
@@ -184,11 +178,6 @@ export function localPriceNote(lang: Lang, countryCode: string): string {
   return lang === 'sw'
     ? 'Bei ni ya kadirio; malipo hufanyika kwa dola za Kimarekani.'
     : 'Local figure is indicative — billing is in US dollars.';
-}
-
-/** What the account pays this month: the plan, plus $5 per SMS-enabled business. */
-export function monthlyTotalUsd(plan: Plan, smsBusinesses: number): number {
-  return plan.usd + smsBusinesses * SMS_ADDON_USD;
 }
 
 export function isUnlimited(n: number): boolean {

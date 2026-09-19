@@ -200,3 +200,11 @@ button{background:none;border:none;cursor:pointer;-webkit-tap-highlight-color:tr
   .hq-body { padding: 16px 14px 36px; }
   .hq-head { padding: 12px 14px; }
 }
+
+@keyframes install-rise {
+  from { opacity: 0; transform: translateY(14px) scale(.97); }
+  to { opacity: 1; transform: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  [role="dialog"] { animation: none !important; }
+}

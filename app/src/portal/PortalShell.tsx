@@ -6,7 +6,7 @@ import { useData } from '../state/DataContext';
 import { HQ } from './hq-i18n';
 import type { LiveStatus } from './useRealtime';
 
-export type HqSection = 'overview' | 'clients' | 'activity' | 'ontology' | 'payments' | 'messages' | 'webhooks' | 'audit';
+export type HqSection = 'overview' | 'clients' | 'activity' | 'ontology' | 'payments' | 'inquiries' | 'messages' | 'webhooks' | 'audit';
 
 const SECTIONS: { id: HqSection; icon: string }[] = [
   { id: 'overview', icon: 'grid' },
@@ -14,6 +14,7 @@ const SECTIONS: { id: HqSection; icon: string }[] = [
   { id: 'activity', icon: 'trend' },
   { id: 'ontology', icon: 'layers' },
   { id: 'payments', icon: 'cash' },
+  { id: 'inquiries', icon: 'spark' },
   { id: 'messages', icon: 'mail' },
   { id: 'webhooks', icon: 'swap' },
   { id: 'audit', icon: 'shield' },

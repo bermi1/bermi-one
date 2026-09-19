@@ -29,6 +29,10 @@ export function printCss(orientation: 'portrait' | 'landscape' = 'portrait'): st
     --ink3: #878d9c;
     --line: #dfe2ea;
     --line2: #eef0f5;
+    /* Table rules print darker than screen hairlines: at 96dpi a #eef0f5 line
+       is invisible on paper, which is how a "clean" sheet becomes an unusable
+       one the moment someone actually prints it. */
+    --rule: #b9bfcc;
     --tint: #f6f7fa;
     --brand: #4b3fd6;
     --ok: #067a4b;
@@ -68,12 +72,19 @@ export function printCss(orientation: 'portrait' | 'landscape' = 'portrait'): st
   .kpi .v { font-size: 13.5px; font-weight: 800; margin-top: 4px; letter-spacing: -0.3px;
             font-variant-numeric: tabular-nums; }
 
-  /* --- tables --- */
-  table { width: 100%; border-collapse: separate; border-spacing: 0; border: 1px solid var(--line);
+  /* --- tables ---
+     Ruled both ways. A sheet that is filled in by hand needs a column line as
+     much as a row line: without one, a figure written in the "sold" column
+     drifts into "remain" by the third page, and the person keying it in
+     afterwards has to guess. Screens can get away with horizontal rules only;
+     paper cannot. */
+  table { width: 100%; border-collapse: separate; border-spacing: 0; border: 1px solid var(--rule);
           border-radius: 7px; overflow: hidden; }
-  th, td { padding: 5px 8px; text-align: left; border-bottom: 1px solid var(--line2); }
+  th, td { padding: 5px 8px; text-align: left;
+           border-bottom: 1px solid var(--rule); border-right: 1px solid var(--rule); }
+  th:last-child, td:last-child { border-right: none; }
   thead th { background: var(--tint); font-size: 7.8px; text-transform: uppercase; letter-spacing: 0.6px;
-             color: var(--ink3); font-weight: 800; border-bottom: 1px solid var(--line); }
+             color: var(--ink2); font-weight: 800; border-bottom: 1.4px solid var(--ink3); }
   th.n, td.n { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
   tbody tr:last-child td { border-bottom: none; }
   td.b { font-weight: 700; }
@@ -94,15 +105,15 @@ export function printCss(orientation: 'portrait' | 'landscape' = 'portrait'): st
 
   /* blank cells the counter fills in by hand — including on the dark total
      row, where a dark box would leave nowhere to write the grand total. */
-  td.fill { background: #fff; height: 19px; }
+  td.fill { background: #fff; height: 21px; }
   tr.tot td.fill { background: #fff; }
 
   .cols { display: flex; gap: 13px; align-items: flex-start; }
   .cols > * { flex: 1; min-width: 0; }
 
-  .rail { border: 1px solid var(--line); border-radius: 7px; overflow: hidden; }
+  .rail { border: 1px solid var(--rule); border-radius: 7px; overflow: hidden; }
   .rail .row { display: flex; justify-content: space-between; gap: 12px; padding: 6px 11px;
-               border-bottom: 1px solid var(--line2); font-size: 9.6px; }
+               border-bottom: 1px solid var(--rule); font-size: 9.6px; }
   .rail .row:last-child { border-bottom: none; }
   .rail .row .k { color: var(--ink2); font-weight: 600; }
   .rail .row .v { font-weight: 800; font-variant-numeric: tabular-nums; white-space: nowrap; }

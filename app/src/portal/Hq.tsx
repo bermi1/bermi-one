@@ -6,12 +6,15 @@ import { HQ } from './hq-i18n';
 import { PortalShell, type HqSection } from './PortalShell';
 import { useRealtimeInserts } from './useRealtime';
 import { ClientDrawer } from './ClientDrawer';
+import { InquiryDrawer } from './InquiryDrawer';
+import { Donut, Sparkline, StackBar } from './Sparkline';
 import { ACTION_TYPES, OBJECT_TYPES, type ObjectTypeName } from '../ontology/schema';
 import {
-  fetchActivity, fetchAllPayments, fetchAudit, fetchClients, fetchNotifications, fetchOntology,
-  fetchOverview, fetchPlans, fetchWebhookEvents,
+  fetchActivity, fetchAllPayments, fetchAudit, fetchClients, fetchDailySeries, fetchNotifications,
+  fetchOntology, fetchOverview, fetchPlans, fetchSupportQueue, fetchWebhookEvents,
   type ActivityRow, type AuditRow, type ClientRow, type NotificationRow, type OntologySnapshot,
-  type Overview, type Plan, type PlatformPayment, type SubscriptionStatus, type WebhookEventRow,
+  type DailyPoint, type Inquiry, type Overview, type Plan, type PlatformPayment,
+  type SubscriptionStatus, type WebhookEventRow,
 } from '../lib/platform';
 
 const usd = (n: number) => '$' + Math.round(n).toLocaleString('en-US');
@@ -58,6 +61,9 @@ export function Hq() {
   const [audit, setAudit] = useState<AuditRow[] | null>(null);
   const [messages, setMessages] = useState<NotificationRow[] | null>(null);
   const [hooks, setHooks] = useState<WebhookEventRow[] | null>(null);
+  const [series, setSeries] = useState<DailyPoint[]>([]);
+  const [queue, setQueue] = useState<Inquiry[] | null>(null);
+  const [openInquiry, setOpenInquiry] = useState<Inquiry | null>(null);
 
   const [query, setQuery] = useState('');
   const [objectFilter, setObjectFilter] = useState<ObjectTypeName | null>(null);
@@ -67,10 +73,11 @@ export function Hq() {
   const load = useCallback(async () => {
     setError('');
     try {
-      const [o, c, p] = await Promise.all([fetchOverview(), fetchClients(), fetchPlans()]);
+      const [o, c, p, d] = await Promise.all([fetchOverview(), fetchClients(), fetchPlans(), fetchDailySeries(30)]);
       setOverview(o);
       setClients(c);
       setPlans(p);
+      setSeries(d);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     }
@@ -86,7 +93,8 @@ export function Hq() {
     if (section === 'audit' && !audit) void fetchAudit().then(setAudit).catch((e) => setError(String(e)));
     if (section === 'messages' && !messages) void fetchNotifications().then(setMessages).catch((e) => setError(String(e)));
     if (section === 'webhooks' && !hooks) void fetchWebhookEvents().then(setHooks).catch((e) => setError(String(e)));
-  }, [section, activity, ontology, payments, audit, messages, hooks]);
+    if (section === 'inquiries' && !queue) void fetchSupportQueue().then(setQueue).catch((e) => setError(String(e)));
+  }, [section, activity, ontology, payments, audit, messages, hooks, queue]);
 
   useEffect(() => {
     if (section !== 'activity') return;
@@ -102,6 +110,11 @@ export function Hq() {
   const live = useRealtimeInserts<ActivityRow>('action_log', (row) => {
     markFresh(row.id);
     setActivity((prev) => (prev ? [row, ...prev].slice(0, 200) : prev));
+  });
+
+  useRealtimeInserts<Inquiry>('inquiries', (row) => {
+    markFresh(row.id);
+    setQueue((prev) => (prev ? [row, ...prev] : prev));
   });
 
   useRealtimeInserts<NotificationRow>('notifications', (row) => {
@@ -134,7 +147,7 @@ export function Hq() {
   function refresh() {
     void load();
     setActivity(null); setOntology(null); setPayments(null); setAudit(null);
-    setMessages(null); setHooks(null);
+    setMessages(null); setHooks(null); setQueue(null);
   }
 
   return (
@@ -157,43 +170,59 @@ export function Hq() {
               <div className="hq-card">
                 <div className="hq-k">{T.collected30}</div>
                 <div className="hq-v">{tzs(overview.collectedLast30)}</div>
+                <div style={{ marginTop: 8 }}>
+                  <Sparkline values={series.map((d) => d.collected)} height={34} tone="var(--ok)" label={T.collected30} />
+                </div>
               </div>
               <div className="hq-card">
                 <div className="hq-k">{T.accounts}</div>
                 <div className="hq-v">{overview.accounts}</div>
                 <div className="hq-sub">{overview.businesses} {T.businesses.toLowerCase()}</div>
               </div>
-              <div className="hq-card">
-                <div className="hq-k">{T.businesses}</div>
-                <div className="hq-v">{overview.activeLast30} <span style={{ fontSize: 14, color: 'var(--ink3)' }}>/ {overview.businesses}</span></div>
-                <div className="hq-sub">{T.activeBusinesses}</div>
-              </div>
-              <div className="hq-card">
-                <div className="hq-k">{T.closings30}</div>
-                <div className="hq-v">{overview.closingsLast30}</div>
-                <div className="hq-sub">{overview.verifiedLast30} {T.verified.toLowerCase()}</div>
-              </div>
-              <div className="hq-card">
-                <div className="hq-k">{T.onTrial}</div>
-                <div className="hq-v" style={{ color: 'var(--brand)' }}>{overview.subscriptions.trialing}</div>
-              </div>
-              <div className="hq-card">
-                <div className="hq-k">{T.blocked}</div>
-                <div className="hq-v" style={{ color: overview.suspended ? 'var(--bad)' : undefined }}>{overview.suspended}</div>
+              <div className="hq-card" style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+                <Donut value={overview.subscriptions.active} total={Math.max(1, overview.accounts)} />
+                <div style={{ minWidth: 0 }}>
+                  <div className="hq-k">{T.paying}</div>
+                  <div className="hq-v" style={{ fontSize: 17 }}>{overview.subscriptions.active} / {overview.accounts}</div>
+                  <div className="hq-sub">{T.ofAccounts}</div>
+                </div>
               </div>
             </div>
 
-            <div>
-              <div className="hq-section-title">{T.subscriptions}</div>
-              <div className="hq-list" style={{ marginTop: 9 }}>
-                {(Object.keys(statusCopy) as SubscriptionStatus[]).map((s) => (
-                  <div key={s} className="hq-row">
-                    <div className="hq-row-main"><div className="hq-row-title">{statusCopy[s].label}</div></div>
-                    <div className="hq-row-num" style={{ color: statusCopy[s].ink }}>
-                      {s === 'past_due' ? overview.subscriptions.pastDue : overview.subscriptions[s as 'active' | 'trialing' | 'suspended' | 'cancelled']}
-                    </div>
-                  </div>
-                ))}
+            <div className="hq-card">
+              <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 12 }}>
+                <div className="hq-k">{T.salesTrend}</div>
+                <div className="hq-sub" style={{ margin: 0 }}>{T.last30}</div>
+              </div>
+              <div className="hq-v" style={{ marginBottom: 4 }}>
+                {tzs(series.reduce((sum, d) => sum + d.sales, 0))}
+              </div>
+              <Sparkline values={series.map((d) => d.sales)} height={92} label={T.salesTrend} />
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: 11 }}>
+              <div className="hq-card">
+                <div className="hq-k">{T.closingsTrend}</div>
+                <div className="hq-v" style={{ fontSize: 18 }}>
+                  {overview.closingsLast30}
+                  <span style={{ fontSize: 12.5, color: 'var(--ink3)', fontWeight: 700 }}> · {overview.verifiedLast30} {T.verified.toLowerCase()}</span>
+                </div>
+                <div style={{ marginTop: 8 }}>
+                  <Sparkline values={series.map((d) => d.closings)} height={56} tone="var(--brand)" label={T.closingsTrend} />
+                </div>
+              </div>
+
+              <div className="hq-card">
+                <div className="hq-k" style={{ marginBottom: 12 }}>{T.subscriptions}</div>
+                <StackBar
+                  segments={[
+                    { label: T.statusActive, value: overview.subscriptions.active, tone: 'var(--ok)' },
+                    { label: T.statusTrial, value: overview.subscriptions.trialing, tone: 'var(--brand)' },
+                    { label: T.statusPastDue, value: overview.subscriptions.pastDue, tone: 'var(--warn)' },
+                    { label: T.statusSuspended, value: overview.subscriptions.suspended, tone: 'var(--bad)' },
+                    { label: T.statusCancelled, value: overview.subscriptions.cancelled, tone: 'var(--ink3)' },
+                  ]}
+                />
               </div>
             </div>
           </>
@@ -359,6 +388,46 @@ export function Hq() {
         )
       )}
 
+      {section === 'inquiries' && (
+        <>
+          <div>
+            <div className="hq-section-title">{T.inquiries}</div>
+            <div className="hq-section-sub">{T.inquiriesSub}</div>
+          </div>
+          {queue === null ? <div className="hq-empty">{T.loading}…</div>
+          : queue.length === 0 ? <div className="hq-empty">{T.nothingYet}</div>
+          : (
+            <div className="hq-list">
+              {queue.map((q) => {
+                const mine = q.awaiting === 'support';
+                return (
+                  <div key={q.id} className={`hq-row${freshIds.has(q.id) ? ' hq-new' : ''}`} data-tap onClick={() => setOpenInquiry(q)}>
+                    <Icon
+                      name={q.status === 'resolved' || q.status === 'closed' ? 'check' : mine ? 'alert' : 'clock'}
+                      size={15}
+                      style={{ color: q.status === 'resolved' || q.status === 'closed' ? 'var(--ok)' : mine ? 'var(--warn)' : 'var(--ink3)' }}
+                    />
+                    <div className="hq-row-main">
+                      <div className="hq-row-title">{q.subject}</div>
+                      <div className="hq-row-meta">
+                        {[q.business_name, q.owner_name, q.category].filter(Boolean).join(' · ')}
+                      </div>
+                    </div>
+                    <span
+                      className="hq-tag"
+                      style={{ color: mine ? 'var(--warn)' : 'var(--ink3)', background: mine ? 'var(--warnSoft)' : 'var(--card2)' }}
+                    >
+                      {mine ? T.waitingOnUs : T.waitingOnThem}
+                    </span>
+                    <div className="hq-row-num" style={{ color: 'var(--ink3)', fontWeight: 600 }}>{when(q.last_message_at, lang)}</div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </>
+      )}
+
       {section === 'messages' && (
         <>
           <div>
@@ -451,6 +520,13 @@ export function Hq() {
           )}
         </>
       )}
+
+      <InquiryDrawer
+        inquiry={openInquiry}
+        onClose={() => setOpenInquiry(null)}
+        onChanged={() => { setQueue(null); void fetchSupportQueue().then(setQueue).catch(() => {}); }}
+        onFlash={flash}
+      />
 
       <ClientDrawer
         businessId={openClient}

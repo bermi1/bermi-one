@@ -5,6 +5,7 @@ import { DataProvider, useData } from './state/DataContext';
 import { ToastProvider } from './state/ToastContext';
 import { IconSprite } from './lib/icons';
 import { BottomNav } from './components/BottomNav';
+import { InstallPrompt } from './components/InstallPrompt';
 import { Sidebar } from './components/Sidebar';
 import { AuthScreen } from './routes/AuthScreen';
 import { Onboarding } from './routes/Onboarding';
@@ -23,6 +24,7 @@ import { Staff } from './routes/Staff';
 import { Hq } from './portal/Hq';
 import { Suspended } from './routes/Suspended';
 import { Pricing } from './routes/Pricing';
+import { Help } from './routes/Help';
 import { checkPlatformAdmin } from './lib/platform';
 
 function ThemeRoot() {
@@ -77,7 +79,7 @@ function AppRoutes() {
   // Money stays open to staff — it is where they record their own entries, and
   // the screen already withholds the profit summary from them. Everything else
   // in this list is owner business.
-  const isOwnerOnly = ['/reports', '/ai', '/manage', '/business', '/staff', '/pricing'].includes(location.pathname) && !owner;
+  const isOwnerOnly = ['/reports', '/ai', '/manage', '/business', '/staff', '/pricing', '/help'].includes(location.pathname) && !owner;
   if (isOwnerOnly) return <Navigate to="/home" replace />;
 
 
@@ -99,10 +101,12 @@ function AppRoutes() {
           <Route path="/business" element={<BusinessProfile />} />
           <Route path="/staff" element={<Staff />} />
           <Route path="/pricing" element={<Pricing />} />
+          <Route path="/help" element={<Help />} />
           <Route path="*" element={<Navigate to="/home" replace />} />
         </Routes>
       </div>
       <BottomNav />
+      <InstallPrompt />
     </div>
   );
 }

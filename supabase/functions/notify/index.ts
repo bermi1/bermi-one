@@ -98,6 +98,17 @@ Deno.serve(async (req) => {
   const key = req.headers.get('X-Worker-Key') ?? new URL(req.url).searchParams.get('key') ?? '';
   if (!WORKER_KEY || key !== WORKER_KEY) return new Response('Forbidden', { status: 403 });
 
+  // Queue whatever periodic reports are due before draining. One schedule runs
+  // the whole thing: the database decides what is due (and stamps it so a
+  // double run cannot send twice), this worker just delivers.
+  let reportsQueued = 0;
+  try {
+    const { data } = await admin.rpc('queue_due_reports');
+    reportsQueued = Number(data ?? 0);
+  } catch {
+    // A failure here must not stop the queue already waiting from going out.
+  }
+
   const { data: queued } = await admin
     .from('notifications')
     .select('*')
@@ -154,7 +165,7 @@ Deno.serve(async (req) => {
     }
   }
 
-  return new Response(JSON.stringify({ picked: rows.length, sent, failed }), {
+  return new Response(JSON.stringify({ reportsQueued, picked: rows.length, sent, failed }), {
     status: 200,
     headers: { 'Content-Type': 'application/json' },
   });

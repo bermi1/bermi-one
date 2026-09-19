@@ -331,3 +331,29 @@ export async function fetchWebhookEvents(limit = 60): Promise<WebhookEventRow[]>
     .limit(limit);
   return (data || []) as WebhookEventRow[];
 }
+
+export interface DailyPoint {
+  day: string;
+  closings: number;
+  verified: number;
+  sales: number;
+  new_businesses: number;
+  collected: number;
+}
+
+/** One row a day for the last 30, zeros included, so the charts tell the truth. */
+export async function fetchDailySeries(days = 30): Promise<DailyPoint[]> {
+  const { data } = await supabase.rpc('platform_daily_series', { days });
+  return ((data || []) as DailyPoint[]).map((d) => ({
+    ...d,
+    closings: Number(d.closings),
+    verified: Number(d.verified),
+    sales: Number(d.sales),
+    new_businesses: Number(d.new_businesses),
+    collected: Number(d.collected),
+  }));
+}
+
+// --- inquiries, from the console's side ------------------------------------
+export { fetchSupportQueue, fetchThread, postMessage, setInquiryStatus } from './support';
+export type { Inquiry, InquiryMessage, InquiryStatus } from './support';
