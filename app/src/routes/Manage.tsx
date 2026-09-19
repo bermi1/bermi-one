@@ -12,6 +12,8 @@ import { ComingSoonType } from '../components/ComingSoonType';
 import { checkPlatformAdmin } from '../lib/platform';
 import { localPrice } from '../lib/plans';
 import { COUNTRIES } from '../lib/countries';
+import { DELETE_WORD, deleteAccount } from '../lib/account';
+import { isNative } from '../lib/native';
 
 export function Manage() {
   const nav = useNavigate();
@@ -21,6 +23,16 @@ export function Manage() {
   const { flash } = useToast();
 
   const [addOpen, setAddOpen] = useState(false);
+
+  // Closing the account. Kept in its own sheet, behind a typed word, because
+  // the button sits on the same screen as "change my language".
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [deleteWord, setDeleteWord] = useState('');
+  const [deleting, setDeleting] = useState(false);
+
+  // No price anywhere in the downloaded app. See src/lib/native.ts.
+  const native = isNative();
+  const deleteArmed = deleteWord.trim().toUpperCase() === DELETE_WORD && !deleting;
 
   // Only Bermi Techs staff see the console entry. The route guards itself too.
   const [isStaff, setIsStaff] = useState(false);
@@ -44,6 +56,21 @@ export function Manage() {
     setAddOpen(false);
     setNewName('');
     flash(L.addBusiness);
+  }
+
+  async function submitDelete() {
+    if (deleteWord.trim().toUpperCase() !== DELETE_WORD) { flash(L.deleteNotTyped); return; }
+    setDeleting(true);
+    try {
+      await deleteAccount(deleteWord);
+      // The session belongs to a user that no longer exists. Sign out so the
+      // app does not spend the next minute retrying requests on its behalf.
+      await signOut();
+      flash(L.deleteDone);
+    } catch (e) {
+      flash(e instanceof Error ? e.message : String(e));
+      setDeleting(false);
+    }
   }
 
   const groups: { title: string; items: { name: string; meta: string; icon: string; onClick?: () => void }[] }[] = [
@@ -76,7 +103,9 @@ export function Manage() {
           <div style={{ marginTop: 2, fontSize: 11.5, color: 'var(--ink3)', fontWeight: 600 }}>
             {onTrial
               ? trialDays > 0 ? `${trialDays} ${L.trialEndsIn}` : L.trialEnded
-              : `${plan.name} · ${localPrice(plan.usd, activeBusiness?.country_code || 'TZ')}`}
+              : native
+                ? plan.name
+                : `${plan.name} · ${localPrice(plan.usd, activeBusiness?.country_code || 'TZ')}`}
           </div>
         </div>
         <Icon name="right" size={16} style={{ color: 'var(--ink3)' }} />
@@ -201,6 +230,30 @@ export function Manage() {
         </div>
       </div>
 
+      <div style={{ fontSize: 13, fontWeight: 800, color: 'var(--ink2)', textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 10 }}>{L.account}</div>
+      <div className="card" style={{ padding: 6, marginBottom: 18 }}>
+        <div className="tap" onClick={() => nav('/legal/privacy')} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '11px 8px', borderBottom: '1px solid var(--line)' }}>
+          <div style={{ width: 32, height: 32, borderRadius: 10, background: 'var(--card2)', color: 'var(--ink2)', display: 'grid', placeItems: 'center', flexShrink: 0 }}>
+            <Icon name="shield" size={15} />
+          </div>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontSize: 13.5, fontWeight: 700 }}>{L.legalDocs}</div>
+            <div style={{ fontSize: 11, color: 'var(--ink3)', fontWeight: 600 }}>{L.legalDocsSub}</div>
+          </div>
+          <Icon name="right" size={13} style={{ color: 'var(--ink3)' }} />
+        </div>
+        <div className="tap" onClick={() => { setDeleteWord(''); setDeleteOpen(true); }} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '11px 8px' }}>
+          <div style={{ width: 32, height: 32, borderRadius: 10, background: 'var(--badSoft)', color: 'var(--bad)', display: 'grid', placeItems: 'center', flexShrink: 0 }}>
+            <Icon name="trash" size={15} />
+          </div>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontSize: 13.5, fontWeight: 700, color: 'var(--bad)' }}>{L.deleteAccount}</div>
+            <div style={{ fontSize: 11, color: 'var(--ink3)', fontWeight: 600 }}>{L.deleteAccountSub}</div>
+          </div>
+          <Icon name="right" size={13} style={{ color: 'var(--ink3)' }} />
+        </div>
+      </div>
+
       <button className="btn-ghost tap" style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, color: 'var(--bad)' }} onClick={() => signOut()}>
         <Icon name="logout" size={15} />
         {L.signOut}
@@ -229,6 +282,58 @@ export function Manage() {
         </div>
         <button className="btn-primary tap" style={{ width: '100%' }} onClick={submitAdd}>
           {L.save}
+        </button>
+      </Sheet>
+
+      <Sheet open={deleteOpen} onClose={() => !deleting && setDeleteOpen(false)} title={L.deleteTitle}>
+        <p style={{ margin: '0 0 14px', fontSize: 13.5, lineHeight: 1.6, color: 'var(--ink2)', fontWeight: 500 }}>{L.deleteLede}</p>
+
+        <div className="card" style={{ background: 'var(--badSoft)', padding: 14, marginBottom: 12 }}>
+          <div style={{ fontSize: 11, fontWeight: 800, color: 'var(--bad)', textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 8 }}>{L.deleteGoes}</div>
+          {[
+            `${businesses.length} ${L.businesses}`,
+            L.stock,
+            `${L.closeToday} · ${L.reports}`,
+            L.money,
+            `${L.staffCount} · ${L.support}`,
+          ].map((line) => (
+            <div key={line} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12.5, fontWeight: 600, color: 'var(--ink2)', margin: '0 0 5px' }}>
+              <Icon name="x" size={12} style={{ color: 'var(--bad)' }} />
+              {line}
+            </div>
+          ))}
+          <div style={{ marginTop: 9, fontSize: 11.5, color: 'var(--ink3)', fontWeight: 600, lineHeight: 1.5 }}>{L.deleteKept}</div>
+        </div>
+
+        <p style={{ margin: '0 0 14px', fontSize: 12, lineHeight: 1.6, color: 'var(--ink3)', fontWeight: 600 }}>{L.deleteExportFirst}</p>
+
+        <div style={{ fontSize: 11.5, fontWeight: 800, color: 'var(--ink2)', textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 7 }}>{L.deleteTypeLabel}</div>
+        <input
+          value={deleteWord}
+          onChange={(e) => setDeleteWord(e.target.value)}
+          autoCapitalize="characters"
+          autoCorrect="off"
+          spellCheck={false}
+          placeholder={DELETE_WORD}
+          className="card"
+          style={{ width: '100%', padding: '14px 16px', border: 'none', fontSize: 16, fontWeight: 800, letterSpacing: 1.5, marginBottom: 14 }}
+        />
+
+        {/* The inline background would otherwise beat the disabled rule in the
+            stylesheet, leaving a live-looking red button that does nothing. */}
+        <button
+          className="btn-primary tap"
+          data-disabled={deleteArmed ? undefined : true}
+          style={{
+            width: '100%',
+            background: deleteArmed ? 'var(--bad)' : 'var(--line)',
+            color: deleteArmed ? '#fff' : 'var(--ink3)',
+            boxShadow: 'none',
+            border: 'none',
+          }}
+          onClick={submitDelete}
+        >
+          {deleting ? L.deleting : L.deleteConfirmCta}
         </button>
       </Sheet>
     </div>

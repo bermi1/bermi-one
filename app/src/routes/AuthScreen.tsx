@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { Link } from 'react-router-dom';
 import { useAuth } from '../state/AuthContext';
 import { T } from '../lib/i18n';
 import { Icon } from '../lib/icons';
@@ -83,6 +84,17 @@ export function AuthScreen() {
           }}
         >
           {mode === 'login' ? L.noAccount : L.haveAccount}
+        </div>
+
+        {/* A store reviewer looks for these here, before they have an account. */}
+        <div style={{ textAlign: 'center', marginTop: 26, fontSize: 12, color: 'var(--ink3)', fontWeight: 600 }}>
+          <Link to="/legal/privacy" style={{ color: 'inherit' }}>
+            {lang === 'sw' ? 'Sera ya faragha' : 'Privacy policy'}
+          </Link>
+          <span style={{ margin: '0 8px', opacity: 0.5 }}>·</span>
+          <Link to="/legal/terms" style={{ color: 'inherit' }}>
+            {lang === 'sw' ? 'Masharti' : 'Terms'}
+          </Link>
         </div>
       </div>
     </div>

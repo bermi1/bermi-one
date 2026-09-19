@@ -9,6 +9,7 @@ import { useToast } from '../state/ToastContext';
 import { PLANS, TRIAL_DAYS, localPrice, localPriceNote, requiredPlan, type Plan, type PlanCode } from '../lib/plans';
 import { checkPayment, isValidPhone, startPayment, type PayStatus } from '../lib/billing';
 import { COUNTRIES } from '../lib/countries';
+import { isNative } from '../lib/native';
 
 /**
  * Plans, and the way to actually buy one.
@@ -30,6 +31,18 @@ export function Pricing() {
   const [country, setCountry] = useState(activeBusiness?.country_code || 'TZ');
   const [paying, setPaying] = useState<Plan | null>(null);
 
+  /*
+    In the downloaded app this page states what the plan is and stops there.
+
+    Play's billing policy does not allow a subscription to a digital service to
+    be sold inside an Android app by any other means, and there is no version of
+    "pay by mobile money" that satisfies it. So on native there are no prices, no
+    Pay button, no payment sheet and no link out. The client manages the plan on
+    the web, or asks us through Get help — which is allowed, and is better
+    support than a dead button would be.
+  */
+  const native = isNative();
+
   const needed = useMemo(() => requiredPlan(businesses.length), [businesses.length]);
   const note = localPriceNote(lang, country);
   const activeCode = onTrial ? null : subscription?.subscription_plans?.code;
@@ -41,8 +54,10 @@ export function Pricing() {
   return (
     <div className="screen sb">
       <ScreenHeader
-        title={sw ? 'Bei na vifurushi' : 'Plans and pricing'}
-        sub={sw ? 'Lipa kwa mwezi. Acha wakati wowote.' : 'Billed monthly. Cancel whenever.'}
+        title={native ? (sw ? 'Kifurushi chako' : 'Your plan') : (sw ? 'Bei na vifurushi' : 'Plans and pricing')}
+        sub={native
+          ? (sw ? 'Kile kifurushi chako kinachojumuisha.' : 'What your plan covers.')
+          : (sw ? 'Lipa kwa mwezi. Acha wakati wowote.' : 'Billed monthly. Cancel whenever.')}
       />
 
       {/* Where the account stands, before anything is being sold to it. */}
@@ -59,9 +74,17 @@ export function Pricing() {
         </div>
         <div style={{ marginTop: 6, fontSize: 12.5, opacity: onTrial ? 0.88 : 1, color: onTrial ? undefined : 'var(--ink2)', lineHeight: 1.5 }}>
           {onTrial
-            ? (sw
-              ? `Siku ${TRIAL_DAYS} zina kila kitu — biashara zote, watumishi wote, ripoti zote.`
-              : `Your ${TRIAL_DAYS} days include everything — every business, every seat, every report.`)
+            ? (trialDays > 0
+              ? (sw
+                ? `Siku ${TRIAL_DAYS} zina kila kitu — biashara zote, watumishi wote, ripoti zote.`
+                : `Your ${TRIAL_DAYS} days include everything — every business, every seat, every report.`)
+              : native
+                ? (sw
+                  ? 'Taarifa zako zote zipo salama. Tuulize kupitia Pata msaada ili kuendelea.'
+                  : 'Everything you have recorded is safe. Ask us through Get help to carry on.')
+                : (sw
+                  ? 'Taarifa zako zote zipo salama. Chagua kifurushi hapa chini ili kuendelea.'
+                  : 'Everything you have recorded is safe. Choose a plan below to carry on.'))
             : renews
               ? (sw ? `Inaisha ${renews}` : `Renews ${renews}`)
               : (sw ? 'Hakuna kipindi kilichowekwa' : 'No period set yet')}
@@ -88,6 +111,7 @@ export function Pricing() {
         )}
       </div>
 
+      {!native && (
       <div className="sb" style={{ display: 'flex', gap: 8, overflowX: 'auto', paddingBottom: 4, marginBottom: 14 }}>
         {COUNTRIES.map((c) => (
           <button
@@ -100,6 +124,28 @@ export function Pricing() {
           </button>
         ))}
       </div>
+      )}
+
+      {native && (
+        <div className="card" style={{ padding: 16, marginBottom: 14, display: 'flex', gap: 12, alignItems: 'flex-start' }}>
+          <div style={{ width: 34, height: 34, borderRadius: 11, background: 'var(--card2)', color: 'var(--ink2)', display: 'grid', placeItems: 'center', flexShrink: 0 }}>
+            <Icon name="info" size={16} />
+          </div>
+          <div style={{ minWidth: 0 }}>
+            <div style={{ fontSize: 13.5, fontWeight: 800 }}>
+              {sw ? 'Kifurushi kinasimamiwa nje ya programu' : 'Your plan is managed outside the app'}
+            </div>
+            <div style={{ marginTop: 4, fontSize: 12.5, color: 'var(--ink2)', lineHeight: 1.5 }}>
+              {sw
+                ? 'Kubadilisha au kuhuisha kifurushi, tuulize kupitia Pata msaada na tutakushughulikia.'
+                : 'To change or renew a plan, ask us through Get help and we will sort it out with you.'}
+            </div>
+            <button className="btn-ghost tap" style={{ marginTop: 11, padding: '10px 14px', fontSize: 12.5, fontWeight: 700 }} onClick={() => nav('/help')}>
+              {L.getHelp}
+            </button>
+          </div>
+        </div>
+      )}
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
         {PLANS.map((p) => (
@@ -111,12 +157,13 @@ export function Pricing() {
             recommended={p.code === needed.code}
             current={p.code === activeCode}
             businesses={businesses.length}
+            native={native}
             onChoose={() => setPaying(p)}
           />
         ))}
       </div>
 
-      {note && (
+      {!native && note && (
         <div style={{ marginTop: 12, fontSize: 11.5, color: 'var(--ink3)', textAlign: 'center', lineHeight: 1.5 }}>{note}</div>
       )}
 
@@ -126,12 +173,14 @@ export function Pricing() {
 
       <div className="card" style={{ marginTop: 16, padding: 16 }}>
         <div style={{ fontSize: 13, fontWeight: 800, marginBottom: 8 }}>
-          {sw ? 'Jinsi bei inavyofanya kazi' : 'How the pricing works'}
+          {native
+            ? (sw ? 'Jinsi vifurushi vinavyofanya kazi' : 'How the plans work')
+            : (sw ? 'Jinsi bei inavyofanya kazi' : 'How the pricing works')}
         </div>
         {[
           sw ? 'Kifurushi kimoja kinafunika akaunti yako yote, si kila biashara.' : 'One plan covers your whole account, not each business.',
           sw ? 'Biashara moja ni Starter. Mbili au tatu ni Standard. Nne au zaidi ni Premium.' : 'One business is Starter. Two or three is Standard. Four or more is Premium.',
-          sw ? 'Unalipa kwa simu yako. Utapokea ombi la PIN.' : 'You pay from your phone — a prompt arrives and you enter your PIN.',
+          ...(native ? [] : [sw ? 'Unalipa kwa simu yako. Utapokea ombi la PIN.' : 'You pay from your phone — a prompt arrives and you enter your PIN.']),
           sw ? 'Taarifa zako ni zako. Unaweza kuzitoa wakati wowote.' : 'Your records stay yours — export them any time, on any plan.',
         ].map((line) => (
           <div key={line} style={{ display: 'flex', gap: 9, padding: '5px 0', alignItems: 'flex-start' }}>
@@ -143,12 +192,14 @@ export function Pricing() {
 
       <button className="btn-ghost tap" style={{ width: '100%', marginTop: 14 }} onClick={() => nav('/manage')}>{L.back}</button>
 
-      <PaySheet
-        plan={paying}
-        country={country}
-        onClose={() => setPaying(null)}
-        onPaid={() => { void refreshSubscription(); flash(sw ? 'Malipo yamekamilika' : 'Payment received'); }}
-      />
+      {!native && (
+        <PaySheet
+          plan={paying}
+          country={country}
+          onClose={() => setPaying(null)}
+          onPaid={() => { void refreshSubscription(); flash(sw ? 'Malipo yamekamilika' : 'Payment received'); }}
+        />
+      )}
     </div>
   );
 
@@ -209,13 +260,14 @@ export function Pricing() {
   }
 }
 
-function PlanCard({ plan, country, lang, recommended, current, businesses, onChoose }: {
+function PlanCard({ plan, country, lang, recommended, current, businesses, native, onChoose }: {
   plan: Plan;
   country: string;
   lang: 'en' | 'sw';
   recommended: boolean;
   current: boolean;
   businesses: number;
+  native: boolean;
   onChoose: () => void;
 }) {
   const sw = lang === 'sw';
@@ -258,12 +310,14 @@ function PlanCard({ plan, country, lang, recommended, current, businesses, onCho
             </div>
             <div style={{ marginTop: 5, fontSize: 12.5, color: 'var(--ink2)', lineHeight: 1.45 }}>{plan.blurb[lang]}</div>
           </div>
-          <div style={{ textAlign: 'right', flexShrink: 0 }}>
-            <div style={{ fontSize: 22, fontWeight: 800, letterSpacing: -0.7 }}>{showsLocal ? local : usd}</div>
-            <div style={{ fontSize: 10.5, color: 'var(--ink3)', fontWeight: 700, marginTop: 1 }}>
-              {showsLocal ? `${usd} · ` : ''}{sw ? 'kwa mwezi' : 'per month'}
+          {!native && (
+            <div style={{ textAlign: 'right', flexShrink: 0 }}>
+              <div style={{ fontSize: 22, fontWeight: 800, letterSpacing: -0.7 }}>{showsLocal ? local : usd}</div>
+              <div style={{ fontSize: 10.5, color: 'var(--ink3)', fontWeight: 700, marginTop: 1 }}>
+                {showsLocal ? `${usd} · ` : ''}{sw ? 'kwa mwezi' : 'per month'}
+              </div>
             </div>
-          </div>
+          )}
         </div>
       </div>
 
@@ -275,7 +329,7 @@ function PlanCard({ plan, country, lang, recommended, current, businesses, onCho
           </div>
         ))}
 
-        {tooSmall ? (
+        {native ? null : tooSmall ? (
           <div style={{ marginTop: 12, fontSize: 11.5, fontWeight: 700, color: 'var(--warn)', lineHeight: 1.45 }}>
             {sw
               ? `Una biashara ${businesses}. Kifurushi hiki kinafunika ${plan.limits.maxBusinesses}.`

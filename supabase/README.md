@@ -1,6 +1,6 @@
 # Bermi One — server side
 
-Three edge functions and the secrets they need. Nothing here reads a secret from
+Five edge functions and the secrets they need. Nothing here reads a secret from
 the repository; they are set once in **Supabase → Edge Functions → Secrets** and
 live only in the function runtime.
 
@@ -11,6 +11,8 @@ live only in the function runtime.
 | `admin` | required | The Bermi Techs console, for the two things that need elevated rights: minting a password recovery link, and charging a subscription. |
 | `payme-webhook` | **off** | Payme Africa. Authenticated by the `X-Middleware-Signature` HMAC, checked before any field of the body is trusted. |
 | `notify` | **off** | A schedule. Authenticated by the `X-Worker-Key` header. |
+| `subscribe` | required | The client's own browser, paying for their own subscription. Everything is keyed to `auth.uid()`; the browser names a plan code and a phone number and nothing else. |
+| `delete-account` | required | The client, closing their own account. Deletes only the user behind the calling JWT — there is no id in the body to aim elsewhere. |
 
 JWT verification is off on two of them deliberately: neither caller has a
 Supabase session, so a JWT would have nothing to verify. Both authenticate by

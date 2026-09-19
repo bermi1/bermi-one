@@ -25,6 +25,7 @@ import { Hq } from './portal/Hq';
 import { Suspended } from './routes/Suspended';
 import { Pricing } from './routes/Pricing';
 import { Help } from './routes/Help';
+import { Legal } from './routes/Legal';
 import { checkPlatformAdmin } from './lib/platform';
 
 function ThemeRoot() {
@@ -55,6 +56,15 @@ function AppRoutes() {
     if (!session) { setIsStaff(false); return; }
     void checkPlatformAdmin().then(setIsStaff);
   }, [session]);
+
+  /*
+    The legal pages come before everything, including the loading spinner.
+
+    A store reviewer opens the privacy URL with no account and no patience, and
+    someone who has just deleted their account still has to be able to read what
+    happened to their data. Neither has a session, so neither can be behind one.
+  */
+  if (location.pathname.startsWith('/legal')) return <Legal />;
 
   if (authLoading || (session && !ready)) return <Spinner />;
   if (!session) return <AuthScreen />;

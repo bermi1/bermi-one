@@ -6,6 +6,8 @@ import { useAuth } from '../state/AuthContext';
 import { fetchMySubscription, type Subscription } from '../lib/platform';
 import { formatMoney } from '../lib/countries';
 import { countryByCode } from '../lib/countries';
+import { isNative } from '../lib/native';
+import { COMPANY } from '../lib/company';
 
 /**
  * What a client sees when their subscription has lapsed.
@@ -26,6 +28,8 @@ export function Suspended() {
   }, []);
 
   const sw = lang === 'sw';
+  // No price in the downloaded app, here either. See src/lib/native.ts.
+  const native = isNative();
   const amount = sub?.subscription_plans?.amount ?? 0;
   const money = formatMoney(amount, countryByCode(activeBusiness?.country_code || 'TZ'));
 
@@ -51,12 +55,15 @@ export function Suspended() {
               <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--ink3)', textTransform: 'uppercase', letterSpacing: 0.4 }}>
                 {sub.subscription_plans.name}
               </div>
-              <div style={{ marginTop: 4, fontSize: 20, fontWeight: 800 }}>{money}</div>
+              {!native && <div style={{ marginTop: 4, fontSize: 20, fontWeight: 800 }}>{money}</div>}
             </div>
           )}
 
+          {/* The only way out of this screen, so it names the address rather
+              than telling someone to go and find it. */}
           <div style={{ marginTop: 16, fontSize: 12.5, color: 'var(--ink3)', lineHeight: 1.5 }}>
             {sw ? 'Wasiliana na Bermi Techs kurejesha huduma.' : 'Contact Bermi Techs to restore access.'}
+            <div style={{ marginTop: 4, fontWeight: 700, color: 'var(--ink2)' }}>{COMPANY.supportEmail}</div>
           </div>
         </div>
 
