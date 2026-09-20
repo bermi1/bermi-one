@@ -2,81 +2,59 @@ import { useEffect, useState } from 'react';
 import { Icon } from '../lib/icons';
 import { useSettings } from '../lib/useSettings';
 import { isNative } from '../lib/native';
+import { canInstall, canOffer, install, isIosSafari, onInstallChange } from '../lib/pwa';
 
-interface InstallEvent extends Event {
-  prompt: () => Promise<void>;
-  userChoice: Promise<{ outcome: 'accepted' | 'dismissed' }>;
-}
-
-const DISMISSED = 'bermi.install.dismissed';
+const SNOOZED = 'bermi.install.snoozed';
+const SNOOZE_DAYS = 14;
 
 /**
- * Offer to install the app.
+ * Offer to install the app, once, quietly.
  *
- * Chrome and Edge fire `beforeinstallprompt` and let us show the real system
- * dialogue at a moment of our choosing. iOS Safari fires nothing and has no API
- * at all — the only way onto a home screen there is Share → Add to Home Screen —
- * so that case gets instructions rather than a button that cannot work.
+ * The listener itself lives in src/lib/pwa.ts and is registered before React
+ * renders — this component only reads what it caught. That is the fix for a
+ * banner that used to miss `beforeinstallprompt` entirely and so never showed.
  *
- * Deliberately not shown on first paint: someone who has been in the app for
- * half a minute has some idea whether they want it. A prompt that appears
- * before the product does is a prompt that gets dismissed reflexively.
+ * Deliberately not on first paint: someone who has been in the app for half a
+ * minute has some idea whether they want it. And "not now" snoozes for a
+ * fortnight rather than silencing it for ever — the permanent way in is the
+ * entry on the Manage screen, which is where someone goes when they have
+ * decided.
  */
 export function InstallPrompt() {
   const { lang } = useSettings();
   const sw = lang === 'sw';
 
-  const [deferred, setDeferred] = useState<InstallEvent | null>(null);
-  const [iosHint, setIosHint] = useState(false);
+  const [offer, setOffer] = useState(false);
   const [visible, setVisible] = useState(false);
 
   useEffect(() => {
-    // Already installed, or previously waved away.
-    // Inside the downloaded app there is nothing to install. Asking would be
-    // absurd, and on iOS the fallback instructions would show regardless.
+    // Inside the downloaded app there is nothing to install.
     if (isNative()) return;
 
-    const standalone = window.matchMedia('(display-mode: standalone)').matches
-      || (window.navigator as unknown as { standalone?: boolean }).standalone === true;
-    if (standalone) return;
-    try { if (localStorage.getItem(DISMISSED)) return; } catch { /* private mode: just show it */ }
+    try {
+      const until = Number(localStorage.getItem(SNOOZED) || 0);
+      if (until > Date.now()) return;
+    } catch { /* private mode: just offer it */ }
 
-    const onPrompt = (e: Event) => {
-      e.preventDefault();
-      setDeferred(e as InstallEvent);
-      setTimeout(() => setVisible(true), 25_000);
-    };
-    window.addEventListener('beforeinstallprompt', onPrompt);
-
-    const ua = navigator.userAgent;
-    const isIos = /iPad|iPhone|iPod/.test(ua) && !(window as unknown as { MSStream?: unknown }).MSStream;
-    const isSafari = /Safari/.test(ua) && !/CriOS|FxiOS|EdgiOS/.test(ua);
-    if (isIos && isSafari) {
-      setIosHint(true);
-      setTimeout(() => setVisible(true), 25_000);
-    }
-
-    const onInstalled = () => setVisible(false);
-    window.addEventListener('appinstalled', onInstalled);
-
-    return () => {
-      window.removeEventListener('beforeinstallprompt', onPrompt);
-      window.removeEventListener('appinstalled', onInstalled);
-    };
+    const sync = () => setOffer(canOffer());
+    sync();
+    const stop = onInstallChange(sync);
+    const timer = setTimeout(() => setVisible(true), 25_000);
+    return () => { stop(); clearTimeout(timer); };
   }, []);
 
-  if (!visible || (!deferred && !iosHint)) return null;
+  if (!visible || !offer) return null;
 
-  function dismiss() {
+  const iosHint = !canInstall() && isIosSafari();
+
+  function snooze() {
     setVisible(false);
-    try { localStorage.setItem(DISMISSED, '1'); } catch { /* nothing to remember it with */ }
+    try { localStorage.setItem(SNOOZED, String(Date.now() + SNOOZE_DAYS * 86_400_000)); } catch { /* nothing to remember it with */ }
   }
 
-  async function install() {
-    if (!deferred) return;
-    await deferred.prompt();
-    const { outcome } = await deferred.userChoice;
-    if (outcome !== 'accepted') dismiss();
+  async function run() {
+    const outcome = await install();
+    if (outcome !== 'accepted') snooze();
     setVisible(false);
   }
 
@@ -110,16 +88,16 @@ export function InstallPrompt() {
         </div>
         <div style={{ display: 'flex', gap: 8, marginTop: 11 }}>
           {!iosHint && (
-            <button className="btn-primary tap" style={{ padding: '9px 16px', fontSize: 13 }} onClick={install}>
+            <button className="btn-primary tap" style={{ padding: '9px 16px', fontSize: 13 }} onClick={() => void run()}>
               {sw ? 'Sakinisha' : 'Install'}
             </button>
           )}
-          <button className="btn-ghost tap" style={{ padding: '9px 14px', fontSize: 13 }} onClick={dismiss}>
+          <button className="btn-ghost tap" style={{ padding: '9px 14px', fontSize: 13 }} onClick={snooze}>
             {sw ? 'Si sasa' : 'Not now'}
           </button>
         </div>
       </div>
-      <button className="icon-btn tap" style={{ width: 28, height: 28, flexShrink: 0 }} onClick={dismiss} aria-label={sw ? 'Funga' : 'Dismiss'}>
+      <button className="icon-btn tap" style={{ width: 28, height: 28, flexShrink: 0 }} onClick={snooze} aria-label={sw ? 'Funga' : 'Dismiss'}>
         <Icon name="x" size={13} />
       </button>
     </div>

@@ -8,7 +8,6 @@ import { useData } from '../state/DataContext';
 import { useToast } from '../state/ToastContext';
 import { businessDayIso, expectedSales, profitOf, soldOf, closingItemsTotal, groupByCategory } from '../lib/calc';
 import { tintVars, type ClosingItemKind } from '../lib/types';
-import { openSessionReport } from '../lib/sessionReport';
 
 const DEDUCTION_SECTIONS: { kind: ClosingItemKind; icon: string }[] = [
   { kind: 'expense', icon: 'receipt' },
@@ -188,8 +187,14 @@ export function Close() {
     setItemSheetOpen(false);
   }
 
-  function printReport() {
+  /*
+    The report builder is fetched when someone asks to print, not when the
+    screen loads. It is several hundred lines of HTML and CSS that most
+    closings never produce, and a counting screen should not carry it.
+  */
+  async function printReport() {
     if (!activeBusiness || !session) return;
+    const { openSessionReport } = await import('../lib/sessionReport');
     const ok = openSessionReport({ business: activeBusiness, products, session, lang, includeProfit: owner });
     if (!ok) flash(lang === 'sw' ? 'Ruhusu dirisha jipya' : 'Allow pop-ups to open the report');
   }
@@ -264,7 +269,7 @@ export function Close() {
         </div>
 
         <div style={{ display: 'flex', gap: 10 }}>
-          <button className="btn-ghost tap" style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }} onClick={printReport}>
+          <button className="btn-ghost tap" style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }} onClick={() => void printReport()}>
             <Icon name="doc" size={15} />
             {L.report}
           </button>

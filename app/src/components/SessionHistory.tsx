@@ -7,7 +7,6 @@ import { countryByCode } from '../lib/countries';
 import { useData } from '../state/DataContext';
 import { useToast } from '../state/ToastContext';
 import { availableOf, closingItemsTotal, linesOf, sessionTotals, soldOf, soldOfLine } from '../lib/calc';
-import { openSessionReport } from '../lib/sessionReport';
 import type { StockSession } from '../lib/types';
 
 /** Every past closing for this business: review, verify, reprint, remove. */
@@ -53,8 +52,9 @@ export function SessionHistory() {
     }
   };
 
-  function report(s: StockSession) {
+  async function report(s: StockSession) {
     if (!activeBusiness) return;
+    const { openSessionReport } = await import('../lib/sessionReport');
     const ok = openSessionReport({ business: activeBusiness, products, session: s, lang, includeProfit: owner });
     if (!ok) flash(lang === 'sw' ? 'Ruhusu dirisha jipya' : 'Allow pop-ups to open the report');
   }
@@ -142,7 +142,7 @@ export function SessionHistory() {
                 <button className="chip tap" style={{ padding: '6px 11px', fontSize: 11.5 }} onClick={() => setViewing(s)}>
                   {L.view}
                 </button>
-                <button className="chip tap" style={{ padding: '6px 11px', fontSize: 11.5, display: 'flex', alignItems: 'center', gap: 5 }} onClick={() => report(s)}>
+                <button className="chip tap" style={{ padding: '6px 11px', fontSize: 11.5, display: 'flex', alignItems: 'center', gap: 5 }} onClick={() => void report(s)}>
                   <Icon name="doc" size={11} />
                   {L.report}
                 </button>
@@ -291,7 +291,7 @@ export function SessionHistory() {
                 {L.resumeClosing}
               </button>
             )}
-            <button className="btn-ghost tap" style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }} onClick={() => report(viewing)}>
+            <button className="btn-ghost tap" style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }} onClick={() => void report(viewing)}>
               <Icon name="doc" size={15} />
               {L.report}
             </button>

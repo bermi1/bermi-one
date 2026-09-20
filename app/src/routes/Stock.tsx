@@ -9,7 +9,6 @@ import { useToast } from '../state/ToastContext';
 import { currentQty, groupByCategory, stockValueOf } from '../lib/calc';
 import { tintVars, type Product } from '../lib/types';
 import { parseTable, buildRows, FIELD_LABELS, type FieldKey, type ParsedTable } from '../lib/csv';
-import { openStockSheet } from '../lib/stockSheet';
 import { SessionHistory } from '../components/SessionHistory';
 import { ReceiveStock } from '../components/ReceiveStock';
 
@@ -239,8 +238,10 @@ export function Stock() {
     URL.revokeObjectURL(url);
   }
 
-  function printSheet() {
+  // Fetched on the click, not on the screen. See the note in Close.tsx.
+  async function printSheet() {
     if (!activeBusiness) return;
+    const { openStockSheet } = await import('../lib/stockSheet');
     const ok = openStockSheet({ business: activeBusiness, products: filtered, lang });
     if (!ok) flash(lang === 'sw' ? 'Ruhusu dirisha jipya kwenye kivinjari' : 'Allow pop-ups to print the sheet');
   }
@@ -518,7 +519,7 @@ export function Stock() {
               </button>
             </div>
           )}
-          <button className="btn-ghost tap" style={{ width: '100%', marginTop: 8, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }} onClick={printSheet}>
+          <button className="btn-ghost tap" style={{ width: '100%', marginTop: 8, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }} onClick={() => void printSheet()}>
             <Icon name="doc" size={16} />
             {L.printStockSheet}
           </button>

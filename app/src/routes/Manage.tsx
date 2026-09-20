@@ -14,6 +14,7 @@ import { localPrice } from '../lib/plans';
 import { COUNTRIES } from '../lib/countries';
 import { DELETE_WORD, deleteAccount } from '../lib/account';
 import { isNative } from '../lib/native';
+import { canInstall, canOffer, install, isIosSafari, isStandalone, onInstallChange } from '../lib/pwa';
 
 export function Manage() {
   const nav = useNavigate();
@@ -33,6 +34,30 @@ export function Manage() {
   // No price anywhere in the downloaded app. See src/lib/native.ts.
   const native = isNative();
   const deleteArmed = deleteWord.trim().toUpperCase() === DELETE_WORD && !deleting;
+
+  /*
+    The permanent way to install.
+
+    The banner appears once and can be waved away; this is where someone comes
+    when they have decided. It follows the real state rather than a guess —
+    hidden inside the downloaded app and once already installed, instructions on
+    iOS where there is no API, and an honest line on a browser that cannot do it
+    at all.
+  */
+  const [installable, setInstallable] = useState(() => !isNative() && canOffer());
+  const [installedNow, setInstalledNow] = useState(() => isStandalone());
+  useEffect(() => {
+    if (isNative()) return;
+    const sync = () => { setInstallable(canOffer()); setInstalledNow(isStandalone()); };
+    sync();
+    return onInstallChange(sync);
+  }, []);
+
+  async function runInstall() {
+    if (!canInstall()) { flash(isIosSafari() ? L.installAppIos : L.installAppNone); return; }
+    const outcome = await install();
+    if (outcome === 'accepted') flash(L.installAppDone);
+  }
 
   // Only Bermi Techs staff see the console entry. The route guards itself too.
   const [isStaff, setIsStaff] = useState(false);
@@ -229,6 +254,21 @@ export function Manage() {
           </button>
         </div>
       </div>
+
+      {!isNative() && !installedNow && installable && (
+        <div className="card tap" onClick={() => void runInstall()} style={{ padding: 16, marginBottom: 18, display: 'flex', alignItems: 'center', gap: 12 }}>
+          <div style={{ width: 38, height: 38, borderRadius: 12, background: 'var(--brandSoft)', display: 'grid', placeItems: 'center', flexShrink: 0 }}>
+            <img src="/icons/bermi-mark.svg" alt="" width={30} height={30} />
+          </div>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontSize: 14, fontWeight: 800 }}>{L.installApp}</div>
+            <div style={{ marginTop: 2, fontSize: 11.5, color: 'var(--ink3)', fontWeight: 600, lineHeight: 1.4 }}>
+              {canInstall() ? L.installAppSub : L.installAppIos}
+            </div>
+          </div>
+          <Icon name={canInstall() ? 'download' : 'share'} size={16} style={{ color: 'var(--brand)' }} />
+        </div>
+      )}
 
       <div style={{ fontSize: 13, fontWeight: 800, color: 'var(--ink2)', textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 10 }}>{L.account}</div>
       <div className="card" style={{ padding: 6, marginBottom: 18 }}>

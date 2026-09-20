@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { Suspense, lazy, useEffect, useState } from 'react';
 import { BrowserRouter, Navigate, Route, Routes, useLocation } from 'react-router-dom';
 import { AuthProvider, useAuth } from './state/AuthContext';
 import { DataProvider, useData } from './state/DataContext';
@@ -8,26 +8,47 @@ import { BottomNav } from './components/BottomNav';
 import { InstallPrompt } from './components/InstallPrompt';
 import { Sidebar } from './components/Sidebar';
 import { AuthScreen } from './routes/AuthScreen';
-import { Onboarding } from './routes/Onboarding';
 import { Home } from './routes/Home';
 import { StaffHome } from './routes/StaffHome';
 import { Stock } from './routes/Stock';
 import { Close } from './routes/Close';
 import { Difference } from './routes/Difference';
-import { Approval } from './routes/Approval';
-import { Money } from './routes/Money';
-import { Reports } from './routes/Reports';
-import { AI } from './routes/AI';
-import { Manage } from './routes/Manage';
-import { BusinessProfile } from './routes/BusinessProfile';
-import { Staff } from './routes/Staff';
-import { Hq } from './portal/Hq';
-import { Suspended } from './routes/Suspended';
-import { Pricing } from './routes/Pricing';
-import { Help } from './routes/Help';
-import { Legal } from './routes/Legal';
-import { SetPassword } from './routes/SetPassword';
 import { NativeShell } from './components/NativeShell';
+
+/*
+  What loads first, and what waits.
+
+  Home, Stock, Close and Difference are the app: a bar opens it to count and to
+  see the day. Everything else — the whole control panel above all, which no
+  tenant will ever open — is fetched when someone actually asks for it. On a
+  phone on a Tanzanian mobile network that difference is the difference between
+  the app opening and the app appearing to be broken.
+*/
+const Onboarding = lazy(() => import('./routes/Onboarding').then((m) => ({ default: m.Onboarding })));
+const Approval = lazy(() => import('./routes/Approval').then((m) => ({ default: m.Approval })));
+const Money = lazy(() => import('./routes/Money').then((m) => ({ default: m.Money })));
+const Reports = lazy(() => import('./routes/Reports').then((m) => ({ default: m.Reports })));
+const AI = lazy(() => import('./routes/AI').then((m) => ({ default: m.AI })));
+const Manage = lazy(() => import('./routes/Manage').then((m) => ({ default: m.Manage })));
+const BusinessProfile = lazy(() => import('./routes/BusinessProfile').then((m) => ({ default: m.BusinessProfile })));
+const Staff = lazy(() => import('./routes/Staff').then((m) => ({ default: m.Staff })));
+const Hq = lazy(() => import('./portal/Hq').then((m) => ({ default: m.Hq })));
+const Suspended = lazy(() => import('./routes/Suspended').then((m) => ({ default: m.Suspended })));
+const Pricing = lazy(() => import('./routes/Pricing').then((m) => ({ default: m.Pricing })));
+const Help = lazy(() => import('./routes/Help').then((m) => ({ default: m.Help })));
+const Legal = lazy(() => import('./routes/Legal').then((m) => ({ default: m.Legal })));
+const SetPassword = lazy(() => import('./routes/SetPassword').then((m) => ({ default: m.SetPassword })));
+
+/**
+ * What fills the gap while a screen is fetched.
+ *
+ * Deliberately blank rather than a spinner: on any connection worth the name
+ * the chunk arrives inside a frame or two, and a spinner that flashes for
+ * 80ms reads as a fault rather than as progress.
+ */
+function Pending() {
+  return <div style={{ minHeight: '40vh' }} />;
+}
 import { checkPlatformAdmin } from './lib/platform';
 
 function ThemeRoot() {
@@ -39,10 +60,16 @@ function ThemeRoot() {
   return null;
 }
 
-function Spinner() {
-  return (
-    <div style={{ minHeight: '100dvh', display: 'grid', placeItems: 'center', color: 'var(--ink3)', fontWeight: 600 }}>Loading…</div>
-  );
+/**
+ * Hand the screen over from the boot splash painted by index.html.
+ *
+ * Called once, at the point the app is actually usable. Until then the splash
+ * stays up — which is the difference between one load and what used to look
+ * like two, a splash dissolving into a bare "Loading…" line.
+ */
+function handOverFromSplash() {
+  window.__bermiReady?.();
+  window.__bermiReady = undefined;
 }
 
 function AppRoutes() {
@@ -66,16 +93,24 @@ function AppRoutes() {
     someone who has just deleted their account still has to be able to read what
     happened to their data. Neither has a session, so neither can be behind one.
   */
-  if (location.pathname.startsWith('/legal')) return <Legal />;
+  if (location.pathname.startsWith('/legal')) {
+    handOverFromSplash();
+    return <Suspense fallback={<Pending />}><Legal /></Suspense>;
+  }
 
-  if (authLoading || (session && !ready)) return <Spinner />;
+  // Still starting up: nothing to show that the splash is not already showing
+  // better. Returning null keeps the boot screen on the glass.
+  if (authLoading || (session && !ready)) return null;
+
+  handOverFromSplash();
+
   if (!session) return <AuthScreen />;
 
   // A recovery link signs someone in without them knowing their password. This
   // stands in front of everything until they have chosen one.
-  if (recovering) return <SetPassword />;
+  if (recovering) return <Suspense fallback={<Pending />}><SetPassword /></Suspense>;
 
-  if (!profile?.onboarded) return <Onboarding />;
+  if (!profile?.onboarded) return <Suspense fallback={<Pending />}><Onboarding /></Suspense>;
 
   /*
     The control panel is its own application.
@@ -86,12 +121,12 @@ function AppRoutes() {
     should not share furniture.
   */
   if (location.pathname.startsWith('/hq') || location.pathname === '/admin') {
-    return isStaff ? <Hq /> : <Navigate to="/home" replace />;
+    return isStaff ? <Suspense fallback={<Pending />}><Hq /></Suspense> : <Navigate to="/home" replace />;
   }
 
   // A lapsed subscription stops the product, not the console: staff need to get
   // into the panel to lift the block in the first place.
-  if (activeBusiness?.suspended && !isStaff) return <Suspended />;
+  if (activeBusiness?.suspended && !isStaff) return <Suspense fallback={<Pending />}><Suspended /></Suspense>;
 
   // Money stays open to staff — it is where they record their own entries, and
   // the screen already withholds the profit summary from them. Everything else
@@ -105,6 +140,7 @@ function AppRoutes() {
       <ThemeRoot />
       <Sidebar />
       <div className="app-main">
+        <Suspense fallback={<Pending />}>
         <Routes>
           <Route path="/home" element={owner ? <Home /> : <StaffHome />} />
           <Route path="/stock" element={<Stock />} />
@@ -121,6 +157,7 @@ function AppRoutes() {
           <Route path="/help" element={<Help />} />
           <Route path="*" element={<Navigate to="/home" replace />} />
         </Routes>
+        </Suspense>
       </div>
       <BottomNav />
       <InstallPrompt />
