@@ -372,6 +372,7 @@ function PaySheet({ plan, country, onClose, onPaid }: {
 
   const [phone, setPhone] = useState('');
   const [busy, setBusy] = useState(false);
+  const [timedOut, setTimedOut] = useState(false);
   const [reference, setReference] = useState<string | null>(null);
   const [status, setStatus] = useState<PayStatus | null>(null);
   const [message, setMessage] = useState('');
@@ -386,7 +387,13 @@ function PaySheet({ plan, country, onClose, onPaid }: {
     const started = Date.now();
 
     const tick = async () => {
-      if (Date.now() - started > 120_000) return;
+      if (Date.now() - started > 120_000) {
+        // Not a failure — a prompt nobody answered, which is a different thing
+        // and has a different next step. Stopping silently left the screen
+        // saying "check your phone" for ever.
+        setTimedOut(true);
+        return;
+      }
       try {
         const out = await checkPayment(reference);
         if (out.status !== 'PENDING') {
@@ -423,8 +430,27 @@ function PaySheet({ plan, country, onClose, onPaid }: {
       setStatus(out.status || 'PENDING');
       setMessage(out.message || '');
     } catch (e) {
+      /*
+        Three failures, three different next steps, and they used to arrive as
+        one undifferentiated string. "Payments are not configured yet" is ours
+        to fix and nothing the client does will help; an unreachable gateway is
+        worth trying again in a minute; anything else is worth telling us about.
+      */
+      const raw = e instanceof Error ? e.message : String(e);
+      const notConfigured = /not configured/i.test(raw);
+      const unreachable = /could not reach|gateway|network|failed to fetch/i.test(raw);
       setStatus('FAILED');
-      setMessage(e instanceof Error ? e.message : String(e));
+      setMessage(
+        notConfigured
+          ? (sw
+            ? 'Malipo bado hayajawashwa. Tuulize kupitia Pata msaada — si kitu unachoweza kurekebisha.'
+            : 'Payments are not switched on yet. Ask us through Get help — this one is ours, not yours.')
+          : unreachable
+            ? (sw
+              ? 'Hatukuweza kufikia lango la malipo. Jaribu tena baada ya dakika moja.'
+              : 'We could not reach the payment gateway. Try again in a minute.')
+            : raw,
+      );
     }
     setBusy(false);
   }
@@ -433,7 +459,9 @@ function PaySheet({ plan, country, onClose, onPaid }: {
     status === 'COMPLETED' ? { bg: 'var(--okSoft)', ink: 'var(--ok)', icon: 'check', text: sw ? 'Malipo yamepokelewa' : 'Payment received' }
     : status === 'FAILED' ? { bg: 'var(--badSoft)', ink: 'var(--bad)', icon: 'alert', text: sw ? 'Malipo yameshindikana' : 'Payment failed' }
     : status === 'CANCELLED' ? { bg: 'var(--badSoft)', ink: 'var(--bad)', icon: 'x', text: sw ? 'Umesitisha' : 'Cancelled' }
-    : { bg: 'var(--warnSoft)', ink: 'var(--warn)', icon: 'clock', text: sw ? 'Angalia simu yako, weka PIN' : 'Check your phone and enter your PIN' };
+    : timedOut
+      ? { bg: 'var(--card2)', ink: 'var(--ink2)', icon: 'clock', text: sw ? 'Bado hatujapata jibu' : 'We have not heard back yet' }
+      : { bg: 'var(--warnSoft)', ink: 'var(--warn)', icon: 'clock', text: sw ? 'Angalia simu yako, weka PIN' : 'Check your phone and enter your PIN' };
 
   return (
     <Sheet
@@ -450,8 +478,17 @@ function PaySheet({ plan, country, onClose, onPaid }: {
             </div>
             <div style={{ fontSize: 14.5, fontWeight: 800, color: tone.ink }}>{tone.text}</div>
             <div style={{ marginTop: 6, fontSize: 19, fontWeight: 800 }}>{shown}</div>
-            {message && <div style={{ marginTop: 6, fontSize: 12.5, color: 'var(--ink2)' }}>{message}</div>}
-            <div style={{ marginTop: 9, fontSize: 10, color: 'var(--ink3)', fontWeight: 700, letterSpacing: 0.4 }}>{reference}</div>
+            {message && <div style={{ marginTop: 6, fontSize: 12.5, color: 'var(--ink2)', lineHeight: 1.5 }}>{message}</div>}
+            {timedOut && status === 'PENDING' && (
+              <div style={{ marginTop: 6, fontSize: 12.5, color: 'var(--ink2)', lineHeight: 1.5 }}>
+                {sw
+                  ? 'Malipo hayajapotea. Yakikamilika kifurushi kitawaka chenyewe. Ukituuliza, tupe rejea hii.'
+                  : 'Nothing is lost. If it goes through, the plan switches on by itself. If you ask us about it, quote this reference.'}
+              </div>
+            )}
+            {/* Selectable: support asks for this, and a number you cannot copy
+                is a number that gets read out wrong. */}
+            <div style={{ marginTop: 9, fontSize: 10, color: 'var(--ink3)', fontWeight: 700, letterSpacing: 0.4, userSelect: 'all' }}>{reference}</div>
           </div>
           <button className="btn-primary tap" style={{ width: '100%' }} onClick={onClose}>
             {status === 'COMPLETED' ? (sw ? 'Vizuri' : 'Done') : (sw ? 'Funga' : 'Close')}

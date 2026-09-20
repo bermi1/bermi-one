@@ -11,6 +11,18 @@ import type { PlanCode } from './plans';
 
 export type PayStatus = 'PENDING' | 'COMPLETED' | 'FAILED' | 'CANCELLED';
 
+export interface GatewayConfig {
+  app_id_set: boolean;
+  secret_set: boolean;
+  callback_set: boolean;
+  callback_url: string | null;
+  sandbox: boolean;
+  usd_rate: number;
+  plans: { code: string; name: string; amount: number; currency: string; active: boolean }[];
+  /** Everything a payment needs is in place. */
+  ready: boolean;
+}
+
 export interface PayStart {
   reference: string;
   amount: number;
@@ -26,6 +38,17 @@ async function call<T>(body: Record<string, unknown>): Promise<T> {
   const out = data as T & { error?: string };
   if (out?.error) throw new Error(out.error);
   return out;
+}
+
+/**
+ * Whether payment is configured at all.
+ *
+ * Booleans, never the secret. "The pay button does nothing" has three very
+ * different causes — no credentials, no callback URL, or a gateway that is not
+ * answering — and without this they are indistinguishable from the outside.
+ */
+export function gatewayConfig(): Promise<GatewayConfig> {
+  return call<GatewayConfig>({ action: 'config' });
 }
 
 /** Push a payment prompt to the number the client gave. */

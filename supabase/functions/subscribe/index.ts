@@ -75,6 +75,33 @@ Deno.serve(async (req) => {
   let body: { action?: string; plan_code?: string; phone?: string; reference?: string } = {};
   try { body = await req.json(); } catch { return json({ error: 'Bad JSON' }, 400); }
 
+  /*
+    Is payment even configured?
+
+    Booleans only — never the secret, never the app id. The point is that "the
+    payment button does nothing" stops being a guess: a missing callback URL
+    leaves the gateway with nowhere to report to, so every charge sits PENDING
+    for ever and looks identical to a charge nobody answered. This says which.
+  */
+  if (body.action === 'config') {
+    const { data: plans } = await admin
+      .from('subscription_plans')
+      .select('code, name, amount, currency, active')
+      .eq('active', true)
+      .order('amount');
+
+    return json({
+      app_id_set: !!APP_ID,
+      secret_set: !!SECRET,
+      callback_set: !!CALLBACK,
+      callback_url: CALLBACK || null,
+      sandbox: SANDBOX,
+      usd_rate: RATE,
+      plans: plans ?? [],
+      ready: !!APP_ID && !!SECRET && !!CALLBACK && (plans?.length ?? 0) > 0,
+    });
+  }
+
   // --- checking on a prompt already sent ----------------------------------
   if (body.action === 'status') {
     if (!body.reference) return json({ error: 'reference is required' }, 400);

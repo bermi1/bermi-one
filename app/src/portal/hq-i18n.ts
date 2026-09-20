@@ -32,6 +32,20 @@ export interface HqCopy {
   messagesSub: string;
   webhooks: string;
   webhooksSub: string;
+  gateway: string;
+  gatewayReady: string;
+  gatewayNotReady: string;
+  gatewayAppId: string;
+  gatewaySecret: string;
+  gatewayCallback: string;
+  gatewayMode: string;
+  gatewayRate: string;
+  gatewayLive: string;
+  gatewaySandbox: string;
+  gatewayMissing: string;
+  gatewayCallbackMissing: string;
+  set: string;
+  notSet: string;
   sent: string;
   queued: string;
   failedLabel: string;
@@ -127,6 +141,15 @@ export const HQ: Record<Lang, HqCopy> = {
     messagesSub: 'SMS and email the platform has sent on a client\'s behalf, and anything still waiting.',
     webhooks: 'Webhooks',
     webhooksSub: 'Every callback Payme Africa sent, including the ones we turned away.',
+    gateway: 'Payment gateway',
+    gatewayReady: 'Ready to take payments',
+    gatewayNotReady: 'Payments cannot complete',
+    gatewayAppId: 'App ID', gatewaySecret: 'App secret', gatewayCallback: 'Callback URL',
+    gatewayMode: 'Mode', gatewayRate: 'USD rate',
+    gatewayLive: 'Live', gatewaySandbox: 'Sandbox',
+    gatewayMissing: 'Set the missing secrets in Supabase → Edge Functions → Secrets.',
+    gatewayCallbackMissing: 'Without a callback URL the gateway has nowhere to report to, so every charge stays pending for ever.',
+    set: 'set', notSet: 'not set',
     sent: 'Sent', queued: 'Queued', failedLabel: 'Failed', skipped: 'Skipped',
     rejected: 'Rejected', accepted: 'Accepted',
 
@@ -217,6 +240,15 @@ export const HQ: Record<Lang, HqCopy> = {
     messagesSub: 'SMS na barua pepe ambazo mfumo umetuma kwa niaba ya mteja, na zinazosubiri.',
     webhooks: 'Webhooks',
     webhooksSub: 'Kila majibu Payme Africa waliyotuma, pamoja na yale tuliyokataa.',
+    gateway: 'Lango la malipo',
+    gatewayReady: 'Tayari kupokea malipo',
+    gatewayNotReady: 'Malipo hayawezi kukamilika',
+    gatewayAppId: 'App ID', gatewaySecret: 'Siri ya app', gatewayCallback: 'Callback URL',
+    gatewayMode: 'Hali', gatewayRate: 'Kiwango cha USD',
+    gatewayLive: 'Halisi', gatewaySandbox: 'Majaribio',
+    gatewayMissing: 'Weka siri zinazokosekana Supabase → Edge Functions → Secrets.',
+    gatewayCallbackMissing: 'Bila callback URL lango halina pa kuripoti, hivyo kila malipo yatabaki yanasubiri milele.',
+    set: 'imewekwa', notSet: 'haijawekwa',
     sent: 'Imetumwa', queued: 'Inasubiri', failedLabel: 'Imeshindikana', skipped: 'Imerukwa',
     rejected: 'Imekataliwa', accepted: 'Imepokelewa',
 

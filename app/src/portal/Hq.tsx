@@ -9,6 +9,7 @@ import { ClientDrawer } from './ClientDrawer';
 import { InquiryDrawer } from './InquiryDrawer';
 import { Donut, Sparkline, StackBar } from './Sparkline';
 import { ACTION_TYPES, OBJECT_TYPES, type ObjectTypeName } from '../ontology/schema';
+import { gatewayConfig, type GatewayConfig } from '../lib/billing';
 import {
   fetchActivity, fetchAllPayments, fetchAudit, fetchClients, fetchDailySeries, fetchNotifications,
   fetchOntology, fetchOverview, fetchPlans, fetchSupportQueue, fetchWebhookEvents,
@@ -61,6 +62,8 @@ export function Hq() {
   const [audit, setAudit] = useState<AuditRow[] | null>(null);
   const [messages, setMessages] = useState<NotificationRow[] | null>(null);
   const [hooks, setHooks] = useState<WebhookEventRow[] | null>(null);
+  const [gateway, setGateway] = useState<GatewayConfig | null>(null);
+  const [gatewayError, setGatewayError] = useState('');
   const [series, setSeries] = useState<DailyPoint[]>([]);
   const [queue, setQueue] = useState<Inquiry[] | null>(null);
   const [openInquiry, setOpenInquiry] = useState<Inquiry | null>(null);
@@ -90,11 +93,17 @@ export function Hq() {
     if (section === 'activity' && !activity) void fetchActivity({ limit: 100 }).then(setActivity).catch((e) => setError(String(e)));
     if (section === 'ontology' && !ontology) void fetchOntology().then(setOntology).catch((e) => setError(String(e)));
     if (section === 'payments' && !payments) void fetchAllPayments().then(setPayments).catch((e) => setError(String(e)));
+    // Configuration, not a payment: a gateway with no callback URL looks
+    // exactly like a client who never answered the prompt, and the difference
+    // is the whole diagnosis.
+    if (section === 'payments' && !gateway && !gatewayError) {
+      void gatewayConfig().then(setGateway).catch((e) => setGatewayError(e instanceof Error ? e.message : String(e)));
+    }
     if (section === 'audit' && !audit) void fetchAudit().then(setAudit).catch((e) => setError(String(e)));
     if (section === 'messages' && !messages) void fetchNotifications().then(setMessages).catch((e) => setError(String(e)));
     if (section === 'webhooks' && !hooks) void fetchWebhookEvents().then(setHooks).catch((e) => setError(String(e)));
     if (section === 'inquiries' && !queue) void fetchSupportQueue().then(setQueue).catch((e) => setError(String(e)));
-  }, [section, activity, ontology, payments, audit, messages, hooks, queue]);
+  }, [section, activity, ontology, payments, audit, messages, hooks, queue, gateway, gatewayError]);
 
   useEffect(() => {
     if (section !== 'activity') return;
@@ -364,6 +373,8 @@ export function Hq() {
         ) : <div className="hq-empty">{T.loading}…</div>
       )}
 
+      {section === 'payments' && <GatewayCard config={gateway} error={gatewayError} T={T} />}
+
       {section === 'payments' && (
         payments === null ? <div className="hq-empty">{T.loading}…</div>
         : payments.length === 0 ? <div className="hq-empty">{T.nothingYet}</div>
@@ -379,6 +390,14 @@ export function Hq() {
                     <div className="hq-row-meta">
                       {[new Date(p.created_at).toLocaleDateString(), p.msisdn, p.sandbox ? 'sandbox' : null].filter(Boolean).join(' · ')}
                     </div>
+                    {/* The reference is what gets quoted to the gateway, and the
+                        provider message is usually the actual reason. */}
+                    <div className="hq-row-meta" style={{ opacity: 0.75, fontFamily: 'ui-monospace, monospace', fontSize: 10.5 }}>
+                      {p.reference}
+                    </div>
+                    {p.provider_message && (
+                      <div className="hq-row-meta" style={{ color: ink }}>{p.provider_message}</div>
+                    )}
                   </div>
                   <div className="hq-row-num" style={{ color: ink }}>{tzs(p.amount)}</div>
                 </div>
@@ -536,5 +555,71 @@ export function Hq() {
         onFlash={flash}
       />
     </PortalShell>
+  );
+}
+
+/**
+ * Whether payment can work at all, before anyone asks why it did not.
+ *
+ * Three different faults look identical from a client's phone: no credentials,
+ * no callback URL, and a gateway that is not answering. The first two are
+ * visible from here and are stated plainly, because "the pay button does
+ * nothing" is not a bug report anybody can act on.
+ *
+ * No secret ever crosses this boundary — the function returns booleans.
+ */
+function GatewayCard({ config, error, T }: { config: GatewayConfig | null; error: string; T: typeof HQ.en }) {
+  if (error) {
+    return (
+      <div className="hq-card" style={{ borderColor: 'var(--bad)' }}>
+        <div className="hq-row">
+          <Icon name="alert" size={15} style={{ color: 'var(--bad)' }} />
+          <div className="hq-row-main">
+            <div className="hq-row-title">{T.gatewayNotReady}</div>
+            <div className="hq-row-meta">{error}</div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+  if (!config) return <div className="hq-empty">{T.loading}…</div>;
+
+  const rows: { k: string; ok: boolean; v: string }[] = [
+    { k: T.gatewayAppId, ok: config.app_id_set, v: config.app_id_set ? T.set : T.notSet },
+    { k: T.gatewaySecret, ok: config.secret_set, v: config.secret_set ? T.set : T.notSet },
+    { k: T.gatewayCallback, ok: config.callback_set, v: config.callback_url || T.notSet },
+    { k: T.gatewayMode, ok: true, v: config.sandbox ? T.gatewaySandbox : T.gatewayLive },
+    { k: T.gatewayRate, ok: config.usd_rate > 0, v: String(config.usd_rate) },
+  ];
+
+  return (
+    <div className="hq-card" style={{ borderColor: config.ready ? undefined : 'var(--bad)' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 9, marginBottom: 10 }}>
+        <Icon name={config.ready ? 'check' : 'alert'} size={15} style={{ color: config.ready ? 'var(--ok)' : 'var(--bad)' }} />
+        <div className="hq-section-title" style={{ margin: 0 }}>{T.gateway}</div>
+        <div style={{ flex: 1 }} />
+        <span style={{ fontSize: 10.5, fontWeight: 800, letterSpacing: 0.4, textTransform: 'uppercase', color: config.ready ? 'var(--ok)' : 'var(--bad)' }}>
+          {config.ready ? T.gatewayReady : T.gatewayNotReady}
+        </span>
+      </div>
+
+      {rows.map((r) => (
+        <div key={r.k} style={{ display: 'flex', alignItems: 'baseline', gap: 10, padding: '4px 0', fontSize: 12 }}>
+          <span style={{ color: 'var(--ink3)', minWidth: 96 }}>{r.k}</span>
+          <span style={{
+            flex: 1, textAlign: 'right', fontWeight: 700, wordBreak: 'break-all',
+            color: r.ok ? 'var(--ink)' : 'var(--bad)',
+          }}>
+            {r.v}
+          </span>
+        </div>
+      ))}
+
+      {!config.ready && (
+        <div style={{ marginTop: 10, fontSize: 11.5, lineHeight: 1.5, color: 'var(--ink3)' }}>
+          {config.callback_set ? T.gatewayMissing : T.gatewayCallbackMissing}
+        </div>
+      )}
+    </div>
   );
 }

@@ -84,6 +84,9 @@ export interface PlatformPayment {
   label: string | null;
   sandbox: boolean;
   created_at: string;
+  /** Whatever the gateway said. Usually the actual reason a charge failed. */
+  provider_message?: string | null;
+  plan_code?: string | null;
   businesses?: { name: string } | null;
 }
 
