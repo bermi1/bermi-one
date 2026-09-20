@@ -6,9 +6,9 @@
 // product that does not get paid for.
 //
 // The caller's JWT is what identifies the account. Everything below is keyed to
-// auth.uid() and never to anything the browser sent — a body field naming whose
-// subscription to extend would let anyone pay a dollar onto someone else's
-// account, or worse, name a plan the price does not match.
+// the verified user id and never to anything the browser sent — a body field
+// naming whose subscription to extend would let anyone pay a dollar onto
+// someone else's account, or worse, name a plan the price does not match.
 
 import { createClient } from 'jsr:@supabase/supabase-js@2';
 
@@ -23,8 +23,24 @@ function json(body: unknown, status = 200): Response {
 }
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
-const ANON = Deno.env.get('SUPABASE_ANON_KEY')!;
 const SERVICE = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+
+/**
+ * Who is calling, from the bearer token alone.
+ *
+ * This used to build a second client from SUPABASE_ANON_KEY. That variable is
+ * not reliably injected on a project using the new publishable key format, and
+ * createClient with an undefined key throws — which the edge runtime turns into
+ * an opaque 503 with EDGE_FUNCTION_ERROR and no clue in it. Passing the token
+ * to the service client instead needs no anon key and works under either key
+ * format.
+ */
+async function callerOf(req: Request, admin: ReturnType<typeof createClient>) {
+  const token = (req.headers.get('Authorization') ?? '').replace(/^Bearer\s+/i, '').trim();
+  if (!token) return null;
+  const { data } = await admin.auth.getUser(token);
+  return data?.user ?? null;
+}
 
 const APP_ID = Deno.env.get('PAYME_APP_ID') ?? '';
 const SECRET = Deno.env.get('PAYME_APP_SECRET') ?? '';
@@ -59,18 +75,29 @@ async function signed(payload: Record<string, unknown>, path: string) {
 }
 
 Deno.serve(async (req) => {
+  try {
+    return await handle(req);
+  } catch (e) {
+    /*
+      An uncaught throw becomes a platform 503 that says only
+      "Edge Function returned a non-2xx status code", with nothing in the logs
+      but "booted" and "shutdown". Naming the error costs one catch.
+    */
+    const message = e instanceof Error ? e.message : String(e);
+    console.error('subscribe failed:', message);
+    return json({ error: message }, 500);
+  }
+});
+
+async function handle(req: Request): Promise<Response> {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: CORS });
   if (req.method !== 'POST') return json({ error: 'POST only' }, 405);
 
-  const authHeader = req.headers.get('Authorization') ?? '';
-  if (!authHeader) return json({ error: 'Not signed in' }, 401);
-
-  const asCaller = createClient(SUPABASE_URL, ANON, { global: { headers: { Authorization: authHeader } } });
-  const { data: auth } = await asCaller.auth.getUser();
-  if (!auth?.user) return json({ error: 'Not signed in' }, 401);
-  const uid = auth.user.id;
-
   const admin = createClient(SUPABASE_URL, SERVICE);
+
+  const user = await callerOf(req, admin);
+  if (!user) return json({ error: 'Not signed in' }, 401);
+  const uid = user.id;
 
   let body: { action?: string; plan_code?: string; phone?: string; reference?: string } = {};
   try { body = await req.json(); } catch { return json({ error: 'Bad JSON' }, 400); }
@@ -232,4 +259,4 @@ Deno.serve(async (req) => {
     status: 'PENDING',
     message: (provider.message as string) ?? null,
   });
-});
+}

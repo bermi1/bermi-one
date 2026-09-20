@@ -1,5 +1,7 @@
+import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { AppHeader } from '../components/AppHeader';
+import { ReceiveStock } from '../components/ReceiveStock';
 import { Icon } from '../lib/icons';
 import { useSettings } from '../lib/useSettings';
 import { useData } from '../state/DataContext';
@@ -23,6 +25,11 @@ export function StaffHome() {
 
   const lowItems = products.filter((p) => currentQty(p, counts) < p.low);
 
+  // Recording a delivery is one of the two things a shift actually does, so it
+  // sits here rather than two taps away inside Stock.
+  const [receiveOpen, setReceiveOpen] = useState(false);
+  const submitted = status === 'submitted' || status === 'verified';
+
   return (
     <div className="screen sb">
       <AppHeader />
@@ -40,7 +47,24 @@ export function StaffHome() {
         <div style={{ marginTop: 6, fontSize: 13, fontWeight: 600, color: status === 'verified' ? 'var(--ink2)' : 'rgba(255,255,255,.85)' }}>{taskSub}</div>
       </div>
 
-      <div style={{ marginTop: 18, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+      <div
+        className="card tap"
+        onClick={() => setReceiveOpen(true)}
+        style={{ marginTop: 12, padding: 16, display: 'flex', alignItems: 'center', gap: 12 }}
+      >
+        <div style={{ width: 34, height: 34, borderRadius: 11, background: 'var(--okSoft)', color: 'var(--ok)', display: 'grid', placeItems: 'center', flexShrink: 0 }}>
+          <Icon name="in" size={16} />
+        </div>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontSize: 14, fontWeight: 800 }}>{L.addStockCta}</div>
+          <div style={{ marginTop: 2, fontSize: 11.5, color: 'var(--ink3)', fontWeight: 600, lineHeight: 1.4 }}>
+            {submitted ? L.goesToNextClosing : L.goesToThisClosing}
+          </div>
+        </div>
+        <Icon name="right" size={15} style={{ color: 'var(--ink3)' }} />
+      </div>
+
+      <div style={{ marginTop: 12, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
         <div className="card tap" onClick={() => nav('/stock')} style={{ padding: 16 }}>
           <div style={{ width: 32, height: 32, borderRadius: 11, background: 'var(--brandSoft)', color: 'var(--brand)', display: 'grid', placeItems: 'center', marginBottom: 10 }}>
             <Icon name="box" size={16} />
@@ -77,6 +101,13 @@ export function StaffHome() {
       )}
 
       <div style={{ marginTop: 18, fontSize: 12.5, color: 'var(--ink3)', lineHeight: 1.5, padding: '0 4px' }}>{L.staffNote}</div>
+
+      <ReceiveStock
+        open={receiveOpen}
+        onClose={() => setReceiveOpen(false)}
+        note={submitted ? L.goesToNextClosing : L.goesToThisClosing}
+        heldForNext={submitted}
+      />
     </div>
   );
 }

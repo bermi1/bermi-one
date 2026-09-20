@@ -5,6 +5,7 @@
 // trusted as authorisation — this file only decides what to *show*.
 
 import { supabase } from './supabase';
+import { invokeFunction } from './functions';
 
 export type SubscriptionStatus = 'trialing' | 'active' | 'past_due' | 'suspended' | 'cancelled';
 
@@ -90,13 +91,7 @@ export interface PlatformPayment {
   businesses?: { name: string } | null;
 }
 
-async function callAdmin<T>(body: Record<string, unknown>): Promise<T> {
-  const { data, error } = await supabase.functions.invoke('admin', { body });
-  if (error) throw new Error(error.message);
-  const out = data as T & { error?: string };
-  if (out?.error) throw new Error(out.error);
-  return out;
-}
+const callAdmin = <T,>(body: Record<string, unknown>) => invokeFunction<T>('admin', body);
 
 /** Whether the signed-in user is Bermi Techs staff. Decides only what is shown. */
 export async function checkPlatformAdmin(): Promise<boolean> {

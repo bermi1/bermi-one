@@ -291,7 +291,16 @@ export function Stock() {
         </div>
       </div>
 
-      {owner && !reorderMode && !editAllMode && (
+      {/*
+        Receiving a delivery is a shift job, not an owner job. The person on the
+        counter is the one who signs for the crate at four in the afternoon, and
+        making them ring the owner to record it is how stock quietly stops
+        matching the shelf. What stays owner-only is everything that changes
+        what a counted day is WORTH — prices, profit per unit, adding and
+        removing products — because the whole verification model rests on those
+        not moving after a count.
+      */}
+      {!reorderMode && !editAllMode && (
         <button
           className="btn-primary tap"
           style={{ width: '100%', marginBottom: 12, padding: '13px 16px', display: 'flex', alignItems: 'center', gap: 12, textAlign: 'left' }}

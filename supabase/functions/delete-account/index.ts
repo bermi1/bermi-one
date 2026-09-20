@@ -25,20 +25,39 @@ function json(body: unknown, status = 200): Response {
 }
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
-const ANON = Deno.env.get('SUPABASE_ANON_KEY')!;
 const SERVICE = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
 
+/**
+ * Who is calling, from the bearer token alone — no anon key needed.
+ * See the same note in supabase/functions/subscribe/index.ts.
+ */
+async function callerOf(req: Request, admin: ReturnType<typeof createClient>) {
+  const token = (req.headers.get('Authorization') ?? '').replace(/^Bearer\s+/i, '').trim();
+  if (!token) return null;
+  const { data } = await admin.auth.getUser(token);
+  return data?.user ?? null;
+}
+
 Deno.serve(async (req) => {
+  try {
+    return await handle(req);
+  } catch (e) {
+    // Deleting an account is the last thing that should fail silently.
+    const message = e instanceof Error ? e.message : String(e);
+    console.error('delete-account failed:', message);
+    return json({ error: message }, 500);
+  }
+});
+
+async function handle(req: Request): Promise<Response> {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: CORS });
   if (req.method !== 'POST') return json({ error: 'POST only' }, 405);
 
-  const authHeader = req.headers.get('Authorization') ?? '';
-  if (!authHeader) return json({ error: 'Not signed in' }, 401);
+  const admin = createClient(SUPABASE_URL, SERVICE);
 
-  const asCaller = createClient(SUPABASE_URL, ANON, { global: { headers: { Authorization: authHeader } } });
-  const { data: auth } = await asCaller.auth.getUser();
-  if (!auth?.user) return json({ error: 'Not signed in' }, 401);
-  const uid = auth.user.id;
+  const user = await callerOf(req, admin);
+  if (!user) return json({ error: 'Not signed in' }, 401);
+  const uid = user.id;
 
   // Typed by hand on the confirmation screen. It is the difference between a
   // mis-tap on a phone in a loud bar and a decision.
@@ -47,8 +66,6 @@ Deno.serve(async (req) => {
   if ((body.confirm ?? '').trim().toUpperCase() !== 'DELETE') {
     return json({ error: 'Type DELETE to confirm.' }, 400);
   }
-
-  const admin = createClient(SUPABASE_URL, SERVICE);
 
   // Count first, so the caller can be told what went — and so the response is
   // evidence rather than a reassuring noise.
@@ -88,4 +105,4 @@ Deno.serve(async (req) => {
     ok: true,
     deleted: { businesses: businessIds.length, products, sessions, entries },
   });
-});
+}

@@ -8,8 +8,9 @@ import { groupByCategory } from '../lib/calc';
 
 /**
  * Receiving a delivery: pick what arrived, how many, and optionally what it
- * cost. This is the only way stock goes up between closings — the person on
- * shift never touches it, they only count what is left at the end of the day.
+ * cost. This is the only way stock goes up between closings, and staff use it
+ * too — they are the ones who take the crate in. What they cannot do is change
+ * a price, which is what keeps a counted day honest.
  */
 export function ReceiveStock({ open, onClose, note, heldForNext }: { open: boolean; onClose: () => void; note: string; heldForNext: boolean }) {
   const { L, fmt, lang } = useSettings();

@@ -2,7 +2,7 @@
 //
 // Everything here runs with the service role, which bypasses row level
 // security entirely — so the very first thing every request does is prove the
-// caller is a platform admin, using their own session and their own RLS. If
+// caller is a platform admin, from a token the auth server has verified. If
 // that check is not the first gate, this function is a hole straight through
 // every tenant's data.
 //
@@ -23,9 +23,19 @@ function json(body: unknown, status = 200): Response {
 }
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
-const ANON = Deno.env.get('SUPABASE_ANON_KEY')!;
 const SERVICE = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
 const SITE_URL = Deno.env.get('SITE_URL') ?? '';
+
+/**
+ * Who is calling, from the bearer token alone — no anon key needed.
+ * See the same note in supabase/functions/subscribe/index.ts.
+ */
+async function callerOf(req: Request, admin: ReturnType<typeof createClient>) {
+  const token = (req.headers.get('Authorization') ?? '').replace(/^Bearer\s+/i, '').trim();
+  if (!token) return null;
+  const { data } = await admin.auth.getUser(token);
+  return data?.user ?? null;
+}
 
 interface Body {
   action:
@@ -56,21 +66,38 @@ interface Body {
 }
 
 Deno.serve(async (req) => {
+  try {
+    return await handle(req);
+  } catch (e) {
+    const message = e instanceof Error ? e.message : String(e);
+    console.error('admin failed:', message);
+    return json({ error: message }, 500);
+  }
+});
+
+async function handle(req: Request): Promise<Response> {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: CORS });
   if (req.method !== 'POST') return json({ error: 'POST only' }, 405);
 
-  const authHeader = req.headers.get('Authorization') ?? '';
-  if (!authHeader) return json({ error: 'Not signed in' }, 401);
+  const admin = createClient(SUPABASE_URL, SERVICE);
 
   // Step one, always: who is asking, and are they staff?
-  const asCaller = createClient(SUPABASE_URL, ANON, { global: { headers: { Authorization: authHeader } } });
-  const { data: auth } = await asCaller.auth.getUser();
-  if (!auth?.user) return json({ error: 'Not signed in' }, 401);
+  const user = await callerOf(req, admin);
+  if (!user) return json({ error: 'Not signed in' }, 401);
 
-  const { data: isAdmin } = await asCaller.rpc('is_platform_admin');
-  if (!isAdmin) return json({ error: 'Not a platform administrator' }, 403);
-
-  const admin = createClient(SUPABASE_URL, SERVICE);
+  /*
+    The same membership test is_platform_admin() makes, asked directly.
+    The RPC reads auth.uid(), so it has to run as the caller — and building a
+    caller-scoped client is exactly the thing that was throwing. The service
+    client reads platform_admins regardless of RLS, and the id comes from a
+    verified token, so the check is the same one.
+  */
+  const { data: staffRow } = await admin
+    .from('platform_admins')
+    .select('user_id')
+    .eq('user_id', user.id)
+    .maybeSingle();
+  if (!staffRow) return json({ error: 'Not a platform administrator' }, 403);
 
   let body: Body;
   try {
@@ -319,7 +346,7 @@ Deno.serve(async (req) => {
         label: `Bermi One — ${sub.subscription_plans?.name ?? 'subscription'} ($${usd})`,
         sandbox,
         request_payload: payload,
-        created_by: auth.user.id,
+        created_by: user.id,
       });
 
       const message = JSON.stringify(payload);
@@ -392,4 +419,4 @@ Deno.serve(async (req) => {
     default:
       return json({ error: 'Unknown action' }, 400);
   }
-});
+}

@@ -6,7 +6,7 @@
 // browser that can name a smaller one, and a browser that can name the account
 // is a browser that can top up someone else's.
 
-import { supabase } from './supabase';
+import { invokeFunction } from './functions';
 import type { PlanCode } from './plans';
 
 export type PayStatus = 'PENDING' | 'COMPLETED' | 'FAILED' | 'CANCELLED';
@@ -32,13 +32,7 @@ export interface PayStart {
   message: string | null;
 }
 
-async function call<T>(body: Record<string, unknown>): Promise<T> {
-  const { data, error } = await supabase.functions.invoke('subscribe', { body });
-  if (error) throw new Error(error.message);
-  const out = data as T & { error?: string };
-  if (out?.error) throw new Error(out.error);
-  return out;
-}
+const call = <T,>(body: Record<string, unknown>) => invokeFunction<T>('subscribe', body);
 
 /**
  * Whether payment is configured at all.
