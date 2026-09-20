@@ -2,7 +2,7 @@
 // as a record. Shares printKit with every other Bermi document so the blank
 // sheet, this report and the financial report all file together as one set.
 
-import { closingItemsTotal, groupByCategory, soldOf } from './calc';
+import { availableOf, closingItemsTotal, groupByCategory, linesOf, soldOfLine } from './calc';
 import { esc, footer, masthead, openPrintable, printButton, printCss } from './printKit';
 import type { Business, ClosingItemKind, Lang, Product, StockSession } from './types';
 import { countryByCode } from './countries';
@@ -57,13 +57,23 @@ export function buildSessionReportHtml(opts: SessionReportOptions): string {
   const num0 = (n: number) => (n ? String(n) : '—');
   const counts = session.counts || {};
 
+  /*
+    Off the snapshot frozen at submission, not off the stock as it stands now.
+
+    This sheet gets printed, signed and filed. Rebuilding it from live products
+    means reprinting it next week against quantities that have since rolled
+    forward and prices that have since changed — a different document under the
+    same signature.
+  */
+  const lines = linesOf(session, products);
+
   // Only lines that were actually counted belong on the record.
-  const counted = products.filter((p) => counts[p.id] !== undefined);
+  const counted = lines.filter((l) => counts[l.id] !== undefined);
   const groups = groupByCategory(counted);
 
-  const expected = counted.reduce((s, p) => s + soldOf(p, counts) * p.price, 0);
-  const gross = counted.reduce((s, p) => s + soldOf(p, counts) * p.profit, 0);
-  const unitsSold = counted.reduce((s, p) => s + soldOf(p, counts), 0);
+  const expected = counted.reduce((s, l) => s + soldOfLine(l, counts) * l.price, 0);
+  const gross = counted.reduce((s, l) => s + soldOfLine(l, counts) * l.profit, 0);
+  const unitsSold = counted.reduce((s, l) => s + soldOfLine(l, counts), 0);
   const deductions = closingItemsTotal(session);
   const received = Number(session.cash || 0) + Number(session.mobile || 0) + Number(session.bank_in || 0) + deductions;
   const diff = expected - received;
@@ -85,8 +95,8 @@ export function buildSessionReportHtml(opts: SessionReportOptions): string {
       const rows = g.items
         .map((p) => {
           const closing = Number(counts[p.id]);
-          const avail = p.opening + p.added;
-          const sold = soldOf(p, counts);
+          const avail = availableOf(p);
+          const sold = soldOfLine(p, counts);
           const sales = sold * p.price;
           const prof = sold * p.profit;
           catSales += sales;

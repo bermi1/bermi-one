@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ScreenHeader } from '../components/ScreenHeader';
 import { Sheet } from '../components/Sheet';
@@ -22,6 +22,7 @@ export function Close() {
   const {
     products, session, activeBusiness, setClosingCount, setSessionMoney,
     addClosingItem, removeClosingItem, reopenSession,
+    sessionDate, openSessionForDate, fetchSessions,
   } = useData();
   const { flash } = useToast();
 
@@ -38,9 +39,120 @@ export function Close() {
    * A bar counts after the night is over, so the count entered this morning
    * settles yesterday's trade. Saying which day is being closed, on the screen,
    * is what stops a counter filing a night under the wrong date.
+   *
+   * And it is not always yesterday. A bar that trades through a weekend and
+   * counts on Monday has two nights to settle, so the day is chosen, not
+   * assumed — with the earliest unfinished one offered first, because its count
+   * is the next day's opening.
    */
-  const closingDay = session?.session_date || businessDayIso();
-  const closingDayLabel = `${L.closingFor} ${new Date(closingDay).toLocaleDateString(lang === 'sw' ? 'sw-TZ' : 'en-GB', { weekday: 'long', day: '2-digit', month: 'long' })}`;
+  const closingDay = session?.session_date || sessionDate;
+  const dayName = (iso: string) =>
+    new Date(iso).toLocaleDateString(lang === 'sw' ? 'sw-TZ' : 'en-GB', { weekday: 'long', day: '2-digit', month: 'long' });
+  const closingDayLabel = `${L.closingFor} ${dayName(closingDay)}`;
+  // "Close Today" is a lie on a day that is not today, and a counter working
+  // through a backlog needs to see which one they are on from the title.
+  const screenTitle = closingDay === businessDayIso() ? L.closeToday : L.closeADay;
+
+  const [dayOpen, setDayOpen] = useState(false);
+  const [dayPick, setDayPick] = useState(closingDay);
+  const [earlier, setEarlier] = useState<string | null>(null);
+
+  // An unfinished day older than the one on screen. Counting out of order
+  // computes every "sold" against a shelf that never existed, so the screen
+  // says so plainly rather than quietly producing wrong numbers.
+  const checkEarlier = useCallback(async () => {
+    const rows = await fetchSessions(60);
+    const older = rows
+      .filter((r) => r.status !== 'verified' && r.session_date < closingDay)
+      .sort((a, b) => a.session_date.localeCompare(b.session_date))[0];
+    setEarlier(older?.session_date || null);
+  }, [fetchSessions, closingDay]);
+
+  useEffect(() => { void checkEarlier(); }, [checkEarlier]);
+
+  async function pickDay(iso: string) {
+    if (!iso) return;
+    const problem = await openSessionForDate(iso);
+    if (problem === 'FUTURE_DAY') { flash(L.futureDay); return; }
+    if (problem) { flash(problem); return; }
+    setDayOpen(false);
+  }
+
+  /* Called, not rendered as <DaySheet/>: a component declared inside render is
+     a new type every render, so React remounts it and the date input loses
+     focus on the first keystroke. */
+  function daySheet() {
+    return (
+      <Sheet open={dayOpen} onClose={() => setDayOpen(false)} title={L.chooseDay} sub={L.chooseDaySub}>
+          <input
+            type="date"
+            value={dayPick}
+            max={businessDayIso()}
+            onChange={(e) => setDayPick(e.target.value)}
+            className="card"
+            style={{ width: '100%', padding: '14px 16px', border: 'none', fontSize: 15, fontWeight: 700, marginBottom: 12 }}
+          />
+          {/* The last week, because a day missed is nearly always a recent one. */}
+          <div style={{ display: 'flex', gap: 7, flexWrap: 'wrap', marginBottom: 16 }}>
+            {Array.from({ length: 7 }, (_, i) => {
+              const d = new Date(businessDayIso());
+              d.setDate(d.getDate() - i);
+              const iso = d.toISOString().slice(0, 10);
+              const on = iso === dayPick;
+              return (
+                <button
+                  key={iso}
+                  className="chip tap"
+                  onClick={() => setDayPick(iso)}
+                  style={on ? { background: 'var(--brand)', color: 'var(--brandInk)', borderColor: 'var(--brand)' } : undefined}
+                >
+                  {new Date(iso).toLocaleDateString(lang === 'sw' ? 'sw-TZ' : 'en-GB', { weekday: 'short', day: '2-digit', month: 'short' })}
+                </button>
+              );
+            })}
+          </div>
+          <button className="btn-primary tap" style={{ width: '100%' }} onClick={() => void pickDay(dayPick)}>
+            {L.changeDay}
+          </button>
+        </Sheet>
+    );
+  }
+
+  function dayPicker() {
+    return (
+      <>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 14, flexWrap: 'wrap' }}>
+          <button
+            className="chip tap"
+            onClick={() => { setDayPick(closingDay); setDayOpen(true); }}
+            style={{ display: 'flex', alignItems: 'center', gap: 7 }}
+          >
+            <Icon name="calendar" size={13} />
+            {dayName(closingDay)}
+            <Icon name="down" size={12} style={{ color: 'var(--ink3)' }} />
+          </button>
+          {status === 'verified' && (
+            <span style={{ fontSize: 11, fontWeight: 800, textTransform: 'uppercase', letterSpacing: 0.4, color: 'var(--ok)' }}>{L.closed}</span>
+          )}
+        </div>
+
+        {earlier && (
+          <div
+            className="card tap"
+            onClick={() => void pickDay(earlier)}
+            style={{ padding: 13, marginBottom: 14, background: 'var(--warnSoft)', display: 'flex', alignItems: 'center', gap: 10 }}
+          >
+            <Icon name="alert" size={16} style={{ color: 'var(--warn)', flexShrink: 0 }} />
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: 12.5, fontWeight: 700, lineHeight: 1.45 }}>{L.earlierDayOpen}</div>
+              <div style={{ marginTop: 2, fontSize: 11.5, color: 'var(--ink3)', fontWeight: 600 }}>{dayName(earlier)}</div>
+            </div>
+            <Icon name="right" size={14} style={{ color: 'var(--ink3)' }} />
+          </div>
+        )}
+      </>
+    );
+  }
 
   const [itemSheetOpen, setItemSheetOpen] = useState(false);
   const [itemKind, setItemKind] = useState<ClosingItemKind>('expense');
@@ -86,7 +198,7 @@ export function Close() {
   if (products.length === 0) {
     return (
       <div className="screen sb">
-        <ScreenHeader title={L.closeToday} sub={closingDayLabel} />
+        <ScreenHeader title={screenTitle} sub={closingDayLabel} />
         <div className="card" style={{ padding: 40, textAlign: 'center' }}>
           <div style={{ width: 46, height: 46, borderRadius: 15, margin: '0 auto 14px', background: 'var(--card2)', display: 'grid', placeItems: 'center', color: 'var(--ink3)' }}>
             <Icon name="box" size={20} />
@@ -112,7 +224,8 @@ export function Close() {
 
     return (
       <div className="screen sb">
-        <ScreenHeader title={L.closeToday} sub={closingDayLabel} />
+        <ScreenHeader title={screenTitle} sub={closingDayLabel} />
+        {dayPicker()}
 
         <div className="card" style={{ padding: 20, marginBottom: 14, background: meta.soft }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
@@ -166,6 +279,8 @@ export function Close() {
             </button>
           )}
         </div>
+
+        {daySheet()}
       </div>
     );
   }
@@ -173,7 +288,8 @@ export function Close() {
   // --- The counting form ---
   return (
     <div className="screen sb">
-      <ScreenHeader title={L.closeToday} sub={closingDayLabel} />
+      <ScreenHeader title={screenTitle} sub={closingDayLabel} />
+      {dayPicker()}
 
       {session?.owner_comments && (
         <div className="card" style={{ padding: 14, marginBottom: 14, background: 'var(--badSoft)' }}>
@@ -320,6 +436,8 @@ export function Close() {
       <button className="btn-primary tap" style={{ width: '100%' }} onClick={() => nav('/diff')}>
         {L.continue}
       </button>
+
+      {daySheet()}
 
       <Sheet open={itemSheetOpen} onClose={() => setItemSheetOpen(false)} title={itemKindLabel[itemKind]}>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>

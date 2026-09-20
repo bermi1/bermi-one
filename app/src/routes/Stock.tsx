@@ -62,9 +62,18 @@ export function Stock() {
     [bulkTable, bulkColumnMap],
   );
 
-  const cats = useMemo(() => ['All', ...Array.from(new Set(products.map((p) => p.cat)))], [products]);
+  /*
+    A product with no category is not a category called nothing.
+
+    An imported row can arrive with cat empty or missing, and the raw list put
+    `undefined` in the chip row — which React renders with no key at all, and
+    which never matches the "General" heading the grouped list files it under.
+    Both places normalise the same way now.
+  */
+  const catOf = (p: Product) => (p.cat || '').trim() || 'General';
+  const cats = useMemo(() => ['All', ...Array.from(new Set(products.map(catOf)))], [products]);
   const filtered = useMemo(
-    () => products.filter((p) => (cat === 'All' || p.cat === cat) && p.name.toLowerCase().includes(query.toLowerCase())),
+    () => products.filter((p) => (cat === 'All' || catOf(p) === cat) && p.name.toLowerCase().includes(query.toLowerCase())),
     [products, cat, query],
   );
   const groups = useMemo(() => groupByCategory(filtered), [filtered]);

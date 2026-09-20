@@ -1,7 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from './AuthContext';
-import { businessDayIso, soldOf } from '../lib/calc';
+import { businessDayIso, snapshotLine, soldOf } from '../lib/calc';
 import { logAction, fetchRecentActions, purgeActions, type ActionLogEntry } from '../ontology/actions';
 import { fetchMySubscription, trialDaysLeft, type Subscription } from '../lib/platform';
 import { planByCode, type Plan } from '../lib/plans';
@@ -80,6 +80,10 @@ interface DataCtx {
   reopenSession: () => Promise<void>;
   /** Make a past closing the one the Close screen is working on. */
   resumeSession: (s: StockSession) => void;
+  /** The day the Close screen is counting for. */
+  sessionDate: string;
+  /** Switch the Close screen to another day, opening or creating that closing. */
+  openSessionForDate: (dateIso: string) => Promise<string | null>;
   addClosingItem: (kind: ClosingItemKind, amount: number, note: string) => Promise<void>;
   removeClosingItem: (id: string) => Promise<void>;
   submitSession: (reason: string | null, note: string) => Promise<void>;
@@ -113,6 +117,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
   const [accounts, setAccounts] = useState<Accounts | null>(null);
   const [ledger, setLedger] = useState<LedgerEntry[]>([]);
   const [session, setSession] = useState<StockSession | null>(null);
+  const [sessionDate, setSessionDate] = useState<string>(businessDayIso());
   const [actionLog, setActionLog] = useState<ActionLogEntry[]>([]);
   const [subscription, setSubscription] = useState<Subscription | null>(null);
   const [staffMembers, setStaffMembers] = useState<StaffMember[]>([]);
@@ -131,18 +136,37 @@ export function DataProvider({ children }: { children: ReactNode }) {
   );
 
   const loadBusinessData = useCallback(async (businessId: string) => {
-    const [{ data: prods }, { data: acc }, { data: led }, { data: sess }, log, { data: staff }] = await Promise.all([
+    /*
+      Which day the Close screen opens on.
+
+      Not always today. A bar that trades Friday and Saturday and counts on
+      Sunday morning has two days to settle, and they have to be settled in
+      order: Friday's closing count is Saturday's opening, so closing Saturday
+      first would compute it against a stale shelf. So the screen picks up the
+      oldest day that is not finished, and only falls back to the current
+      business day when nothing is outstanding.
+    */
+    const [{ data: prods }, { data: acc }, { data: led }, { data: pending }, log, { data: staff }] = await Promise.all([
       supabase.from('products').select('*').eq('business_id', businessId).order('sort_order'),
       supabase.from('accounts').select('*').eq('business_id', businessId).maybeSingle(),
       supabase.from('ledger_entries').select('*').eq('business_id', businessId).order('created_at', { ascending: false }).limit(100),
-      supabase.from('stock_sessions').select('*').eq('business_id', businessId).eq('session_date', businessDayIso()).maybeSingle(),
+      supabase
+        .from('stock_sessions')
+        .select('*')
+        .eq('business_id', businessId)
+        .lte('session_date', businessDayIso())
+        .neq('status', 'verified')
+        .order('session_date', { ascending: true })
+        .limit(1),
       fetchRecentActions(businessId),
       supabase.from('staff_members').select('*').eq('business_id', businessId).order('sort_order'),
     ]);
+    const open = ((pending || []) as StockSession[])[0] || null;
     setProducts(prods || []);
     setAccounts(acc || { business_id: businessId, cash: 0, mobile: 0, bank: 0 });
     setLedger(led || []);
-    setSession(sess || null);
+    setSession(open);
+    setSessionDate(open?.session_date || businessDayIso());
     setActionLog(log);
     setStaffMembers(staff || []);
   }, []);
@@ -423,14 +447,55 @@ export function DataProvider({ children }: { children: ReactNode }) {
   const ensureSession = useCallback(async (): Promise<StockSession | null> => {
     if (session) return session;
     if (!activeBusiness) return null;
+    // sessionDate, not today: the counter may have picked an earlier day, and a
+    // row created under the wrong date files a whole night's trade elsewhere.
     const { data } = await supabase
       .from('stock_sessions')
-      .insert({ business_id: activeBusiness.id, session_date: businessDayIso(), status: 'open', counts: {}, closing_items: [], amount_to_bank: 0 })
+      .insert({ business_id: activeBusiness.id, session_date: sessionDate, status: 'open', counts: {}, closing_items: [], lines: [], amount_to_bank: 0 })
       .select()
       .single();
     if (data) setSession(data as StockSession);
     return data as StockSession | null;
-  }, [session, activeBusiness]);
+  }, [session, activeBusiness, sessionDate]);
+
+  /**
+   * Point the Close screen at a particular day.
+   *
+   * Picks up that day's closing if one exists, and otherwise creates it. A day
+   * in the future has not been traded yet, and a verified day is finished, so
+   * neither is offered — the screen says so rather than letting someone count
+   * into a record that cannot accept it.
+   */
+  const openSessionForDate = useCallback<DataCtx['openSessionForDate']>(
+    async (dateIso) => {
+      if (!activeBusiness) return 'No business';
+      if (dateIso > businessDayIso()) return 'FUTURE_DAY';
+
+      const { data: existing } = await supabase
+        .from('stock_sessions')
+        .select('*')
+        .eq('business_id', activeBusiness.id)
+        .eq('session_date', dateIso)
+        .maybeSingle();
+
+      if (existing) {
+        setSession(existing as StockSession);
+        setSessionDate(dateIso);
+        return null;
+      }
+
+      const { data, error } = await supabase
+        .from('stock_sessions')
+        .insert({ business_id: activeBusiness.id, session_date: dateIso, status: 'open', counts: {}, closing_items: [], lines: [], amount_to_bank: 0 })
+        .select()
+        .single();
+      if (error) return error.message;
+      setSession(data as StockSession);
+      setSessionDate(dateIso);
+      return null;
+    },
+    [activeBusiness],
+  );
 
   const setClosingCount = useCallback(
     async (productId: string, qty: number | null) => {
@@ -517,6 +582,17 @@ export function DataProvider({ children }: { children: ReactNode }) {
         reason,
         note,
         owner_comments: null,
+        /*
+          The shelf as it stood tonight, frozen.
+
+          Every figure below — opening, added, price, profit per unit — lives in
+          the products table, and every one of them moves on the moment this day
+          is verified and the stock rolls forward. Without the snapshot, opening
+          a closing from last week shows last week's counts against this week's
+          quantities, and the printed sheet somebody signed stops matching the
+          screen.
+        */
+        lines: products.map(snapshotLine),
         total_calculated_sales: counted.reduce((sum, p) => sum + soldOf(p, s.counts) * p.price, 0),
         total_calculated_profit: counted.reduce((sum, p) => sum + soldOf(p, s.counts) * p.profit, 0),
         submitted_by_name: profile?.full_name || 'Staff',
@@ -548,7 +624,10 @@ export function DataProvider({ children }: { children: ReactNode }) {
    * whatever `session` holds, so pointing it at an older unfinished day is all
    * it takes to carry on counting where someone left off.
    */
-  const resumeSession = useCallback((s: StockSession) => setSession(s), []);
+  const resumeSession = useCallback((s: StockSession) => {
+    setSession(s);
+    setSessionDate(s.session_date);
+  }, []);
 
   const approveSession = useCallback(async () => {
     if (!session || !activeBusiness) return;
@@ -590,6 +669,26 @@ export function DataProvider({ children }: { children: ReactNode }) {
       summary: `Approved and locked ${session.session_date}'s closing`,
       payload: { rolledForward: counted.length }, actorName: profile?.full_name,
     });
+
+    /*
+      Move on to the next day that still owes a count.
+
+      A verified day is finished. Leaving the Close screen pointed at it means
+      the next person to open the app is looking at a locked screen with no
+      obvious way forward, when what they actually have to do is count last
+      night.
+    */
+    const { data: next } = await supabase
+      .from('stock_sessions')
+      .select('*')
+      .eq('business_id', activeBusiness.id)
+      .lte('session_date', businessDayIso())
+      .neq('status', 'verified')
+      .order('session_date', { ascending: true })
+      .limit(1);
+    const following = ((next || []) as StockSession[])[0] || null;
+    setSession(following);
+    setSessionDate(following?.session_date || businessDayIso());
   }, [session, profile, addLedgerLines, activeBusiness, record, products]);
 
   const fetchBooks = useCallback<DataCtx['fetchBooks']>(
@@ -625,8 +724,10 @@ export function DataProvider({ children }: { children: ReactNode }) {
         const opex = own.filter((r) => r.kind === 'expense').reduce((s, r) => s + Math.abs(r.amount), 0);
         const losses = own.filter((r) => r.kind === 'loss').reduce((s, r) => s + Math.abs(r.amount), 0);
         const debt = own.filter((r) => r.kind === 'debt').reduce((s, r) => s + Math.abs(r.amount), 0);
-        const cogs = Math.round(revenue * 0.6);
-        const net = revenue - cogs - opex - losses;
+        // Net is what the ledger actually says: money in, less what went out.
+        // There was a 60% cost-of-goods guess here, which produced a confident
+        // profit figure for every business out of a number nobody supplied.
+        const net = revenue - opex - losses;
         return { business, revenue, opex, losses, debt, net };
       });
     },
@@ -820,6 +921,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
     returnSession,
     reopenSession,
     resumeSession,
+    sessionDate,
+    openSessionForDate,
     fetchSessions,
     deleteSession,
     deleteLedgerEntry,

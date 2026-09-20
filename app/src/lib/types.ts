@@ -103,6 +103,25 @@ export interface ClosingItem {
   note: string;
 }
 
+/**
+ * One product as it stood on the night a closing was submitted.
+ *
+ * The products table holds live figures — opening, added and price all move on
+ * as soon as the day rolls forward or someone edits a price. A closing that
+ * reads them is a closing that rewrites itself, including the printed sheet
+ * somebody signed. These are frozen at submission instead.
+ */
+export interface SessionLine {
+  id: string;
+  name: string;
+  cat: string;
+  unit: string;
+  opening: number;
+  added: number;
+  price: number;
+  profit: number;
+}
+
 export interface StockSession {
   id: string;
   business_id: string;
@@ -118,6 +137,8 @@ export interface StockSession {
   total_calculated_sales: number;
   total_calculated_profit: number;
   closing_items: ClosingItem[];
+  /** Frozen at submit. Empty on closings recorded before snapshots existed. */
+  lines: SessionLine[];
   reason: string | null;
   note: string | null;
   owner_comments: string | null;
