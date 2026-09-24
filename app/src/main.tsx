@@ -2,6 +2,7 @@ import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import './index.css';
 import './lib/pwa';
+import { BOOT_CEILING_MS } from './lib/boot';
 import App from './App.tsx';
 
 createRoot(document.getElementById('root')!).render(
@@ -23,8 +24,6 @@ createRoot(document.getElementById('root')!).render(
  * rendered a spinner. The timeout is the backstop: a stalled network must not
  * hold the splash for ever, and the app can show its own state from there.
  */
-const BOOT_CEILING_MS = 4500;
-
 function retireBoot() {
   const boot = document.getElementById('boot');
   if (!boot || boot.dataset.done) return;

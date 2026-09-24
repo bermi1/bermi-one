@@ -14,6 +14,9 @@ import { Stock } from './routes/Stock';
 import { Close } from './routes/Close';
 import { Difference } from './routes/Difference';
 import { NativeShell } from './components/NativeShell';
+import { checkPlatformAdmin } from './lib/platform';
+import { BOOT_CEILING_MS } from './lib/boot';
+import { Icon } from './lib/icons';
 
 /*
   What loads first, and what waits.
@@ -49,7 +52,6 @@ const SetPassword = lazy(() => import('./routes/SetPassword').then((m) => ({ def
 function Pending() {
   return <div style={{ minHeight: '40vh' }} />;
 }
-import { checkPlatformAdmin } from './lib/platform';
 
 function ThemeRoot() {
   const { profile } = useData();
@@ -72,11 +74,63 @@ function handOverFromSplash() {
   window.__bermiReady = undefined;
 }
 
+/**
+ * What is underneath the splash when the start goes wrong.
+ *
+ * The waiting branch used to render null, on the reasoning that the boot screen
+ * was covering it. It is, for four and a half seconds — and then it is not, and
+ * null is a blank white page with nothing to act on and nothing to report. One
+ * dropped request was enough to get here.
+ */
+function StillStarting({ error, onRetry }: { error: string | null; onRetry: () => void }) {
+  return (
+    <div style={{ minHeight: '100dvh', display: 'grid', placeItems: 'center', padding: 24, background: 'var(--bg)' }}>
+      <div style={{ width: '100%', maxWidth: 340, textAlign: 'center' }}>
+        <img src="/icons/bermi-mark.svg" alt="" width={64} height={64} style={{ marginBottom: 18 }} />
+        <div style={{ fontSize: 17, fontWeight: 800, letterSpacing: -0.3 }}>
+          {error ? 'Bermi One could not load' : 'Still opening…'}
+        </div>
+        <div style={{ marginTop: 8, fontSize: 13, color: 'var(--ink2)', lineHeight: 1.6 }}>
+          {error
+            ? 'Nothing you have recorded is lost — this is the app failing to reach the server.'
+            : 'This is taking longer than it should. Your connection may be slow.'}
+        </div>
+        {error && (
+          <div style={{ marginTop: 12, padding: '10px 12px', borderRadius: 12, background: 'var(--card2)', fontSize: 11.5, color: 'var(--ink3)', fontWeight: 600, wordBreak: 'break-word', lineHeight: 1.5 }}>
+            {error}
+          </div>
+        )}
+        <button
+          className="btn-primary tap"
+          style={{ width: '100%', marginTop: 18, border: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}
+          onClick={onRetry}
+        >
+          <Icon name="refresh" size={15} />
+          Try again
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function AppRoutes() {
   const { session, loading: authLoading, recovering } = useAuth();
-  const { ready, profile, activeBusiness } = useData();
+  const { ready, loadError, reload, profile, activeBusiness } = useData();
   const location = useLocation();
   const owner = profile?.role === 'owner';
+
+  /*
+    True once the splash has had its turn.
+
+    Same ceiling main.tsx uses to take the boot screen away, so the two cannot
+    drift: the moment the cover comes off, whatever is underneath has to be a
+    screen someone can read and act on.
+  */
+  const [booted, setBooted] = useState(false);
+  useEffect(() => {
+    const t = setTimeout(() => setBooted(true), BOOT_CEILING_MS);
+    return () => clearTimeout(t);
+  }, []);
 
   // Bermi Techs staff. This only decides what the interface offers — the admin
   // function re-checks it server side, and RLS decides what the data allows.
@@ -98,11 +152,24 @@ function AppRoutes() {
     return <Suspense fallback={<Pending />}><Legal /></Suspense>;
   }
 
-  // Still starting up: nothing to show that the splash is not already showing
-  // better. Returning null keeps the boot screen on the glass.
-  if (authLoading || (session && !ready)) return null;
+  /*
+    Still starting up. While the splash is still on the glass there is nothing
+    to show that it is not showing better, so this renders nothing — but only
+    until the splash's own ceiling. After that something real has to be here.
+  */
+  if (authLoading || (session && !ready)) {
+    if (!booted) return null;
+    handOverFromSplash();
+    return <StillStarting error={loadError} onRetry={() => { reload(); setBooted(false); }} />;
+  }
 
   handOverFromSplash();
+
+  // Loaded, but the load failed — an empty app would look like an empty
+  // business, which is a far worse lie than an error message.
+  if (session && loadError) {
+    return <StillStarting error={loadError} onRetry={reload} />;
+  }
 
   if (!session) return <AuthScreen />;
 

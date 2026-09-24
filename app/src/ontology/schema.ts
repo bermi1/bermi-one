@@ -11,7 +11,18 @@
 // logic and Bermi AI's reasoning are both built on one explicit model instead
 // of scattered ad hoc state.
 
-export type ObjectTypeName = 'Business' | 'Product' | 'StockSession' | 'LedgerEntry' | 'Accounts' | 'Profile' | 'StaffMember';
+export type ObjectTypeName =
+  | 'Business'
+  | 'Product'
+  | 'StockSession'
+  | 'LedgerEntry'
+  | 'Accounts'
+  | 'Profile'
+  | 'StaffMember'
+  | 'Subscription'
+  | 'Payment'
+  | 'Inquiry'
+  | 'Notification';
 
 export interface ObjectTypeDef {
   label: string;
@@ -34,15 +45,20 @@ export const OBJECT_TYPES: Record<ObjectTypeName, ObjectTypeDef> = {
     label: 'Product',
     labelSw: 'Bidhaa',
     description: 'Something the business stocks and sells.',
-    properties: ['name', 'cat', 'unit', 'cost', 'price', 'opening', 'added', 'low', 'wk', 'sort_order'],
+    // profit is given per unit by the business and never derived from a cost we
+    // do not have; incoming is stock that arrived while a closing was frozen.
+    properties: ['name', 'cat', 'unit', 'price', 'profit', 'opening', 'added', 'incoming', 'low', 'sort_order'],
     links: { Business: 'belongs to' },
   },
   StockSession: {
     label: 'Closing session',
     labelSw: 'Kufunga siku',
     description: 'One day’s stock count and cash reconciliation.',
-    properties: ['session_date', 'status', 'counts', 'cash', 'mobile', 'bank_in', 'closing_items', 'reason', 'note'],
-    links: { Business: 'belongs to' },
+    properties: [
+      'session_date', 'status', 'counts', 'lines', 'cash', 'mobile', 'bank_in', 'amount_to_bank',
+      'closing_items', 'total_calculated_sales', 'total_calculated_profit', 'reason', 'note',
+    ],
+    links: { Business: 'belongs to', Product: 'counts many' },
   },
   LedgerEntry: {
     label: 'Ledger entry',
@@ -72,6 +88,40 @@ export const OBJECT_TYPES: Record<ObjectTypeName, ObjectTypeDef> = {
     properties: ['name', 'phone', 'title', 'sort_order'],
     links: { Business: 'belongs to' },
   },
+  /*
+    The four below belong to the platform rather than to a tenant's day, and
+    the model was missing all of them. A Subscription hangs off the ACCOUNT,
+    not off a business — three bars on Standard are one $30 subscription, and a
+    model that said otherwise would describe a product we do not sell.
+  */
+  Subscription: {
+    label: 'Subscription',
+    labelSw: 'Kifurushi',
+    description: 'What an account pays, and until when. One per account, whatever the number of businesses.',
+    properties: ['status', 'plan_id', 'current_period_start', 'current_period_end', 'trial_ends_at', 'billing_phone'],
+    links: { Profile: 'belongs to the account', Payment: 'is settled by' },
+  },
+  Payment: {
+    label: 'Payment',
+    labelSw: 'Malipo',
+    description: 'One subscription charge put to the gateway, and how it ended.',
+    properties: ['reference', 'amount', 'currency', 'status', 'msisdn', 'plan_code', 'sandbox', 'provider_message'],
+    links: { Subscription: 'settles', Business: 'recorded against' },
+  },
+  Inquiry: {
+    label: 'Support thread',
+    labelSw: 'Swali la msaada',
+    description: 'A question or fault a client raised, and the conversation that followed.',
+    properties: ['subject', 'category', 'status', 'priority', 'awaiting', 'last_message_at'],
+    links: { Profile: 'raised by', Business: 'about' },
+  },
+  Notification: {
+    label: 'Notification',
+    labelSw: 'Arifa',
+    description: 'One message queued to leave the system by SMS, email or push.',
+    properties: ['channel', 'kind', 'recipient', 'subject', 'status', 'attempts', 'scheduled_for', 'sent_at'],
+    links: { Business: 'belongs to' },
+  },
 };
 
 export type ActionTypeName =
@@ -84,13 +134,22 @@ export type ActionTypeName =
   | 'session.submit'
   | 'session.approve'
   | 'session.return'
-  | 'session.delete'
   | 'ledger.recordLines'
   | 'business.create'
   | 'business.update'
   | 'staff.add'
   | 'staff.remove';
 
+/*
+  There is no delete verb, and that is deliberate.
+
+  Deleting a closing or a money entry PURGES its action-log rows rather than
+  adding one — see deleteSession and deleteLedgerEntry in DataContext. A
+  "Deleted closing" entry would leave the day still narrating its own takings
+  from the history after the owner asked for it to be gone. The registry
+  describes what the system does, so it does not list a verb the system never
+  writes.
+*/
 export interface ActionTypeDef {
   label: string;
   labelSw: string;
@@ -107,7 +166,6 @@ export const ACTION_TYPES: Record<ActionTypeName, ActionTypeDef> = {
   'session.submit': { labelSw: 'Wasilisha kufunga', label: 'Submit closing', objectType: 'StockSession' },
   'session.approve': { labelSw: 'Thibitisha kufunga', label: 'Approve closing', objectType: 'StockSession' },
   'session.return': { labelSw: 'Rudisha kufunga kwa marekebisho', label: 'Return closing for correction', objectType: 'StockSession' },
-  'session.delete': { labelSw: 'Futa kufunga', label: 'Delete closing', objectType: 'StockSession' },
   'ledger.recordLines': { labelSw: 'Rekodi ingizo la fedha', label: 'Record money entry', objectType: 'LedgerEntry' },
   'business.create': { labelSw: 'Fungua biashara', label: 'Create business', objectType: 'Business' },
   'business.update': { labelSw: 'Sasisha wasifu wa biashara', label: 'Update business profile', objectType: 'Business' },

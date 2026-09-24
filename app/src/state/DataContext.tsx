@@ -40,6 +40,10 @@ export interface BusinessSummary {
 
 interface DataCtx {
   ready: boolean;
+  /** What went wrong on the last load, if anything. Ready does not mean it worked. */
+  loadError: string | null;
+  /** Try the load again after a failure. */
+  reload: () => void;
   profile: Profile | null;
   businesses: Business[];
   activeBusiness: Business | null;
@@ -111,6 +115,9 @@ export function DataProvider({ children }: { children: ReactNode }) {
   const uid = authSession?.user?.id ?? null;
 
   const [ready, setReady] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  // Bumped by reload() to re-run the load effect after a failure.
+  const [attempt, setAttempt] = useState(0);
   const [profile, setProfile] = useState<Profile | null>(null);
   const [businesses, setBusinesses] = useState<Business[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
@@ -174,6 +181,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (!uid) {
       setReady(true);
+      setLoadError(null);
       setProfile(null);
       setBusinesses([]);
       setProducts([]);
@@ -187,19 +195,38 @@ export function DataProvider({ children }: { children: ReactNode }) {
     let cancelled = false;
     (async () => {
       setReady(false);
-      const { data: prof } = await supabase.from('profiles').select('*').eq('id', uid).maybeSingle();
-      const { data: biz } = await supabase.from('businesses').select('*').eq('owner_id', uid).order('sort_order');
-      if (cancelled) return;
-      setProfile(prof as Profile);
-      setBusinesses(biz || []);
-      const active = (biz || []).find((b) => b.id === (prof as Profile | null)?.active_business_id) || (biz || [])[0];
-      if (active) await loadBusinessData(active.id);
-      setReady(true);
+      setLoadError(null);
+      /*
+        Ready means "we have finished trying", not "it worked".
+
+        Without the finally, one rejected query — a dropped request on a mobile
+        connection is enough — left ready false for ever, and the screen that
+        waits on it had nothing else to show. The result was a blank page, which
+        is worse than an error because there is nothing to act on and nothing to
+        report.
+      */
+      try {
+        const { data: prof, error: profError } = await supabase.from('profiles').select('*').eq('id', uid).maybeSingle();
+        if (profError) throw new Error(profError.message);
+        const { data: biz, error: bizError } = await supabase.from('businesses').select('*').eq('owner_id', uid).order('sort_order');
+        if (bizError) throw new Error(bizError.message);
+        if (cancelled) return;
+        setProfile(prof as Profile);
+        setBusinesses(biz || []);
+        const active = (biz || []).find((b) => b.id === (prof as Profile | null)?.active_business_id) || (biz || [])[0];
+        if (active) await loadBusinessData(active.id);
+      } catch (e) {
+        if (!cancelled) setLoadError(e instanceof Error ? e.message : String(e));
+      } finally {
+        if (!cancelled) setReady(true);
+      }
     })();
     return () => {
       cancelled = true;
     };
-  }, [uid, loadBusinessData]);
+  }, [uid, loadBusinessData, attempt]);
+
+  const reload = useCallback(() => setAttempt((n) => n + 1), []);
 
   const patchProfile = useCallback(
     async (patch: Partial<Profile>) => {
@@ -883,6 +910,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
 
   const value: DataCtx = {
     ready,
+    loadError,
+    reload,
     profile,
     businesses,
     activeBusiness,
