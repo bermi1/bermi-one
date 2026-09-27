@@ -19,7 +19,15 @@ export interface GatewayConfig {
   sandbox: boolean;
   usd_rate: number;
   plans: { code: string; name: string; amount: number; currency: string; active: boolean }[];
-  /** Everything a payment needs is in place. */
+  /** Where the credentials came from — the dashboard's env vars, or Vault. */
+  source: 'env' | 'vault' | 'none';
+  /**
+   * The one thing that being fully configured cannot prove: whether Payme
+   * itself will accept this app id. A signed probe query answers that live —
+   * `accepted: false` here is a Payme-side problem, not ours.
+   */
+  gateway: { status: number; message: string; accepted: boolean } | null;
+  /** Everything a payment needs is in place, including the gateway's say-so. */
   ready: boolean;
 }
 

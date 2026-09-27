@@ -42,11 +42,48 @@ async function callerOf(req: Request, admin: ReturnType<typeof createClient>) {
   return data?.user ?? null;
 }
 
-const APP_ID = Deno.env.get('PAYME_APP_ID') ?? '';
-const SECRET = Deno.env.get('PAYME_APP_SECRET') ?? '';
-const SANDBOX = (Deno.env.get('PAYME_SANDBOX') ?? '1') === '1';
-const CALLBACK = Deno.env.get('PAYME_CALLBACK_URL') ?? '';
 const RATE = Number(Deno.env.get('USD_TZS_RATE') ?? '2650');
+const PAYME_BASE = 'https://portal.paymeafrica.com/api/v1';
+
+interface Payme {
+  appId: string;
+  secret: string;
+  sandbox: boolean;
+  callback: string;
+  /** Where the credentials came from, for the console. Never the values. */
+  source: 'env' | 'vault' | 'none';
+}
+
+/**
+ * Payme credentials: the function environment first, then Vault.
+ *
+ * Edge-function secrets can only be set from the dashboard; Vault can be set
+ * from SQL and is encrypted at rest. Reading both means either route
+ * configures payment, and a field set in the environment always wins.
+ */
+async function paymeConfig(admin: ReturnType<typeof createClient>): Promise<Payme> {
+  const env = {
+    appId: Deno.env.get('PAYME_APP_ID') ?? '',
+    secret: Deno.env.get('PAYME_APP_SECRET') ?? '',
+    sandbox: Deno.env.get('PAYME_SANDBOX') ?? '',
+    callback: Deno.env.get('PAYME_CALLBACK_URL') ?? '',
+  };
+  let v: Record<string, string | null> = {};
+  if (!env.appId || !env.secret || !env.callback || !env.sandbox) {
+    const { data } = await admin.rpc('payme_config');
+    v = (data ?? {}) as Record<string, string | null>;
+  }
+  const sandbox = (env.sandbox || v.sandbox || '1') === '1';
+  const appId = env.appId || (sandbox ? (v.sandbox_app_id || v.app_id) : v.app_id) || '';
+  const secret = env.secret || v.secret || '';
+  return {
+    appId,
+    secret,
+    sandbox,
+    callback: env.callback || v.callback_url || '',
+    source: env.appId && env.secret ? 'env' : appId && secret ? 'vault' : 'none',
+  };
+}
 
 /** Tanzanian numbers reach the gateway as 255XXXXXXXXX. People type them every other way. */
 function msisdn(input: string): string {
@@ -57,21 +94,21 @@ function msisdn(input: string): string {
   return digits;
 }
 
-async function signed(payload: Record<string, unknown>, path: string) {
+async function signed(p: Payme, payload: Record<string, unknown>, path: string) {
   const message = JSON.stringify(payload);
   const timestamp = String(Math.floor(Date.now() / 1000));
-  const key = await crypto.subtle.importKey('raw', new TextEncoder().encode(SECRET), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
+  const key = await crypto.subtle.importKey('raw', new TextEncoder().encode(p.secret), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
   const sig = await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(message + timestamp));
 
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
-    'X-App-ID': APP_ID,
+    'X-App-ID': p.appId,
     'X-Timestamp': timestamp,
     'X-Signature': btoa(String.fromCharCode(...new Uint8Array(sig))),
   };
-  if (SANDBOX) headers['X-Sandbox'] = '1';
+  if (p.sandbox) headers['X-Sandbox'] = '1';
 
-  return fetch(`https://portal.paymeafrica.com/api/v1${path}`, { method: 'POST', headers, body: message });
+  return fetch(`${PAYME_BASE}${path}`, { method: 'POST', headers, body: message });
 }
 
 Deno.serve(async (req) => {
@@ -102,6 +139,8 @@ async function handle(req: Request): Promise<Response> {
   let body: { action?: string; plan_code?: string; phone?: string; reference?: string } = {};
   try { body = await req.json(); } catch { return json({ error: 'Bad JSON' }, 400); }
 
+  const pm = await paymeConfig(admin);
+
   /*
     Is payment even configured?
 
@@ -117,15 +156,39 @@ async function handle(req: Request): Promise<Response> {
       .eq('active', true)
       .order('amount');
 
+    /*
+      Ask the gateway, not just ourselves.
+
+      Every field can be set and payment still fail, because the gateway decides
+      whether this app id is active. A signed query for a reference that cannot
+      exist costs nothing and answers exactly that: 401 "Invalid or Inactive App
+      ID" is an account problem on Payme's side, anything else means the
+      credentials were accepted.
+    */
+    let gateway: { status: number; message: string; accepted: boolean } | null = null;
+    if (pm.appId && pm.secret) {
+      try {
+        const res = await signed(pm, { reference: 'BSUB_PROBE_CONFIG' }, '/query');
+        const text = await res.text();
+        let message = text.slice(0, 200);
+        try { const j = JSON.parse(text); message = j.error || j.message || j.provider_message || message; } catch { /* keep text */ }
+        gateway = { status: res.status, message, accepted: res.status !== 401 && res.status !== 403 };
+      } catch (e) {
+        gateway = { status: 0, message: e instanceof Error ? e.message : String(e), accepted: false };
+      }
+    }
+
     return json({
-      app_id_set: !!APP_ID,
-      secret_set: !!SECRET,
-      callback_set: !!CALLBACK,
-      callback_url: CALLBACK || null,
-      sandbox: SANDBOX,
+      app_id_set: !!pm.appId,
+      secret_set: !!pm.secret,
+      callback_set: !!pm.callback,
+      callback_url: pm.callback || null,
+      sandbox: pm.sandbox,
+      source: pm.source,
       usd_rate: RATE,
       plans: plans ?? [],
-      ready: !!APP_ID && !!SECRET && !!CALLBACK && (plans?.length ?? 0) > 0,
+      gateway,
+      ready: !!pm.appId && !!pm.secret && !!pm.callback && (plans?.length ?? 0) > 0 && !!gateway?.accepted,
     });
   }
 
@@ -146,9 +209,9 @@ async function handle(req: Request): Promise<Response> {
     // Already settled by the webhook — no need to trouble the gateway.
     if (mine.status !== 'PENDING') return json({ status: mine.status, amount: mine.amount });
 
-    if (!APP_ID || !SECRET) return json({ status: mine.status, amount: mine.amount });
+    if (!pm.appId || !pm.secret) return json({ status: mine.status, amount: mine.amount });
 
-    const res = await signed({ reference: body.reference }, '/query');
+    const res = await signed(pm, { reference: body.reference }, '/query');
     const out = await res.json().catch(() => ({}));
 
     // provider_checked: false means the live check itself failed, not that the
@@ -167,7 +230,7 @@ async function handle(req: Request): Promise<Response> {
   }
 
   // --- starting a payment --------------------------------------------------
-  if (!APP_ID || !SECRET) return json({ error: 'Payments are not configured yet.' }, 503);
+  if (!pm.appId || !pm.secret) return json({ error: 'Payments are not configured yet.' }, 503);
 
   const phone = msisdn(body.phone ?? '');
   if (!/^255[0-9]{9}$/.test(phone)) return json({ error: 'Enter a valid phone number.' }, 400);
@@ -210,7 +273,7 @@ async function handle(req: Request): Promise<Response> {
     amount,
     msisdn: phone,
     reference,
-    ...(CALLBACK ? { callback_url: CALLBACK } : {}),
+    ...(pm.callback ? { callback_url: pm.callback } : {}),
   };
 
   // Written before the call: if the gateway answers and we then fail, the
@@ -225,7 +288,7 @@ async function handle(req: Request): Promise<Response> {
     msisdn: phone,
     channel: 'CASHIN',
     label: `Bermi One — ${plan.name} ($${usd})`,
-    sandbox: SANDBOX,
+    sandbox: pm.sandbox,
     request_payload: payload,
     created_by: uid,
     paid_by: uid,
@@ -234,12 +297,24 @@ async function handle(req: Request): Promise<Response> {
   if (insertError) return json({ error: insertError.message }, 400);
 
   let out: Record<string, unknown>;
+  let httpStatus = 0;
   try {
-    const res = await signed(payload, '/transact');
-    out = await res.json();
+    const res = await signed(pm, payload, '/transact');
+    httpStatus = res.status;
+    out = await res.json().catch(() => ({}));
   } catch (e) {
     await admin.from('payments').update({ status: 'FAILED', provider_message: String(e) }).eq('reference', reference);
     return json({ error: 'Could not reach the payment gateway. Try again in a moment.', reference }, 502);
+  }
+
+  // The gateway refusing us is not a pending payment. Say so now rather than
+  // leave the client watching "check your phone" for a prompt that never left.
+  if (httpStatus === 401 || httpStatus === 403 || (httpStatus >= 400 && out?.error)) {
+    const why = String(out?.error ?? out?.message ?? `Gateway returned ${httpStatus}`);
+    await admin.from('payments').update({
+      status: 'FAILED', provider_message: why, response_payload: out, updated_at: new Date().toISOString(),
+    }).eq('reference', reference);
+    return json({ error: `The payment gateway refused the request: ${why}`, reference }, 502);
   }
 
   const provider = (out?.provider_response ?? {}) as Record<string, unknown>;

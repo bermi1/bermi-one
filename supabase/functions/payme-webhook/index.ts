@@ -12,12 +12,21 @@
 import { createClient } from 'jsr:@supabase/supabase-js@2';
 import { normaliseStatus, verifyCallback } from './payme_shared.ts';
 
-const SECRET = Deno.env.get('PAYME_APP_SECRET') ?? '';
-
 const admin = createClient(
   Deno.env.get('SUPABASE_URL')!,
   Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,
 );
+
+/** The HMAC key: function environment first, then Vault (see subscribe). */
+let cachedSecret: string | null = null;
+async function appSecret(): Promise<string> {
+  const env = Deno.env.get('PAYME_APP_SECRET') ?? '';
+  if (env) return env;
+  if (cachedSecret) return cachedSecret;
+  const { data } = await admin.rpc('payme_config');
+  cachedSecret = ((data ?? {}) as { secret?: string }).secret ?? '';
+  return cachedSecret;
+}
 
 /**
  * Keep every callback, including the ones we turn away.
@@ -46,7 +55,19 @@ async function record(entry: {
 }
 
 Deno.serve(async (req) => {
+  try {
+    return await handle(req);
+  } catch (e) {
+    // A callback that throws is a payment we never hear about. Name it.
+    const message = e instanceof Error ? e.message : String(e);
+    console.error('payme-webhook failed:', message);
+    return new Response(JSON.stringify({ error: message }), { status: 500, headers: { 'Content-Type': 'application/json' } });
+  }
+});
+
+async function handle(req: Request): Promise<Response> {
   if (req.method !== 'POST') return new Response('POST only', { status: 405 });
+  const SECRET = await appSecret();
   if (!SECRET) return new Response('Not configured', { status: 503 });
 
   const raw = await req.text();
@@ -163,7 +184,12 @@ Deno.serve(async (req) => {
       const base = existingEnd && existingEnd > new Date() ? existingEnd : new Date();
       const end = new Date(base.getTime() + intervalDays * 86_400_000);
 
-      await admin.from('subscriptions').upsert({
+      // `owner_id` is unique on this table for exactly this reason: without a
+      // conflict target, upsert has nothing to match on, PostgREST rejects
+      // the write, and a Supabase call that is awaited without reading
+      // `error` swallows that rejection — a completed payment would look
+      // handled while never actually activating anything.
+      const { error: subError } = await admin.from('subscriptions').upsert({
         owner_id: ownerId,
         ...(planId ? { plan_id: planId } : {}),
         status: 'active',
@@ -172,13 +198,18 @@ Deno.serve(async (req) => {
         updated_at: new Date().toISOString(),
       }, { onConflict: 'owner_id' });
 
-      // Settling the bill lifts the block on every business in the account.
-      await admin
-        .from('businesses')
-        .update({ suspended: false, suspended_reason: null, suspended_at: null })
-        .eq('owner_id', ownerId);
+      if (subError) {
+        console.error('payme-webhook: subscription upsert failed:', subError.message);
+        outcome = `subscription_activation_failed: ${subError.message}`;
+      } else {
+        // Settling the bill lifts the block on every business in the account.
+        await admin
+          .from('businesses')
+          .update({ suspended: false, suspended_reason: null, suspended_at: null })
+          .eq('owner_id', ownerId);
 
-      outcome = planId ? 'subscription_activated' : 'subscription_extended';
+        outcome = planId ? 'subscription_activated' : 'subscription_extended';
+      }
     }
   }
 
@@ -195,4 +226,4 @@ Deno.serve(async (req) => {
   await record({ reference, signatureOk: true, handled: true, outcome, headers, body });
 
   return new Response('ok', { status: 200 });
-});
+}

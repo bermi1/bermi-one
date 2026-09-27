@@ -37,6 +37,27 @@ async function callerOf(req: Request, admin: ReturnType<typeof createClient>) {
   return data?.user ?? null;
 }
 
+
+/** Payme credentials: environment first, then Vault. Same rule as subscribe. */
+async function paymeConfig(admin: ReturnType<typeof createClient>) {
+  const envApp = Deno.env.get('PAYME_APP_ID') ?? '';
+  const envSecret = Deno.env.get('PAYME_APP_SECRET') ?? '';
+  const envSandbox = Deno.env.get('PAYME_SANDBOX') ?? '';
+  const envCallback = Deno.env.get('PAYME_CALLBACK_URL') ?? '';
+  let v: Record<string, string | null> = {};
+  if (!envApp || !envSecret || !envCallback || !envSandbox) {
+    const { data } = await admin.rpc('payme_config');
+    v = (data ?? {}) as Record<string, string | null>;
+  }
+  const sandbox = (envSandbox || v.sandbox || '1') === '1';
+  return {
+    appId: envApp || (sandbox ? (v.sandbox_app_id || v.app_id) : v.app_id) || '',
+    secret: envSecret || v.secret || '',
+    sandbox,
+    callback: envCallback || v.callback_url || '',
+  };
+}
+
 interface Body {
   action:
     | 'overview'
@@ -155,62 +176,92 @@ async function handle(req: Request): Promise<Response> {
       });
     }
 
+    /*
+      Clients are ACCOUNTS.
+
+      A plan is bought once per account and covers every business in it, so
+      listing businesses put the same person — with the same subscription —
+      on the screen once per bar. One row per owner now, with their
+      businesses nested inside it.
+    */
     case 'clients': {
       const { data: biz } = await admin
         .from('businesses')
-        .select('id, name, type, city, country_code, owner_id, suspended, suspended_reason, created_at')
-        .order('created_at', { ascending: false })
-        .limit(body.limit ?? 300);
+        .select('id, name, type, city, country_code, owner_id, suspended, suspended_reason, created_at, sort_order')
+        .order('created_at', { ascending: true })
+        .limit(2000);
       const businesses = biz ?? [];
       if (businesses.length === 0) return json({ clients: [] });
 
       const ids = businesses.map((b) => b.id);
       const ownerIds = Array.from(new Set(businesses.map((b) => b.owner_id)));
 
-      const [{ data: subs }, { data: owners }, { data: lastSessions }] = await Promise.all([
+      const [{ data: subs }, { data: owners }, { data: lastSessions }, users] = await Promise.all([
         admin.from('subscriptions').select('*, subscription_plans(code, name, amount, currency)').in('owner_id', ownerIds),
         admin.from('profiles').select('id, full_name').in('id', ownerIds),
         admin.from('stock_sessions').select('business_id, session_date').in('business_id', ids).order('session_date', { ascending: false }),
+        Promise.all(ownerIds.map((id) => admin.auth.admin.getUserById(id))),
       ]);
 
       const subBy = new Map((subs ?? []).map((s) => [s.owner_id, s]));
-      const ownerBy = new Map((owners ?? []).map((o) => [o.id, o.full_name]));
+      const nameBy = new Map((owners ?? []).map((o) => [o.id, o.full_name]));
+      const emailBy = new Map<string, string | null>();
+      users.forEach((u, i) => emailBy.set(ownerIds[i], u.data?.user?.email ?? null));
       const lastBy = new Map<string, string>();
-      for (const s of lastSessions ?? []) if (!lastBy.has(s.business_id)) lastBy.set(s.business_id, s.session_date);
+      for (const row of lastSessions ?? []) if (!lastBy.has(row.business_id)) lastBy.set(row.business_id, row.session_date);
 
-      const siblings = new Map<string, number>();
-      for (const b of businesses) siblings.set(b.owner_id, (siblings.get(b.owner_id) ?? 0) + 1);
-
-      return json({
-        clients: businesses.map((b) => ({
-          ...b,
-          owner_name: ownerBy.get(b.owner_id) ?? null,
-          subscription: subBy.get(b.owner_id) ?? null,
-          account_businesses: siblings.get(b.owner_id) ?? 1,
-          last_closing: lastBy.get(b.id) ?? null,
-        })),
+      const clients = ownerIds.map((owner) => {
+        const mine = businesses
+          .filter((b) => b.owner_id === owner)
+          .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0))
+          .map((b) => ({
+            id: b.id, name: b.name, type: b.type, city: b.city, country_code: b.country_code,
+            suspended: b.suspended, suspended_reason: b.suspended_reason, created_at: b.created_at,
+            last_closing: lastBy.get(b.id) ?? null,
+          }));
+        const closings = mine.map((b) => b.last_closing).filter(Boolean) as string[];
+        return {
+          owner_id: owner,
+          owner_name: nameBy.get(owner) ?? null,
+          owner_email: emailBy.get(owner) ?? null,
+          created_at: mine[0]?.created_at ?? null,
+          subscription: subBy.get(owner) ?? null,
+          businesses: mine,
+          businesses_count: mine.length,
+          suspended_count: mine.filter((b) => b.suspended).length,
+          last_closing: closings.sort().reverse()[0] ?? null,
+        };
       });
+
+      // Newest accounts first — that is who support is most likely looking for.
+      clients.sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)));
+      return json({ clients });
     }
 
     case 'client': {
-      if (!body.business_id) return json({ error: 'business_id is required' }, 400);
-      const { data: business } = await admin.from('businesses').select('*').eq('id', body.business_id).maybeSingle();
-      if (!business) return json({ error: 'Not found' }, 404);
+      // An account. business_id still works, resolved to its owner, so a
+      // screen open during the deploy does not break.
+      const owner = body.owner_id ?? (body.business_id ? await ownerOf(body.business_id) : null);
+      if (!owner) return json({ error: 'owner_id is required' }, 400);
 
-      const [{ data: subscription }, { data: payments }, { data: sessions }, { data: owner }, { data: authUser }, { data: siblings }] = await Promise.all([
-        admin.from('subscriptions').select('*, subscription_plans(*)').eq('owner_id', business.owner_id).maybeSingle(),
-        admin.from('payments').select('*').eq('business_id', body.business_id).order('created_at', { ascending: false }).limit(20),
-        admin.from('stock_sessions').select('session_date, status, total_calculated_sales').eq('business_id', body.business_id).order('session_date', { ascending: false }).limit(30),
-        admin.from('profiles').select('id, full_name').eq('id', business.owner_id).maybeSingle(),
-        admin.auth.admin.getUserById(business.owner_id),
-        admin.from('businesses').select('id, name, suspended').eq('owner_id', business.owner_id),
+      const [{ data: businesses }, { data: subscription }, { data: profile }, { data: authUser }] = await Promise.all([
+        admin.from('businesses').select('*').eq('owner_id', owner).order('sort_order'),
+        admin.from('subscriptions').select('*, subscription_plans(*)').eq('owner_id', owner).maybeSingle(),
+        admin.from('profiles').select('id, full_name').eq('id', owner).maybeSingle(),
+        admin.auth.admin.getUserById(owner),
+      ]);
+      if (!businesses || businesses.length === 0) return json({ error: 'Not found' }, 404);
+
+      const ids = businesses.map((b) => b.id);
+      const [{ data: payments }, { data: sessions }] = await Promise.all([
+        admin.from('payments').select('*').or(`paid_by.eq.${owner},business_id.in.(${ids.join(',')})`).order('created_at', { ascending: false }).limit(30),
+        admin.from('stock_sessions').select('business_id, session_date, status, total_calculated_sales').in('business_id', ids).order('session_date', { ascending: false }).limit(40),
       ]);
 
       return json({
-        business,
-        owner: { ...owner, email: authUser?.user?.email ?? null, last_sign_in_at: authUser?.user?.last_sign_in_at ?? null },
+        owner: { id: owner, full_name: profile?.full_name ?? null, email: authUser?.user?.email ?? null, last_sign_in_at: authUser?.user?.last_sign_in_at ?? null },
         subscription,
-        account_businesses: siblings ?? [],
+        businesses,
         payments: payments ?? [],
         sessions: sessions ?? [],
       });
@@ -295,9 +346,13 @@ async function handle(req: Request): Promise<Response> {
     }
 
     case 'charge_subscription': {
-      if (!body.business_id) return json({ error: 'business_id is required' }, 400);
-      const owner = await ownerOf(body.business_id);
-      if (!owner) return json({ error: 'Not found' }, 404);
+      const owner = body.owner_id ?? (body.business_id ? await ownerOf(body.business_id) : null);
+      if (!owner) return json({ error: 'business_id or owner_id is required' }, 400);
+
+      // Any one business under the account carries the charge, purely so it
+      // has somewhere to sit for the per-account payments list — billing
+      // itself is the account's, which is why owner_id alone is enough above.
+      const businessId = body.business_id ?? (await admin.from('businesses').select('id').eq('owner_id', owner).order('sort_order').limit(1).maybeSingle()).data?.id ?? null;
 
       const { data: sub } = await admin
         .from('subscriptions')
@@ -317,12 +372,8 @@ async function handle(req: Request): Promise<Response> {
       const amount = Math.round(Number(body.amount ?? usd * rate));
       if (amount <= 0) return json({ error: 'Nothing to charge — the plan has no amount.' }, 400);
 
-      const appId = Deno.env.get('PAYME_APP_ID') ?? '';
-      const secret = Deno.env.get('PAYME_APP_SECRET') ?? '';
+      const { appId, secret, sandbox, callback } = await paymeConfig(admin);
       if (!appId || !secret) return json({ error: 'Payme Africa is not configured yet.' }, 503);
-
-      const sandbox = (Deno.env.get('PAYME_SANDBOX') ?? '1') === '1';
-      const callback = Deno.env.get('PAYME_CALLBACK_URL') ?? '';
       const stamp = new Date().toISOString().replace(/[-:TZ.]/g, '').slice(0, 14);
       const reference = `BSUB_${stamp}_${crypto.randomUUID().slice(0, 8).toUpperCase()}`;
 
@@ -335,7 +386,8 @@ async function handle(req: Request): Promise<Response> {
       };
 
       await admin.from('payments').insert({
-        business_id: body.business_id,
+        business_id: businessId,
+        paid_by: owner,
         subscription_id: sub.id,
         purpose: 'subscription',
         reference,
@@ -386,10 +438,8 @@ async function handle(req: Request): Promise<Response> {
 
     case 'query_payment': {
       if (!body.reference) return json({ error: 'reference is required' }, 400);
-      const appId = Deno.env.get('PAYME_APP_ID') ?? '';
-      const secret = Deno.env.get('PAYME_APP_SECRET') ?? '';
+      const { appId, secret, sandbox } = await paymeConfig(admin);
       if (!appId || !secret) return json({ error: 'Payme Africa is not configured yet.' }, 503);
-      const sandbox = (Deno.env.get('PAYME_SANDBOX') ?? '1') === '1';
 
       const message = JSON.stringify({ reference: body.reference });
       const timestamp = String(Math.floor(Date.now() / 1000));
