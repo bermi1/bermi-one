@@ -2,7 +2,7 @@ import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import './index.css';
 import './lib/pwa';
-import { BOOT_CEILING_MS } from './lib/boot';
+import { BOOT_CEILING_MS, BOOT_MIN_MS } from './lib/boot';
 import App from './App.tsx';
 
 createRoot(document.getElementById('root')!).render(
@@ -42,9 +42,12 @@ declare global {
 }
 
 window.__bermiReady = () => {
+  // Never before the minimum: performance.now() counts from navigation start,
+  // so time spent parsing and loading already counts towards it.
+  const wait = Math.max(0, BOOT_MIN_MS - performance.now());
   // One more frame so the app's first screen is on the glass before the cover
   // comes off, rather than a frame of empty background between the two.
-  requestAnimationFrame(() => requestAnimationFrame(retireBoot));
+  setTimeout(() => requestAnimationFrame(() => requestAnimationFrame(retireBoot)), wait);
 };
 
 setTimeout(retireBoot, BOOT_CEILING_MS);

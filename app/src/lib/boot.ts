@@ -13,4 +13,13 @@
  * A stalled network must not hold it for ever — and whatever is underneath has
  * to be a real screen by then, not an empty one.
  */
-export const BOOT_CEILING_MS = 4500;
+export const BOOT_CEILING_MS = 6500;
+
+/**
+ * The shortest the splash is shown, counted from navigation start.
+ *
+ * On a warm cache the app is ready in well under a second, and a brand screen
+ * that flashes and vanishes reads as a glitch rather than an opening. Four
+ * seconds gives the mark and the line under it time to land.
+ */
+export const BOOT_MIN_MS = 4000;

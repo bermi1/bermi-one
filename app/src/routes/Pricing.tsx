@@ -438,13 +438,21 @@ function PaySheet({ plan, country, onClose, onPaid }: {
       */
       const raw = e instanceof Error ? e.message : String(e);
       const notConfigured = /not configured/i.test(raw);
-      const unreachable = /could not reach|gateway|network|failed to fetch/i.test(raw);
+      // "The payment gateway refused the request: …" was matching the bare word
+      // "gateway" below and being reported as unreachable — hiding the one
+      // message that says what is actually wrong. A refusal is its own case.
+      const refused = /refused/i.test(raw);
+      const unreachable = !refused && /could not reach|network|failed to fetch/i.test(raw);
       setStatus('FAILED');
       setMessage(
         notConfigured
           ? (sw
             ? 'Malipo bado hayajawashwa. Tuulize kupitia Pata msaada — si kitu unachoweza kurekebisha.'
             : 'Payments are not switched on yet. Ask us through Get help — this one is ours, not yours.')
+          : refused
+            ? (sw
+              ? `Lango la malipo limekataa ombi: ${raw.replace(/^.*refused the request:\s*/i, '')}. Hili ni letu kurekebisha — tuulize kupitia Pata msaada.`
+              : `${raw}. This one is ours to fix — ask us through Get help.`)
           : unreachable
             ? (sw
               ? 'Hatukuweza kufikia lango la malipo. Jaribu tena baada ya dakika moja.'
