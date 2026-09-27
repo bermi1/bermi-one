@@ -35,20 +35,33 @@ export interface Subscription {
   subscription_plans?: Pick<Plan, 'code' | 'name' | 'amount'> | null;
 }
 
-export interface ClientRow {
+/** One business as it appears nested inside its account's client row. */
+export interface ClientBusiness {
   id: string;
   name: string;
   type: string;
   city: string | null;
   country_code: string;
-  owner_id: string;
-  owner_name: string | null;
   suspended: boolean;
   suspended_reason: string | null;
   created_at: string;
+  last_closing: string | null;
+}
+
+/**
+ * One ACCOUNT — a plan is bought once and covers every business the owner
+ * runs, so this is the row the client list shows once per owner, not once
+ * per bar.
+ */
+export interface ClientRow {
+  owner_id: string;
+  owner_name: string | null;
+  owner_email: string | null;
+  created_at: string;
   subscription: Subscription | null;
-  /** How many businesses the whole account runs — the number the plan is priced on. */
-  account_businesses: number;
+  businesses: ClientBusiness[];
+  businesses_count: number;
+  suspended_count: number;
   last_closing: string | null;
 }
 
@@ -67,12 +80,19 @@ export interface Overview {
 }
 
 export interface ClientDetail {
-  business: ClientRow & { suspended_at: string | null };
   owner: { id: string; full_name: string | null; email: string | null; last_sign_in_at: string | null };
   subscription: (Subscription & { subscription_plans: Plan | null }) | null;
-  account_businesses: { id: string; name: string; suspended: boolean }[];
+  /**
+   * Every business the account runs, each blockable on its own. The full row
+   * (not the trimmed `ClientBusiness` the list uses) — no `last_closing` here,
+   * since that is computed only for the list, from the sessions below instead.
+   */
+  businesses: {
+    id: string; name: string; type: string; city: string | null; country_code: string;
+    suspended: boolean; suspended_reason: string | null; suspended_at: string | null; created_at: string;
+  }[];
   payments: PlatformPayment[];
-  sessions: { session_date: string; status: string; total_calculated_sales: number }[];
+  sessions: { business_id: string; session_date: string; status: string; total_calculated_sales: number }[];
 }
 
 export interface PlatformPayment {
@@ -102,19 +122,20 @@ export async function checkPlatformAdmin(): Promise<boolean> {
 
 export const fetchOverview = () => callAdmin<Overview>({ action: 'overview' });
 export const fetchClients = () => callAdmin<{ clients: ClientRow[] }>({ action: 'clients' }).then((r) => r.clients);
-export const fetchClient = (businessId: string) => callAdmin<ClientDetail>({ action: 'client', business_id: businessId });
+/** An account, by its owner. A business id still resolves — see the function. */
+export const fetchClient = (ownerId: string) => callAdmin<ClientDetail>({ action: 'client', owner_id: ownerId });
 export const fetchAllPayments = () => callAdmin<{ payments: PlatformPayment[] }>({ action: 'payments' }).then((r) => r.payments);
 
 export const setSuspended = (businessId: string, suspended: boolean, reason?: string) =>
   callAdmin<{ ok: boolean }>({ action: 'set_suspended', business_id: businessId, suspended, reason });
 
-export const setSubscription = (businessId: string, patch: {
+export const setSubscription = (ownerId: string, patch: {
   plan_id?: string;
   status?: SubscriptionStatus;
   period_days?: number;
   billing_phone?: string;
   notes?: string;
-}) => callAdmin<{ subscription: Subscription }>({ action: 'set_subscription', business_id: businessId, ...patch });
+}) => callAdmin<{ subscription: Subscription }>({ action: 'set_subscription', owner_id: ownerId, ...patch });
 
 /**
  * Sends the client a recovery link. Support never sees or sets a password —
@@ -123,8 +144,9 @@ export const setSubscription = (businessId: string, patch: {
 export const resetPassword = (email: string) =>
   callAdmin<{ ok: boolean; action_link: string | null }>({ action: 'reset_password', email });
 
-export const chargeSubscription = (businessId: string, opts?: { amount?: number; billing_phone?: string }) =>
-  callAdmin<{ reference: string; amount: number }>({ action: 'charge_subscription', business_id: businessId, ...opts });
+/** Charges the account — any one of its businesses resolves to the same billing owner. */
+export const chargeSubscription = (ownerId: string, opts?: { amount?: number; billing_phone?: string }) =>
+  callAdmin<{ reference: string; amount: number }>({ action: 'charge_subscription', owner_id: ownerId, ...opts });
 
 export const queryPayment = (reference: string) =>
   callAdmin<{ payment_status?: string; provider_checked?: boolean; provider_message?: string | null }>({ action: 'query_payment', reference });
@@ -179,7 +201,9 @@ export interface ActivityRow {
   payload: Record<string, unknown>;
   actor_name: string | null;
   created_at: string;
-  businesses?: { name: string } | null;
+  /** Whose account this happened under — action_log only carries business_id,
+   *  but the account is what the feed groups by, so the join brings it along. */
+  businesses?: { name: string; owner_id: string } | null;
 }
 
 export interface AuditRow {
@@ -207,7 +231,7 @@ export async function fetchActivity(opts: {
 } = {}): Promise<ActivityRow[]> {
   let q = supabase
     .from('action_log')
-    .select('*, businesses(name)')
+    .select('*, businesses(name, owner_id)')
     .order('created_at', { ascending: false })
     .limit(opts.limit ?? 80);
   if (opts.objectType) q = q.eq('object_type', opts.objectType);

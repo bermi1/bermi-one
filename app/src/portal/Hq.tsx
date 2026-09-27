@@ -140,10 +140,34 @@ export function Hq() {
     const q = query.trim().toLowerCase();
     if (!q || !clients) return clients || [];
     return clients.filter((c) =>
-      c.name.toLowerCase().includes(q) ||
       (c.owner_name || '').toLowerCase().includes(q) ||
-      (c.city || '').toLowerCase().includes(q));
+      (c.owner_email || '').toLowerCase().includes(q) ||
+      c.businesses.some((b) => b.name.toLowerCase().includes(q) || (b.city || '').toLowerCase().includes(q)));
   }, [clients, query]);
+
+  /** owner_id → a name worth showing, for the activity feed's account headers. */
+  const accountNames = useMemo(() => {
+    const m = new Map<string, { name: string; count: number }>();
+    for (const c of clients ?? []) {
+      m.set(c.owner_id, { name: c.owner_name || c.owner_email || c.businesses[0]?.name || c.owner_id.slice(0, 8), count: c.businesses_count });
+    }
+    return m;
+  }, [clients]);
+
+  /** Activity rows, one contiguous run per account, newest account first — the
+   *  feed is already newest-row-first, so grouping just has to preserve that
+   *  order rather than re-sort it. */
+  const activityGroups = useMemo(() => {
+    if (!activity) return [];
+    const order: string[] = [];
+    const by = new Map<string, ActivityRow[]>();
+    for (const row of activity) {
+      const owner = row.businesses?.owner_id ?? '';
+      if (!by.has(owner)) { by.set(owner, []); order.push(owner); }
+      by.get(owner)!.push(row);
+    }
+    return order.map((owner) => ({ owner, rows: by.get(owner)! }));
+  }, [activity]);
 
   const statusCopy: Record<SubscriptionStatus, { label: string; ink: string; soft: string }> = {
     active: { label: T.statusActive, ink: 'var(--ok)', soft: 'var(--okSoft)' },
@@ -249,20 +273,24 @@ export function Hq() {
             <div className="hq-list">
               {filteredClients.map((c) => {
                 const st = statusCopy[(c.subscription?.status || 'trialing') as SubscriptionStatus];
+                const blocked = c.suspended_count > 0;
                 return (
-                  <div key={c.id} className="hq-row" data-tap onClick={() => setOpenClient(c.id)}>
+                  <div key={c.owner_id} className="hq-row" data-tap onClick={() => setOpenClient(c.owner_id)}>
                     <div className="hq-row-main">
                       <div className="hq-row-title" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                        {c.name}
+                        {c.owner_name || c.owner_email || c.businesses[0]?.name}
                         <span className="hq-tag" style={{ color: st.ink, background: st.soft }}>{st.label}</span>
-                        {c.suspended && <span className="hq-tag" style={{ color: 'var(--bad)', background: 'var(--badSoft)' }}>{T.blockedTag}</span>}
+                        {blocked && (
+                          <span className="hq-tag" style={{ color: 'var(--bad)', background: 'var(--badSoft)' }}>
+                            {c.suspended_count === c.businesses_count ? T.blockedTag : `${c.suspended_count}/${c.businesses_count} ${T.blockedTag.toLowerCase()}`}
+                          </span>
+                        )}
                       </div>
                       <div className="hq-row-meta">
                         {[
-                          c.owner_name,
-                          c.city,
+                          c.businesses_count > 1 ? `${c.businesses_count} ${T.businesses.toLowerCase()}` : c.businesses[0]?.name,
+                          c.businesses[0]?.city,
                           c.subscription?.subscription_plans?.name,
-                          c.account_businesses > 1 ? `${c.account_businesses} ${T.businesses.toLowerCase()}` : null,
                           c.last_closing ? `${T.lastClosing} ${c.last_closing}` : T.noClosingYet,
                         ].filter(Boolean).join(' · ')}
                       </div>
@@ -308,22 +336,38 @@ export function Hq() {
           ) : activity.length === 0 ? (
             <div className="hq-empty">{T.nothingYet}</div>
           ) : (
-            <div className="hq-list">
-              {activity.map((a) => (
-                <div key={a.id} className={`hq-row${freshIds.has(a.id) ? ' hq-new' : ''}`}>
-                  <div className="hq-row-main">
-                    <div className="hq-row-title">{a.summary}</div>
-                    <div className="hq-row-meta">
-                      {[
-                        a.businesses?.name,
-                        ACTION_TYPES[a.action_type] ? verbName(a.action_type, lang) : a.action_type,
-                        a.actor_name,
-                      ].filter(Boolean).join(' · ')}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+              {activityGroups.map((g) => {
+                const acc = accountNames.get(g.owner);
+                return (
+                  <div key={g.owner || 'unknown'}>
+                    <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, padding: '2px 2px 6px' }}>
+                      <div style={{ fontWeight: 800, fontSize: 12.5 }}>{acc?.name ?? g.rows[0]?.businesses?.name ?? '—'}</div>
+                      <div className="hq-sub" style={{ margin: 0 }}>
+                        {[acc && acc.count > 1 ? `${acc.count} ${T.businesses.toLowerCase()}` : null, `${T.lastActive} ${when(g.rows[0].created_at, lang)}`]
+                          .filter(Boolean).join(' · ')}
+                      </div>
+                    </div>
+                    <div className="hq-list">
+                      {g.rows.map((a) => (
+                        <div key={a.id} className={`hq-row${freshIds.has(a.id) ? ' hq-new' : ''}`}>
+                          <div className="hq-row-main">
+                            <div className="hq-row-title">{a.summary}</div>
+                            <div className="hq-row-meta">
+                              {[
+                                a.businesses?.name,
+                                ACTION_TYPES[a.action_type] ? verbName(a.action_type, lang) : a.action_type,
+                                a.actor_name,
+                              ].filter(Boolean).join(' · ')}
+                            </div>
+                          </div>
+                          <div className="hq-row-num" style={{ color: 'var(--ink3)', fontWeight: 600 }}>{when(a.created_at, lang)}</div>
+                        </div>
+                      ))}
                     </div>
                   </div>
-                  <div className="hq-row-num" style={{ color: 'var(--ink3)', fontWeight: 600 }}>{when(a.created_at, lang)}</div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </>
@@ -548,7 +592,7 @@ export function Hq() {
       />
 
       <ClientDrawer
-        businessId={openClient}
+        ownerId={openClient}
         plans={plans}
         onClose={() => setOpenClient(null)}
         onChanged={() => { void load(); setAudit(null); }}
@@ -590,7 +634,11 @@ function GatewayCard({ config, error, T }: { config: GatewayConfig | null; error
     { k: T.gatewayCallback, ok: config.callback_set, v: config.callback_url || T.notSet },
     { k: T.gatewayMode, ok: true, v: config.sandbox ? T.gatewaySandbox : T.gatewayLive },
     { k: T.gatewayRate, ok: config.usd_rate > 0, v: String(config.usd_rate) },
+    { k: T.gatewaySource, ok: config.source !== 'none', v: config.source === 'vault' ? T.gatewaySourceVault : config.source === 'env' ? T.gatewaySourceEnv : T.notSet },
   ];
+  if (config.gateway) {
+    rows.push({ k: T.gatewayCheck, ok: config.gateway.accepted, v: config.gateway.accepted ? T.accepted : `${T.rejected} — ${config.gateway.message}` });
+  }
 
   return (
     <div className="hq-card" style={{ borderColor: config.ready ? undefined : 'var(--bad)' }}>
@@ -617,7 +665,9 @@ function GatewayCard({ config, error, T }: { config: GatewayConfig | null; error
 
       {!config.ready && (
         <div style={{ marginTop: 10, fontSize: 11.5, lineHeight: 1.5, color: 'var(--ink3)' }}>
-          {config.callback_set ? T.gatewayMissing : T.gatewayCallbackMissing}
+          {!config.callback_set ? T.gatewayCallbackMissing
+            : config.app_id_set && config.secret_set && config.gateway && !config.gateway.accepted ? T.gatewayRefusedNote
+            : T.gatewayMissing}
         </div>
       )}
     </div>

@@ -10,7 +10,12 @@ import {
 const tzs = (n: number) => 'TSh ' + Math.round(n).toLocaleString('en-US');
 
 /**
- * One client account, and the levers support actually needs.
+ * One ACCOUNT, and the levers support actually needs.
+ *
+ * Billing is the account's — one plan, one phone number, one subscription —
+ * so it sits at the top. Blocking is per business: suspending one bar out of
+ * three is a support action, not a billing event, so each business gets its
+ * own block/unblock rather than one switch for the whole account.
  *
  * The blocking and billing controls write straight to the database as the
  * signed-in administrator, which is what lets the audit triggers record who
@@ -18,8 +23,8 @@ const tzs = (n: number) => 'TSh ' + Math.round(n).toLocaleString('en-US');
  * password recovery link and talking to the payment gateway — go through the
  * admin function.
  */
-export function ClientDrawer({ businessId, plans, onClose, onChanged, onFlash }: {
-  businessId: string | null;
+export function ClientDrawer({ ownerId, plans, onClose, onChanged, onFlash }: {
+  ownerId: string | null;
   plans: Plan[];
   onClose: () => void;
   onChanged: () => void;
@@ -30,20 +35,20 @@ export function ClientDrawer({ businessId, plans, onClose, onChanged, onFlash }:
 
   const [detail, setDetail] = useState<ClientDetail | null>(null);
   const [busy, setBusy] = useState(false);
-  const [reason, setReason] = useState('');
+  const [reasons, setReasons] = useState<Record<string, string>>({});
   const [phone, setPhone] = useState('');
 
   const load = useCallback(async () => {
-    if (!businessId) { setDetail(null); return; }
-    const d = await fetchClient(businessId);
+    if (!ownerId) { setDetail(null); return; }
+    const d = await fetchClient(ownerId);
     setDetail(d);
-    setReason(d.business.suspended_reason || '');
+    setReasons(Object.fromEntries(d.businesses.map((b) => [b.id, b.suspended_reason || ''])));
     setPhone(d.subscription?.billing_phone || '');
-  }, [businessId]);
+  }, [ownerId]);
 
   useEffect(() => { void load(); }, [load]);
 
-  if (!businessId) return null;
+  if (!ownerId) return null;
 
   async function act(fn: () => Promise<string | null | void>, done: string) {
     setBusy(true);
@@ -61,6 +66,7 @@ export function ClientDrawer({ businessId, plans, onClose, onChanged, onFlash }:
 
   const owner = detail?.owner;
   const sub = detail?.subscription;
+  const businesses = detail?.businesses ?? [];
   const status = (sub?.status || 'trialing') as SubscriptionStatus;
   const statusLabel: Record<SubscriptionStatus, string> = {
     active: T.statusActive, trialing: T.statusTrial, past_due: T.statusPastDue,
@@ -69,6 +75,8 @@ export function ClientDrawer({ businessId, plans, onClose, onChanged, onFlash }:
   const sessions = detail?.sessions ?? [];
   const verified = sessions.filter((s) => s.status === 'verified').length;
   const turnover = sessions.reduce((s, r) => s + Number(r.total_calculated_sales || 0), 0);
+  const lastClosingByBiz = new Map<string, string>();
+  for (const s of sessions) if (!lastClosingByBiz.has(s.business_id)) lastClosingByBiz.set(s.business_id, s.session_date);
 
   return (
     <>
@@ -86,20 +94,24 @@ export function ClientDrawer({ businessId, plans, onClose, onChanged, onFlash }:
           <>
             <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12 }}>
               <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: 17, fontWeight: 800, letterSpacing: -0.3 }}>{detail.business.name}</div>
+                <div style={{ fontSize: 17, fontWeight: 800, letterSpacing: -0.3 }}>
+                  {owner?.full_name || businesses[0]?.name || T.owner}
+                </div>
                 <div style={{ marginTop: 3, fontSize: 12, color: 'var(--ink3)', fontWeight: 600 }}>
-                  {[owner?.full_name, owner?.email].filter(Boolean).join(' · ')}
+                  {[owner?.email, businesses.length > 1 ? `${businesses.length} ${T.businesses.toLowerCase()}` : businesses[0]?.name]
+                    .filter(Boolean).join(' · ')}
                 </div>
               </div>
               <button className="hq-icon-btn" onClick={onClose} aria-label={T.cancel}><Icon name="x" size={14} /></button>
             </div>
 
+            {/* Billing: one row per account, above the businesses it covers. */}
             <div className="hq-list">
               {[
                 [T.status, statusLabel[status]],
                 [T.plan, sub?.subscription_plans ? `${sub.subscription_plans.name} · $${sub.subscription_plans.amount}/mo` : '—'],
                 [T.renews, sub?.current_period_end ? new Date(sub.current_period_end).toLocaleDateString() : '—'],
-                [T.businessesOnAccount, String(detail.account_businesses.length || 1)],
+                [T.businessesOnAccount, String(businesses.length)],
                 [T.lastSignIn, owner?.last_sign_in_at ? new Date(owner.last_sign_in_at).toLocaleDateString() : '—'],
                 [T.closingsOnFile, `${sessions.length} · ${verified} ${T.verified.toLowerCase()}`],
                 [T.turnover30, tzs(turnover)],
@@ -164,8 +176,8 @@ export function ClientDrawer({ businessId, plans, onClose, onChanged, onFlash }:
               <button
                 className="hq-nav-item"
                 style={{ justifyContent: 'center', marginTop: 10, background: 'var(--brand)', color: 'var(--brandInk)', fontWeight: 800 }}
-                disabled={busy || !phone}
-                onClick={() => act(async () => { await chargeSubscription(detail.business.id); }, T.sendPrompt)}
+                disabled={busy || !phone || !owner}
+                onClick={() => owner && act(async () => { await chargeSubscription(owner.id); }, T.sendPrompt)}
               >
                 {T.sendPrompt}
               </button>
@@ -182,28 +194,49 @@ export function ClientDrawer({ businessId, plans, onClose, onChanged, onFlash }:
               {T.sendReset}
             </button>
 
-            <div className="hq-card" style={{ borderColor: detail.business.suspended ? 'var(--bad)' : 'var(--line)' }}>
-              <div style={{ fontSize: 12.5, fontWeight: 800, color: detail.business.suspended ? 'var(--bad)' : 'var(--ink2)' }}>
-                {detail.business.suspended ? T.accessBlocked : T.blockAccess}
-              </div>
-              <div className="hq-sub" style={{ marginTop: 5, lineHeight: 1.5 }}>{T.blockNote}</div>
-              {!detail.business.suspended && (
-                <input className="hq-input" style={{ marginTop: 9 }} placeholder={T.blockReason} value={reason} onChange={(e) => setReason(e.target.value)} />
-              )}
-              <button
-                className="hq-nav-item"
-                style={{
-                  justifyContent: 'center', marginTop: 10, fontWeight: 800,
-                  background: detail.business.suspended ? 'var(--ok)' : 'var(--bad)', color: '#fff',
-                }}
-                disabled={busy}
-                onClick={() => act(
-                  () => setBusinessSuspended(detail.business.id, !detail.business.suspended, reason),
-                  detail.business.suspended ? T.restoreAccess : T.blockAccess,
-                )}
-              >
-                {detail.business.suspended ? T.restoreAccess : T.blockAccess}
-              </button>
+            {/* Blocking is per business — one bar out of three going dark is a
+                support action, not a billing event. */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+              <div className="hq-k">{T.businessesOnAccount}</div>
+              {businesses.map((b) => (
+                <div key={b.id} className="hq-card" style={{ borderColor: b.suspended ? 'var(--bad)' : 'var(--line)' }}>
+                  <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 8 }}>
+                    <div style={{ fontWeight: 800, fontSize: 13.5 }}>{b.name}</div>
+                    {b.suspended && <span className="hq-tag" style={{ color: 'var(--bad)', background: 'var(--badSoft)' }}>{T.blockedTag}</span>}
+                  </div>
+                  <div className="hq-sub" style={{ marginTop: 3 }}>
+                    {[b.city, lastClosingByBiz.get(b.id) ? `${T.lastClosing} ${lastClosingByBiz.get(b.id)}` : T.noClosingYet]
+                      .filter(Boolean).join(' · ')}
+                  </div>
+                  <div style={{ fontSize: 12.5, fontWeight: 800, marginTop: 9, color: b.suspended ? 'var(--bad)' : 'var(--ink2)' }}>
+                    {b.suspended ? T.accessBlocked : T.blockAccess}
+                  </div>
+                  <div className="hq-sub" style={{ marginTop: 5, lineHeight: 1.5 }}>{T.blockNote}</div>
+                  {!b.suspended && (
+                    <input
+                      className="hq-input"
+                      style={{ marginTop: 9 }}
+                      placeholder={T.blockReason}
+                      value={reasons[b.id] ?? ''}
+                      onChange={(e) => setReasons((r) => ({ ...r, [b.id]: e.target.value }))}
+                    />
+                  )}
+                  <button
+                    className="hq-nav-item"
+                    style={{
+                      justifyContent: 'center', marginTop: 10, fontWeight: 800,
+                      background: b.suspended ? 'var(--ok)' : 'var(--bad)', color: '#fff',
+                    }}
+                    disabled={busy}
+                    onClick={() => act(
+                      () => setBusinessSuspended(b.id, !b.suspended, reasons[b.id]),
+                      b.suspended ? T.restoreAccess : T.blockAccess,
+                    )}
+                  >
+                    {b.suspended ? T.restoreAccess : T.blockAccess}
+                  </button>
+                </div>
+              ))}
             </div>
           </>
         )}

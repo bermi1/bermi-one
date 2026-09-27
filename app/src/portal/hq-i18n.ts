@@ -44,6 +44,11 @@ export interface HqCopy {
   gatewaySandbox: string;
   gatewayMissing: string;
   gatewayCallbackMissing: string;
+  gatewaySource: string;
+  gatewaySourceEnv: string;
+  gatewaySourceVault: string;
+  gatewayCheck: string;
+  gatewayRefusedNote: string;
   set: string;
   notSet: string;
   sent: string;
@@ -119,6 +124,7 @@ export interface HqCopy {
   whoDidWhat: string;
   auditSub: string;
   activitySub: string;
+  lastActive: string;
 }
 
 export const HQ: Record<Lang, HqCopy> = {
@@ -149,6 +155,9 @@ export const HQ: Record<Lang, HqCopy> = {
     gatewayLive: 'Live', gatewaySandbox: 'Sandbox',
     gatewayMissing: 'Set the missing secrets in Supabase → Edge Functions → Secrets.',
     gatewayCallbackMissing: 'Without a callback URL the gateway has nowhere to report to, so every charge stays pending for ever.',
+    gatewaySource: 'Credentials from', gatewaySourceEnv: 'Edge function secrets', gatewaySourceVault: 'Vault',
+    gatewayCheck: 'Gateway check',
+    gatewayRefusedNote: 'Everything is configured, but Payme itself is refusing this app id — it needs activating in the Payme portal.',
     set: 'set', notSet: 'not set',
     sent: 'Sent', queued: 'Queued', failedLabel: 'Failed', skipped: 'Skipped',
     rejected: 'Rejected', accepted: 'Accepted',
@@ -219,6 +228,7 @@ export const HQ: Record<Lang, HqCopy> = {
     whoDidWhat: 'Who did what',
     auditSub: 'Every action Bermi Techs staff have taken on a client account. Written by the database, not the app.',
     activitySub: 'Every action across every tenant, as it happens.',
+    lastActive: 'Last active',
   },
 
   sw: {
@@ -248,6 +258,9 @@ export const HQ: Record<Lang, HqCopy> = {
     gatewayLive: 'Halisi', gatewaySandbox: 'Majaribio',
     gatewayMissing: 'Weka siri zinazokosekana Supabase → Edge Functions → Secrets.',
     gatewayCallbackMissing: 'Bila callback URL lango halina pa kuripoti, hivyo kila malipo yatabaki yanasubiri milele.',
+    gatewaySource: 'Siri zinatoka', gatewaySourceEnv: 'Edge function secrets', gatewaySourceVault: 'Vault',
+    gatewayCheck: 'Ukaguzi wa lango',
+    gatewayRefusedNote: 'Kila kitu kimewekwa sawa, lakini Payme wenyewe wanakataa app id hii — inahitaji kuwashwa kwenye Payme portal.',
     set: 'imewekwa', notSet: 'haijawekwa',
     sent: 'Imetumwa', queued: 'Inasubiri', failedLabel: 'Imeshindikana', skipped: 'Imerukwa',
     rejected: 'Imekataliwa', accepted: 'Imepokelewa',
@@ -318,5 +331,6 @@ export const HQ: Record<Lang, HqCopy> = {
     whoDidWhat: 'Nani alifanya nini',
     auditSub: 'Kila hatua wafanyakazi wa Bermi Techs wamechukua kwenye akaunti ya mteja. Imeandikwa na hifadhidata, si programu.',
     activitySub: 'Kila tukio kwa kila mteja, linapotokea.',
+    lastActive: 'Mwisho kutumika',
   },
 };
