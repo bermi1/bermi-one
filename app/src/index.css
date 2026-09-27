@@ -16,10 +16,19 @@
 }
 *{box-sizing:border-box}
 html,body,#root{height:100%}
-body{margin:0;background:var(--page);color:var(--ink);font-family:'Plus Jakarta Sans',system-ui,sans-serif;-webkit-font-smoothing:antialiased}
+/* Installed, not browsed: no rubber-band past the ends of a scroller, and no
+   grey flash on a tap — a page can get away with both, an app cannot. */
+html,body{overscroll-behavior:none;-webkit-tap-highlight-color:transparent}
+body{margin:0;background:var(--page);color:var(--ink);font-family:'Plus Jakarta Sans',system-ui,sans-serif;-webkit-font-smoothing:antialiased;touch-action:manipulation}
 a{color:var(--brand);text-decoration:none}
-input,button,textarea{font:inherit;color:inherit;font-family:inherit}
+input,button,textarea,select{font:inherit;color:inherit;font-family:inherit;-webkit-tap-highlight-color:transparent}
 input:focus,textarea:focus{outline:2px solid var(--brand);outline-offset:1px}
+/* iOS Safari (and the installed PWA, same engine) zooms the whole viewport in
+   whenever a focused field computes under 16px — every text input in the app
+   is styled smaller than that for density, so this has to win over the inline
+   size that set it. A momentary zoom on every tap is the single fastest way
+   an installed app gives itself away as a web page. */
+input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),select,textarea{font-size:16px!important}
 button{background:none;border:none;cursor:pointer;-webkit-tap-highlight-color:transparent}
 .tap{cursor:pointer;-webkit-tap-highlight-color:transparent;user-select:none}
 .sb::-webkit-scrollbar{width:0;height:0}
@@ -50,7 +59,7 @@ button{background:none;border:none;cursor:pointer;-webkit-tap-highlight-color:tr
 
 .toast{position:fixed;left:50%;bottom:110px;transform:translateX(-50%);background:var(--ink);color:var(--bg);font-weight:700;font-size:13px;padding:12px 18px;border-radius:14px;box-shadow:var(--sh);z-index:80;animation:slideIn .2s ease}
 
-.top-bar{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:14px 16px 4px}
+.top-bar{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:calc(14px + env(safe-area-inset-top)) 16px 4px}
 .chip{padding:9px 13px;border-radius:12px;font-size:12.5px;font-weight:700;color:var(--ink);background:var(--card);border:1px solid var(--line);box-shadow:var(--sh)}
 
 ::placeholder{color:var(--ink3)}
