@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
+import { useScrolled } from '../lib/useScrolled';
 import { Icon } from '../lib/icons';
 import { useSettings } from '../lib/useSettings';
 import { useData } from '../state/DataContext';
@@ -12,11 +13,13 @@ export function AppHeader() {
   const { activeBusiness, setTheme, activeStaff } = useData();
   const [switching, setSwitching] = useState(false);
   const [roleOpen, setRoleOpen] = useState(false);
+  const barRef = useRef<HTMLDivElement>(null);
+  const scrolled = useScrolled(barRef, 8);
   const meta = activeBusiness ? bizMeta(activeBusiness.type) : null;
 
   return (
     <>
-      <div className="top-bar">
+      <div ref={barRef} className="top-bar" data-scrolled={scrolled || undefined}>
         <div className="row tap" style={{ gap: 10, minWidth: 0 }} onClick={() => setSwitching(true)}>
           {/* The business's own type icon once there is a business; the Bermi
               mark before that, so the app is never wearing a placeholder. */}

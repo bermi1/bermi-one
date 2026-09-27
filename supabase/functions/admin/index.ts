@@ -68,7 +68,9 @@ interface Body {
     | 'reset_password'
     | 'charge_subscription'
     | 'query_payment'
-    | 'payments';
+    | 'payments'
+    | 'set_payme_config'
+    | 'test_payme';
   business_id?: string;
   owner_id?: string;
   user_id?: string;
@@ -84,6 +86,40 @@ interface Body {
   reference?: string;
   limit?: number;
   query?: string;
+  app_id?: string;
+  sandbox_app_id?: string;
+  secret?: string;
+  sandbox?: boolean;
+}
+
+/**
+ * One signed /query for a reference that cannot exist. Payme answers 401
+ * "Invalid or Inactive App ID" when it does not recognise the app, and
+ * something else (404, a JSON body) once it does — which is the whole
+ * question this asks.
+ */
+async function probePayme(appId: string, secret: string, sandbox: boolean) {
+  if (!appId || !secret) return { app_id: appId || null, sandbox, status: 0, message: 'Not set', accepted: false };
+  const message = JSON.stringify({ reference: 'BSUB_PROBE_HQ' });
+  const timestamp = String(Math.floor(Date.now() / 1000));
+  const key = await crypto.subtle.importKey('raw', new TextEncoder().encode(secret), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
+  const sig = await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(message + timestamp));
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+    'X-App-ID': appId,
+    'X-Timestamp': timestamp,
+    'X-Signature': btoa(String.fromCharCode(...new Uint8Array(sig))),
+  };
+  if (sandbox) headers['X-Sandbox'] = '1';
+  try {
+    const res = await fetch('https://portal.paymeafrica.com/api/v1/query', { method: 'POST', headers, body: message });
+    const text = await res.text();
+    let msg = text.slice(0, 200);
+    try { const j = JSON.parse(text); msg = j.error || j.message || j.provider_message || msg; } catch { /* keep text */ }
+    return { app_id: appId, sandbox, status: res.status, message: msg || `HTTP ${res.status}`, accepted: res.status !== 401 && res.status !== 403 };
+  } catch (e) {
+    return { app_id: appId, sandbox, status: 0, message: e instanceof Error ? e.message : String(e), accepted: false };
+  }
 }
 
 Deno.serve(async (req) => {
@@ -464,6 +500,33 @@ async function handle(req: Request): Promise<Response> {
         await admin.from('payments').update({ status, updated_at: new Date().toISOString() }).eq('reference', body.reference);
       }
       return json(out, res.status);
+    }
+
+    /*
+      Credentials, from the console. Goes into Vault through a function only
+      the service role can call; nothing comes back but "saved", so the
+      secret is write-only from the moment it is typed.
+    */
+    case 'set_payme_config': {
+      const { error } = await admin.rpc('set_payme_config', {
+        p_app_id: body.app_id?.trim() || null,
+        p_sandbox_app_id: body.sandbox_app_id?.trim() || null,
+        p_secret: body.secret?.trim() || null,
+        p_sandbox: body.sandbox === undefined ? null : body.sandbox ? '1' : '0',
+      });
+      if (error) return json({ error: error.message }, 400);
+      return json({ ok: true });
+    }
+
+    // Both modes in one tap: which app id, if either, Payme accepts right now.
+    case 'test_payme': {
+      const { data } = await admin.rpc('payme_config');
+      const v = (data ?? {}) as Record<string, string | null>;
+      const secret = Deno.env.get('PAYME_APP_SECRET') || v.secret || '';
+      const liveId = Deno.env.get('PAYME_APP_ID') || v.app_id || '';
+      const testId = v.sandbox_app_id || liveId;
+      const [live, sandbox] = await Promise.all([probePayme(liveId, secret, false), probePayme(testId, secret, true)]);
+      return json({ mode: (Deno.env.get('PAYME_SANDBOX') || v.sandbox || '1') === '1' ? 'sandbox' : 'live', live, sandbox });
     }
 
     default:

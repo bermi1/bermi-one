@@ -10,6 +10,9 @@
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
     <link rel="manifest" href="/manifest.webmanifest" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Outfit:wght@600;700;800&display=swap" />
 
     <!-- Installed-app chrome. The theme colour follows the app's own light and
          dark grounds so the status bar never fights the screen under it. -->
@@ -30,29 +33,40 @@
         position: fixed; inset: 0; z-index: 9999;
         display: grid; place-items: center; gap: 22px; align-content: center;
         background: #f4f6fd;
-        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+        font-family: "Outfit", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
         transition: opacity .34s ease;
       }
       #boot[data-done] { opacity: 0; pointer-events: none; }
       #boot img { width: 116px; height: 116px; animation: rise .6s cubic-bezier(.2,.8,.2,1) both; }
-      #boot .word { font-size: 19px; font-weight: 800; letter-spacing: -0.4px; color: #14161c;
+      #boot .word { font-size: 26px; font-weight: 800; letter-spacing: -0.8px; color: #14161c;
                     animation: rise .6s .08s cubic-bezier(.2,.8,.2,1) both; }
-      #boot .slogan { margin-top: -14px; font-size: 12.5px; font-weight: 600; color: #6b7280;
+      #boot .slogan { margin-top: -14px; min-height: 1.4em; font-size: 14px; font-weight: 600; color: #6b7280;
                       animation: rise .6s .16s cubic-bezier(.2,.8,.2,1) both; }
-      #boot .bar { width: 116px; height: 3px; border-radius: 99px; background: #e2e6f3; overflow: hidden; }
-      #boot .bar i { display: block; height: 100%; width: 40%; border-radius: 99px;
-                     background: linear-gradient(90deg, #0433cf, #029dff); animation: slide 1.1s ease-in-out infinite; }
+      #boot .slogan b { color: #0433cf; font-weight: 800; }
+      #boot .caret { display: inline-block; width: 2px; height: 1em; margin-left: 2px; vertical-align: -0.12em;
+                     background: #0433cf; animation: blink 1s steps(1) infinite; }
+      #boot .bar { width: 150px; height: 4px; border-radius: 99px; background: #e2e6f3; overflow: hidden; }
+      #boot .bar i { display: block; height: 100%; width: 0; border-radius: 99px;
+                     background: linear-gradient(90deg, #0433cf, #029dff);
+                     animation: fill var(--hold, 7000ms) cubic-bezier(.35,.1,.25,1) forwards; }
+      #boot img { animation: rise .6s cubic-bezier(.2,.8,.2,1) both, breathe 3.2s 1s ease-in-out infinite; }
+      @keyframes fill { to { width: 100%; } }
+      @keyframes blink { 50% { opacity: 0; } }
+      @keyframes breathe { 50% { transform: scale(1.04); } }
       @keyframes rise { from { opacity: 0; transform: translateY(9px) scale(.97); } to { opacity: 1; transform: none; } }
       @keyframes slide { 0% { transform: translateX(-110%); } 100% { transform: translateX(360%); } }
       @media (prefers-reduced-motion: reduce) {
         #boot img, #boot .word, #boot .slogan { animation: none; }
         #boot .bar i { animation: none; width: 100%; }
+        #boot .caret { animation: none; }
       }
       @media (prefers-color-scheme: dark) {
         #boot { background: #0b0f1a; }
         #boot .word { color: #f3f5fb; }
         #boot .slogan { color: #8a93a6; }
         #boot .bar { background: #1c2333; }
+        #boot .slogan b { color: #6ea8ff; }
+        #boot .caret { background: #6ea8ff; }
       }
     </style>
   </head>
@@ -60,9 +74,38 @@
     <div id="boot">
       <img src="/icons/bermi-mark.svg" alt="" />
       <div class="word">Bermi One</div>
-      <div class="slogan">Your business. One system.</div>
+      <div class="slogan"><span id="boot-lead">One system for every</span> <b id="boot-type"></b><i class="caret"></i></div>
       <div class="bar"><i></i></div>
     </div>
+    <script>
+      /* The splash's own few lines, before any bundle: hold time for the
+         progress bar (same rule as src/lib/boot.ts — long on the first open
+         of a session, short on a reload) and the typed line. */
+      (function () {
+        var boot = document.getElementById('boot');
+        var seen = false;
+        try { seen = !!sessionStorage.getItem('bermi:booted'); } catch (e) {}
+        boot.style.setProperty('--hold', (seen ? 2500 : 7000) + 'ms');
+        var sw = false;
+        try { sw = localStorage.getItem('bermi:lang') === 'sw'; } catch (e) {}
+        if (sw) document.getElementById('boot-lead').textContent = 'Mfumo mmoja kwa kila';
+        var words = sw ? ['baa', 'duka', 'mgahawa', 'famasia', 'biashara'] : ['bar', 'shop', 'restaurant', 'pharmacy', 'business'];
+        var el = document.getElementById('boot-type');
+        if (window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches) { el.textContent = words[words.length - 1]; return; }
+        var w = 0, n = 0, del = false;
+        (function tick() {
+          if (!document.getElementById('boot')) return;
+          var word = words[w % words.length];
+          var last = w % words.length === words.length - 1;
+          if (!del) { n++; el.textContent = word.slice(0, n); }
+          else { n--; el.textContent = word.slice(0, n); }
+          var d = del ? 40 : 80;
+          if (!del && n === word.length) { if (last) return; del = true; d = 900; }
+          else if (del && n === 0) { del = false; w++; d = 180; }
+          setTimeout(tick, d);
+        })();
+      })();
+    </script>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>

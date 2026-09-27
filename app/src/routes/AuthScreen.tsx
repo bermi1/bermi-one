@@ -17,15 +17,51 @@ function strengthOf(pw: string): number {
   return Math.min(4, s);
 }
 
+/**
+ * Types a word, holds it, deletes it, types the next. Under reduced motion it
+ * simply shows each word in turn.
+ */
+function TypeCycle({ words }: { words: string[] }) {
+  const [i, setI] = useState(0);
+  const [text, setText] = useState('');
+  const [deleting, setDeleting] = useState(false);
+  const reduced = typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+
+  useEffect(() => {
+    const word = words[i % words.length];
+    if (reduced) {
+      setText(word);
+      const t = setTimeout(() => setI((n) => n + 1), 2400);
+      return () => clearTimeout(t);
+    }
+    let delay = deleting ? 38 : 72;
+    if (!deleting && text === word) delay = 1500;
+    if (deleting && text === '') delay = 220;
+    const t = setTimeout(() => {
+      if (!deleting && text === word) setDeleting(true);
+      else if (deleting && text === '') { setDeleting(false); setI((n) => n + 1); }
+      else setText(deleting ? word.slice(0, text.length - 1) : word.slice(0, text.length + 1));
+    }, delay);
+    return () => clearTimeout(t);
+  }, [text, deleting, i, words, reduced]);
+
+  return <span className="auth-type">{text}<span className="auth-caret" aria-hidden="true" /></span>;
+}
+
 const COPY = {
   en: {
-    heroTitle: 'Run the whole bar from one screen.',
-    heroSub: 'Count stock, close the day and see where every shilling went — on any phone.',
+    heroPrefix: 'Run your ',
+    heroWords: ['bar', 'shop', 'restaurant', 'pharmacy', 'hardware store', 'salon', 'business'],
+    heroSuffix: ' from one system.',
+    heroSub: 'Bermi One is one system for every business you run — stock, cash, staff and reports, across every branch, on any phone.',
     props: [
-      { icon: 'box', t: 'Stock that adds up', d: 'Opening, deliveries and the closing count, per product.' },
-      { icon: 'wallet', t: 'Cash you can trust', d: 'Cash, mobile money and bank, reconciled every night.' },
-      { icon: 'chart', t: 'Reports in a tap', d: 'Sales and profit by day, product and branch.' },
+      { icon: 'box', t: 'Stock & inventory', d: 'Deliveries, counts and what sold — per product, per branch.' },
+      { icon: 'wallet', t: 'Cash, mobile money & bank', d: 'Every shilling in and out, reconciled every day.' },
+      { icon: 'users', t: 'Staff with their own PIN', d: 'They record the work; you keep prices and profit.' },
+      { icon: 'chart', t: 'Every branch, one account', d: 'Reports and insights across all your businesses.' },
     ],
+    types: ['Bars & lounges', 'Shops', 'Restaurants', 'Pharmacies', 'Hardware', 'Salons'],
+    rolling: 'Live for bars & lounges today — more business types rolling out.',
     loginSub: 'Sign in to pick up where you left off.',
     signupSub: '14 days free. No card needed.',
     show: 'Show password', hide: 'Hide password',
@@ -34,13 +70,18 @@ const COPY = {
     staffHint: 'Staff? Sign in on your business’s phone or tablet and pick your name.',
   },
   sw: {
-    heroTitle: 'Endesha baa nzima kwenye skrini moja.',
-    heroSub: 'Hesabu bidhaa, funga siku na uone kila shilingi ilipokwenda — kwenye simu yoyote.',
+    heroPrefix: 'Endesha ',
+    heroWords: ['baa', 'duka', 'mgahawa', 'famasia', 'duka la vifaa', 'saluni', 'biashara'],
+    heroSuffix: ' yako kwa mfumo mmoja.',
+    heroSub: 'Bermi One ni mfumo mmoja kwa kila biashara unayoendesha — bidhaa, fedha, wafanyakazi na ripoti, kwa kila tawi, kwenye simu yoyote.',
     props: [
-      { icon: 'box', t: 'Bidhaa zinazolingana', d: 'Mwanzo, mizigo na hesabu ya kufunga, kwa kila bidhaa.' },
-      { icon: 'wallet', t: 'Fedha za kuaminika', d: 'Taslimu, pesa ya simu na benki, kila usiku.' },
-      { icon: 'chart', t: 'Ripoti kwa mguso', d: 'Mauzo na faida kwa siku, bidhaa na tawi.' },
+      { icon: 'box', t: 'Bidhaa na stoo', d: 'Mizigo, hesabu na kilichouzwa — kwa kila bidhaa na tawi.' },
+      { icon: 'wallet', t: 'Taslimu, pesa ya simu na benki', d: 'Kila shilingi inayoingia na kutoka, kila siku.' },
+      { icon: 'users', t: 'Wafanyakazi wenye PIN zao', d: 'Wanarekodi kazi; wewe unabaki na bei na faida.' },
+      { icon: 'chart', t: 'Kila tawi, akaunti moja', d: 'Ripoti na uchambuzi kwa biashara zako zote.' },
     ],
+    types: ['Baa na lounge', 'Maduka', 'Migahawa', 'Famasia', 'Vifaa', 'Saluni'],
+    rolling: 'Inafanya kazi kwa baa na lounge leo — aina nyingine za biashara zinakuja.',
     loginSub: 'Ingia uendelee ulipoishia.',
     signupSub: 'Siku 14 bure. Hakuna kadi.',
     show: 'Onyesha nenosiri', hide: 'Ficha nenosiri',
@@ -125,8 +166,16 @@ export function AuthScreen() {
               <div className="auth-brand-tag">{L.tagline}</div>
             </div>
           </div>
-          <h1 className="auth-hero-title">{C.heroTitle}</h1>
+          <h1 className="auth-hero-title">
+            {C.heroPrefix}<TypeCycle key={lang} words={C.heroWords} />{C.heroSuffix}
+          </h1>
           <p className="auth-hero-sub">{C.heroSub}</p>
+          <div className="auth-types">
+            {C.types.map((t, i) => (
+              <span key={t} style={{ animationDelay: `${0.3 + i * 0.07}s` }} data-live={i === 0 || undefined}>{t}</span>
+            ))}
+          </div>
+          <p className="auth-rolling">{C.rolling}</p>
           <ul className="auth-props">
             {C.props.map((p, i) => (
               <li key={p.t} style={{ animationDelay: `${0.25 + i * 0.08}s` }}>

@@ -148,6 +148,19 @@ export const resetPassword = (email: string) =>
 export const chargeSubscription = (ownerId: string, opts?: { amount?: number; billing_phone?: string }) =>
   callAdmin<{ reference: string; amount: number }>({ action: 'charge_subscription', owner_id: ownerId, ...opts });
 
+export interface PaymeProbe { app_id: string | null; sandbox: boolean; status: number; message: string; accepted: boolean }
+
+/** Ask Payme, right now, whether it accepts the live id and the sandbox id. */
+export const testPayme = () =>
+  callAdmin<{ mode: 'live' | 'sandbox'; live: PaymeProbe; sandbox: PaymeProbe }>({ action: 'test_payme' });
+
+/**
+ * Save Payme credentials into Vault. Blank fields are left as they are, so the
+ * secret can be kept without anyone having to see or retype it.
+ */
+export const setPaymeConfig = (patch: { app_id?: string; sandbox_app_id?: string; secret?: string; sandbox?: boolean }) =>
+  callAdmin<{ ok: boolean }>({ action: 'set_payme_config', ...patch });
+
 export const queryPayment = (reference: string) =>
   callAdmin<{ payment_status?: string; provider_checked?: boolean; provider_message?: string | null }>({ action: 'query_payment', reference });
 
