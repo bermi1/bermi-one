@@ -4,10 +4,9 @@ import { T } from './i18n';
 import { COUNTRIES, countryByCode, formatMoney, shortMoney } from './countries';
 
 export function useSettings() {
-  const { profile, activeBusiness } = useData();
+  const { profile, activeBusiness, role } = useData();
   const lang = profile?.lang || 'en';
   const theme = profile?.theme || 'light';
-  const role = profile?.role || 'owner';
   const country = countryByCode(activeBusiness?.country_code || 'TZ');
   const L = T[lang];
   const owner = role === 'owner';

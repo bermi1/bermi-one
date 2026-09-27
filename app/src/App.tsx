@@ -17,6 +17,7 @@ import { NativeShell } from './components/NativeShell';
 import { checkPlatformAdmin } from './lib/platform';
 import { BOOT_CEILING_MS } from './lib/boot';
 import { Icon } from './lib/icons';
+import { StaffSignIn } from './components/StaffAccess';
 
 /*
   What loads first, and what waits.
@@ -115,9 +116,9 @@ function StillStarting({ error, onRetry }: { error: string | null; onRetry: () =
 
 function AppRoutes() {
   const { session, loading: authLoading, recovering } = useAuth();
-  const { ready, loadError, reload, profile, activeBusiness } = useData();
+  const { ready, loadError, reload, profile, activeBusiness, role, activeStaff } = useData();
   const location = useLocation();
-  const owner = profile?.role === 'owner';
+  const owner = role === 'owner';
 
   /*
     True once the splash has had its turn.
@@ -198,6 +199,10 @@ function AppRoutes() {
   // Money stays open to staff — it is where they record their own entries, and
   // the screen already withholds the profit summary from them. Everything else
   // in this list is owner business.
+  // Staff mode with nobody signed in: "Who's working?" in front of everything,
+  // so nothing gets recorded under nobody's name.
+  if (!owner && activeBusiness && !activeStaff) return <StaffSignIn />;
+
   const isOwnerOnly = ['/reports', '/ai', '/manage', '/business', '/staff', '/pricing', '/help'].includes(location.pathname) && !owner;
   if (isOwnerOnly) return <Navigate to="/home" replace />;
 

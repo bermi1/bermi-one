@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from './AuthContext';
 import { businessDayIso, snapshotLine, soldOf } from '../lib/calc';
@@ -62,7 +62,25 @@ interface DataCtx {
 
   setLang: (l: Lang) => void;
   setTheme: (t: Theme) => void;
-  setRole: (r: Role) => void;
+  /**
+   * Owner or staff, on THIS device. It used to live on the profile, which
+   * meant switching the bar's tablet to staff also flipped the owner's own
+   * phone — one account, one flag, every device.
+   */
+  role: Role;
+  /** Leave owner mode. Always allowed; coming back is what takes a secret. */
+  lockToStaff: () => void;
+  /** Back to owner mode: the owner PIN, or the account password if no PIN is set yet. */
+  unlockOwner: (secret: string) => Promise<PinResult>;
+  ownerPinSet: boolean;
+  setOwnerPin: (pin: string) => Promise<string | null>;
+  /** Who is working in staff mode on this device, for this business. */
+  activeStaff: { id: string; name: string } | null;
+  signInStaff: (memberId: string, pin: string) => Promise<PinResult>;
+  signOutStaff: () => void;
+  setStaffPin: (memberId: string, pin: string) => Promise<string | null>;
+  /** Ids of this business's staff who have a PIN and so can sign in. */
+  fetchStaffWithPins: () => Promise<Set<string>>;
   displayName: string;
 
   completeOnboarding: (input: { name: string; type: string; city: string; countryCode: string; answers: Record<string, boolean | null> }) => Promise<void>;
@@ -104,9 +122,11 @@ interface DataCtx {
   /** Cash/mobile/bank balances for several businesses at once — the combined cash book. */
   fetchBooks: (businessIds: string[]) => Promise<{ accounts: Accounts[]; ledger: LedgerEntry[] }>;
 
-  addStaffMember: (input: { name: string; phone: string; title: string }) => Promise<string | null>;
+  addStaffMember: (input: { name: string; phone: string; title: string; pin?: string }) => Promise<string | null>;
   removeStaffMember: (id: string) => Promise<void>;
 }
+
+export type PinResult = 'ok' | 'wrong' | 'locked' | 'no_pin' | 'error';
 
 const Ctx = createContext<DataCtx | null>(null);
 
@@ -128,6 +148,9 @@ export function DataProvider({ children }: { children: ReactNode }) {
   const [actionLog, setActionLog] = useState<ActionLogEntry[]>([]);
   const [subscription, setSubscription] = useState<Subscription | null>(null);
   const [staffMembers, setStaffMembers] = useState<StaffMember[]>([]);
+  const [role, setRoleState] = useState<Role>('owner');
+  const [ownerPinSet, setOwnerPinSet] = useState(false);
+  const [activeStaff, setActiveStaff] = useState<{ id: string; name: string } | null>(null);
 
   const activeBusiness = useMemo(
     () => businesses.find((b) => b.id === profile?.active_business_id) || businesses[0] || null,
@@ -211,6 +234,13 @@ export function DataProvider({ children }: { children: ReactNode }) {
         const { data: biz, error: bizError } = await supabase.from('businesses').select('*').eq('owner_id', uid).order('sort_order');
         if (bizError) throw new Error(bizError.message);
         if (cancelled) return;
+        // This device's own choice first; the old account-wide flag only as a
+        // starting point, so a tablet already in staff mode stays there.
+        let deviceRole: Role | null = null;
+        try { deviceRole = localStorage.getItem(`bermi:role:${uid}`) as Role | null; } catch { /* private mode */ }
+        setRoleState(deviceRole === 'owner' || deviceRole === 'staff' ? deviceRole : ((prof as Profile | null)?.role || 'owner'));
+        const { data: pinSet } = await supabase.rpc('owner_pin_set');
+        setOwnerPinSet(!!pinSet);
         setProfile(prof as Profile);
         setBusinesses(biz || []);
         const active = (biz || []).find((b) => b.id === (prof as Profile | null)?.active_business_id) || (biz || [])[0];
@@ -239,7 +269,88 @@ export function DataProvider({ children }: { children: ReactNode }) {
 
   const setLang = useCallback((l: Lang) => void patchProfile({ lang: l }), [patchProfile]);
   const setTheme = useCallback((t: Theme) => void patchProfile({ theme: t }), [patchProfile]);
-  const setRole = useCallback((r: Role) => void patchProfile({ role: r }), [patchProfile]);
+  const setRole = useCallback((r: Role) => {
+    setRoleState(r);
+    try { if (uid) localStorage.setItem(`bermi:role:${uid}`, r); } catch { /* per-device only */ }
+  }, [uid]);
+
+  const staffKey = activeBusiness ? `bermi:staff:${activeBusiness.id}` : null;
+
+  // Who is signed in on this device follows the business: each bar has its own.
+  useEffect(() => {
+    if (!staffKey) { setActiveStaff(null); return; }
+    try {
+      const raw = localStorage.getItem(staffKey);
+      const saved = raw ? (JSON.parse(raw) as { id: string; name: string }) : null;
+      // A member removed since they signed in is signed out with them.
+      setActiveStaff(saved && staffMembers.some((m) => m.id === saved.id) ? saved : null);
+    } catch { setActiveStaff(null); }
+  }, [staffKey, staffMembers]);
+
+  const signOutStaff = useCallback(() => {
+    setActiveStaff(null);
+    try { if (staffKey) localStorage.removeItem(staffKey); } catch { /* ignore */ }
+  }, [staffKey]);
+
+  const lockToStaff = useCallback(() => {
+    signOutStaff();
+    setRole('staff');
+  }, [setRole, signOutStaff]);
+
+  const unlockOwner = useCallback<DataCtx['unlockOwner']>(async (secret) => {
+    if (ownerPinSet) {
+      const { data, error } = await supabase.rpc('verify_owner_pin', { p_pin: secret });
+      if (error) return 'error';
+      if (data === 'ok') { setRole('owner'); signOutStaff(); }
+      return (data as PinResult) || 'error';
+    }
+    // No PIN yet: the account password proves it is the owner.
+    const email = authSession?.user?.email;
+    if (!email) return 'error';
+    const { error } = await supabase.auth.signInWithPassword({ email, password: secret });
+    if (error) return 'wrong';
+    setRole('owner');
+    signOutStaff();
+    return 'ok';
+  }, [ownerPinSet, authSession, setRole, signOutStaff]);
+
+  const setOwnerPin = useCallback(async (pin: string) => {
+    const { error } = await supabase.rpc('set_owner_pin', { p_pin: pin });
+    if (error) return error.message;
+    setOwnerPinSet(true);
+    return null;
+  }, []);
+
+  const signInStaff = useCallback<DataCtx['signInStaff']>(async (memberId, pin) => {
+    const { data, error } = await supabase.rpc('verify_staff_pin', { p_member: memberId, p_pin: pin });
+    if (error) return 'error';
+    if (data === 'ok') {
+      const m = staffMembers.find((x) => x.id === memberId);
+      const who = { id: memberId, name: m?.name || 'Staff' };
+      setActiveStaff(who);
+      try { if (staffKey) localStorage.setItem(staffKey, JSON.stringify(who)); } catch { /* ignore */ }
+    }
+    return (data as PinResult) || 'error';
+  }, [staffMembers, staffKey]);
+
+  const setStaffPin = useCallback(async (memberId: string, pin: string) => {
+    const { error } = await supabase.rpc('set_staff_pin', { p_member: memberId, p_pin: pin });
+    return error ? error.message : null;
+  }, []);
+
+  const fetchStaffWithPins = useCallback(async () => {
+    if (!activeBusiness) return new Set<string>();
+    const { data } = await supabase.rpc('staff_pin_members', { p_business: activeBusiness.id });
+    return new Set<string>(((data as string[] | null) || []).map(String));
+  }, [activeBusiness]);
+
+  /*
+    The name written on everything done from this device: the staff member
+    signed in, in staff mode, otherwise the owner. A ref, so the dozen
+    callbacks that stamp it do not all need re-creating when it changes.
+  */
+  const actorRef = useRef<string | undefined>(undefined);
+  actorRef.current = role === 'staff' && activeStaff ? activeStaff.name : (profile?.full_name || undefined);
 
   const completeOnboarding = useCallback<DataCtx['completeOnboarding']>(
     async ({ name, type, city, countryCode, answers }) => {
@@ -254,7 +365,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
       await patchProfile({ onboarded: true, active_business_id: biz.id });
       setBusinesses((bs) => [...bs, biz as Business]);
       await loadBusinessData(biz.id);
-      await record({ businessId: biz.id, actionType: 'business.create', objectId: biz.id, summary: `Opened ${name} (${type})`, payload: { name, type, city }, actorName: profile?.full_name });
+      await record({ businessId: biz.id, actionType: 'business.create', objectId: biz.id, summary: `Opened ${name} (${type})`, payload: { name, type, city }, actorName: actorRef.current });
     },
     [uid, businesses.length, patchProfile, loadBusinessData, record, profile],
   );
@@ -304,7 +415,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
       setBusinesses((bs) => [...bs, biz as Business]);
       await patchProfile({ active_business_id: biz.id });
       await loadBusinessData(biz.id);
-      await record({ businessId: biz.id, actionType: 'business.create', objectId: biz.id, summary: `Added ${name} to the portfolio`, payload: { name, type, city }, actorName: profile?.full_name });
+      await record({ businessId: biz.id, actionType: 'business.create', objectId: biz.id, summary: `Added ${name} to the portfolio`, payload: { name, type, city }, actorName: actorRef.current });
       await refreshSubscription();
       return null;
     },
@@ -316,7 +427,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
       if (!activeBusiness) return;
       setBusinesses((bs) => bs.map((b) => (b.id === activeBusiness.id ? { ...b, ...patch } : b)));
       await supabase.from('businesses').update(patch).eq('id', activeBusiness.id);
-      await record({ businessId: activeBusiness.id, actionType: 'business.update', objectId: activeBusiness.id, summary: `Updated business profile`, payload: patch, actorName: profile?.full_name });
+      await record({ businessId: activeBusiness.id, actionType: 'business.update', objectId: activeBusiness.id, summary: `Updated business profile`, payload: patch, actorName: actorRef.current });
     },
     [activeBusiness, record, profile],
   );
@@ -337,7 +448,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
       if (activeBusiness && prior) {
         await record({
           businessId: activeBusiness.id, actionType: 'stock.updatePrice', objectId: productId,
-          summary: `Changed ${prior.name} price from ${prior.price} to ${price}`, payload: { from: prior.price, to: price }, actorName: profile?.full_name,
+          summary: `Changed ${prior.name} price from ${prior.price} to ${price}`, payload: { from: prior.price, to: price }, actorName: actorRef.current,
         });
       }
     },
@@ -352,7 +463,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
       });
       await Promise.all(orderedIds.map((id, i) => supabase.from('products').update({ sort_order: i }).eq('id', id)));
       if (activeBusiness) {
-        await record({ businessId: activeBusiness.id, actionType: 'stock.reorder', summary: 'Reordered the product list', actorName: profile?.full_name });
+        await record({ businessId: activeBusiness.id, actionType: 'stock.reorder', summary: 'Reordered the product list', actorName: actorRef.current });
       }
     },
     [activeBusiness, record, profile],
@@ -383,11 +494,11 @@ export function DataProvider({ children }: { children: ReactNode }) {
       const where = target === 'incoming' ? ' (held for the next count)' : '';
       const { data: entry } = await supabase
         .from('ledger_entries')
-        .insert({ business_id: activeBusiness.id, kind: 'stock', label: `Stock added — ${qty} × ${p.name}${where}`, amount: 0, account: 'cash', who_name: profile?.full_name })
+        .insert({ business_id: activeBusiness.id, kind: 'stock', label: `Stock added — ${qty} × ${p.name}${where}`, amount: 0, account: 'cash', who_name: actorRef.current })
         .select()
         .single();
       if (entry) setLedger((l) => [entry as LedgerEntry, ...l]);
-      await record({ businessId: activeBusiness.id, actionType: 'stock.add', objectId: productId, summary: `Added ${qty} × ${p.name} to stock${where}`, payload: { qty, product: p.name, target }, actorName: profile?.full_name });
+      await record({ businessId: activeBusiness.id, actionType: 'stock.add', objectId: productId, summary: `Added ${qty} × ${p.name} to stock${where}`, payload: { qty, product: p.name, target }, actorName: actorRef.current });
     },
     [activeBusiness, products, profile, record, stockTarget],
   );
@@ -401,7 +512,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
         .select()
         .single();
       if (p) setProducts((ps) => [...ps, p as Product]);
-      await record({ businessId: activeBusiness.id, actionType: 'stock.addProduct', objectId: p?.id, summary: `Added new product ${name}`, payload: { name, cat, price, profit }, actorName: profile?.full_name });
+      await record({ businessId: activeBusiness.id, actionType: 'stock.addProduct', objectId: p?.id, summary: `Added new product ${name}`, payload: { name, cat, price, profit }, actorName: actorRef.current });
     },
     [activeBusiness, products.length, record, profile],
   );
@@ -414,7 +525,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
       await supabase.from('products').update(patch).eq('id', productId);
       await record({
         businessId: activeBusiness.id, actionType: 'stock.updateProduct', objectId: productId,
-        summary: `Updated ${prior.name}`, payload: patch, actorName: profile?.full_name,
+        summary: `Updated ${prior.name}`, payload: patch, actorName: actorRef.current,
       });
     },
     [products, activeBusiness, record, profile],
@@ -465,7 +576,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
       await record({
         businessId: activeBusiness.id, actionType: 'stock.bulkImport',
         summary: `Imported ${inserted.length} product${inserted.length === 1 ? '' : 's'} from a file`,
-        payload: { requested: rows.length, imported: inserted.length }, actorName: profile?.full_name,
+        payload: { requested: rows.length, imported: inserted.length }, actorName: actorRef.current,
       });
     },
     [activeBusiness, products.length, record, profile],
@@ -575,7 +686,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
       if (!activeBusiness || lines.length === 0) return;
       // session_id ties a line back to the closing that produced it, so deleting
       // that closing can take its money with it instead of leaving orphans.
-      const rows = lines.map((l) => ({ business_id: activeBusiness.id, kind: l.kind, label: l.label, amount: l.amount, account: l.account, who_name: profile?.full_name, session_id: sessionId ?? null }));
+      const rows = lines.map((l) => ({ business_id: activeBusiness.id, kind: l.kind, label: l.label, amount: l.amount, account: l.account, who_name: actorRef.current, session_id: sessionId ?? null }));
       const { data } = await supabase.from('ledger_entries').insert(rows).select();
       if (data) setLedger((l) => [...(data as LedgerEntry[]), ...l]);
 
@@ -592,7 +703,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
       await record({
         businessId: activeBusiness.id, actionType: 'ledger.recordLines',
         summary: `Recorded ${lines.length} ${kinds} ${lines.length === 1 ? 'entry' : 'entries'} totaling ${total}`,
-        payload: { lines }, actorName: profile?.full_name,
+        payload: { lines }, actorName: actorRef.current,
       });
     },
     [activeBusiness, profile, accounts, record],
@@ -622,7 +733,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
         lines: products.map(snapshotLine),
         total_calculated_sales: counted.reduce((sum, p) => sum + soldOf(p, s.counts) * p.price, 0),
         total_calculated_profit: counted.reduce((sum, p) => sum + soldOf(p, s.counts) * p.profit, 0),
-        submitted_by_name: profile?.full_name || 'Staff',
+        submitted_by_name: actorRef.current || 'Staff',
         submitted_at: new Date().toISOString(),
       };
       setSession({ ...s, ...patch });
@@ -631,7 +742,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
         await record({
           businessId: activeBusiness.id, actionType: 'session.submit', objectId: s.id,
           summary: reason ? `Submitted today's closing for review (reason: ${reason})` : "Submitted today's closing for review",
-          payload: { reason, note }, actorName: profile?.full_name,
+          payload: { reason, note }, actorName: actorRef.current,
         });
       }
     },
@@ -694,7 +805,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
     await record({
       businessId: activeBusiness.id, actionType: 'session.approve', objectId: session.id,
       summary: `Approved and locked ${session.session_date}'s closing`,
-      payload: { rolledForward: counted.length }, actorName: profile?.full_name,
+      payload: { rolledForward: counted.length }, actorName: actorRef.current,
     });
 
     /*
@@ -762,20 +873,30 @@ export function DataProvider({ children }: { children: ReactNode }) {
   );
 
   const addStaffMember = useCallback<DataCtx['addStaffMember']>(
-    async ({ name, phone, title }) => {
+    async ({ name, phone, title, pin }) => {
       if (!activeBusiness || !name.trim()) return 'Enter a name';
       if (plan.limits.maxStaff >= 0 && staffMembers.length >= plan.limits.maxStaff) {
         return 'PLAN_LIMIT_STAFF';
       }
-      const { data: member } = await supabase
+      // The error used to be dropped, so a failed insert still showed
+      // "Staff member added" — and logged it.
+      const { data: member, error } = await supabase
         .from('staff_members')
         .insert({ business_id: activeBusiness.id, name: name.trim(), phone: phone.trim() || null, title: title.trim() || null, sort_order: staffMembers.length })
         .select()
         .single();
-      if (member) setStaffMembers((ms) => [...ms, member as StaffMember]);
+      if (error || !member) return error?.message || 'Could not add this person. Try again.';
+      if (pin) {
+        const { error: pinError } = await supabase.rpc('set_staff_pin', { p_member: member.id, p_pin: pin });
+        if (pinError) {
+          setStaffMembers((ms) => [...ms, member as StaffMember]);
+          return `Added, but the PIN was not saved: ${pinError.message}`;
+        }
+      }
+      setStaffMembers((ms) => [...ms, member as StaffMember]);
       await record({
         businessId: activeBusiness.id, actionType: 'staff.add', objectId: member?.id,
-        summary: `Added ${name.trim()} to the team`, payload: { name, phone, title }, actorName: profile?.full_name,
+        summary: `Added ${name.trim()} to the team`, payload: { name, phone, title }, actorName: actorRef.current,
       });
       return null;
     },
@@ -790,7 +911,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
       await supabase.from('staff_members').delete().eq('id', id);
       await record({
         businessId: activeBusiness.id, actionType: 'staff.remove', objectId: id,
-        summary: member ? `Removed ${member.name} from the team` : 'Removed a staff member', actorName: profile?.full_name,
+        summary: member ? `Removed ${member.name} from the team` : 'Removed a staff member', actorName: actorRef.current,
       });
     },
     [activeBusiness, staffMembers, record, profile],
@@ -807,7 +928,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
         summary: comments?.trim()
           ? `Returned the closing for correction: ${comments.trim()}`
           : 'Returned the closing for correction',
-        payload: { comments: comments?.trim() || null }, actorName: profile?.full_name,
+        payload: { comments: comments?.trim() || null }, actorName: actorRef.current,
       });
     },
     [session, activeBusiness, record, profile],
@@ -928,7 +1049,16 @@ export function DataProvider({ children }: { children: ReactNode }) {
     refreshSubscription,
     setLang,
     setTheme,
-    setRole,
+    role,
+    lockToStaff,
+    unlockOwner,
+    ownerPinSet,
+    setOwnerPin,
+    activeStaff,
+    signInStaff,
+    signOutStaff,
+    setStaffPin,
+    fetchStaffWithPins,
     displayName,
     completeOnboarding,
     addBusiness,

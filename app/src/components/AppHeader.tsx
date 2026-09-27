@@ -4,11 +4,14 @@ import { useSettings } from '../lib/useSettings';
 import { useData } from '../state/DataContext';
 import { bizMeta } from '../lib/types';
 import { BusinessSwitchSheet } from './BusinessSwitchSheet';
+import { Sheet } from './Sheet';
+import { RolePanel } from './StaffAccess';
 
 export function AppHeader() {
   const { L, lang, theme, owner } = useSettings();
-  const { activeBusiness, setTheme, setRole } = useData();
+  const { activeBusiness, setTheme, activeStaff } = useData();
   const [switching, setSwitching] = useState(false);
+  const [roleOpen, setRoleOpen] = useState(false);
   const meta = activeBusiness ? bizMeta(activeBusiness.type) : null;
 
   return (
@@ -36,11 +39,11 @@ export function AppHeader() {
           <button
             className="chip tap"
             type="button"
-            onClick={() => setRole(owner ? 'staff' : 'owner')}
+            onClick={() => setRoleOpen(true)}
             style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '7px 10px 7px 8px', background: 'var(--brandSoft)', color: 'var(--brand)', border: 'none' }}
           >
             <Icon name={owner ? 'shield' : 'user'} size={12} />
-            <span style={{ fontSize: 11.5 }}>{owner ? (lang === 'sw' ? 'Mmiliki' : 'Owner') : (lang === 'sw' ? 'Mfanyakazi' : 'Staff')}</span>
+            <span style={{ fontSize: 11.5, maxWidth: 96, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{owner ? (lang === 'sw' ? 'Mmiliki' : 'Owner') : (activeStaff?.name || (lang === 'sw' ? 'Mfanyakazi' : 'Staff'))}</span>
           </button>
           <button className="icon-btn tap" onClick={() => setTheme(theme === 'light' ? 'dark' : 'light')} type="button" aria-label="Toggle theme">
             <Icon name={theme === 'light' ? 'moon' : 'sun'} size={16} />
@@ -48,6 +51,13 @@ export function AppHeader() {
         </div>
       </div>
       <BusinessSwitchSheet open={switching} onClose={() => setSwitching(false)} />
+      <Sheet
+        open={roleOpen}
+        onClose={() => setRoleOpen(false)}
+        title={owner ? (lang === 'sw' ? 'Mpe mfanyakazi kifaa' : 'Hand this device to staff') : (lang === 'sw' ? 'Zamu yako' : 'Your shift')}
+      >
+        <RolePanel onClose={() => setRoleOpen(false)} />
+      </Sheet>
     </>
   );
 }
