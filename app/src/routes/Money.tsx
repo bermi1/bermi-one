@@ -107,13 +107,15 @@ export function Money() {
   }
 
   return (
-    <div className="screen sb">
+    <div className="screen sb desk-wide">
       <ScreenHeader title={L.cashBook} sub={owner ? L.cashBookSub : L.myEntries} right={
         <button className="icon-btn tap" onClick={openKindPicker} aria-label={L.add}>
           <Icon name="plus" />
         </button>
       } />
 
+      <div className="desk">
+      <aside className="desk-side">
       {owner && businesses.length > 1 && plan.limits.combinedReporting && (
         <div className="sb" style={{ display: 'flex', gap: 8, overflowX: 'auto', paddingBottom: 4, marginBottom: 12 }}>
           {businesses.map((b) => {
@@ -178,6 +180,9 @@ export function Money() {
         </div>
       )}
 
+      </aside>
+
+      <div className="desk-main">
       <div style={{ fontSize: 13, fontWeight: 800, color: 'var(--ink2)', textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 10 }}>{L.recent}</div>
       <div className="card" style={{ padding: 6 }}>
         {bookLedger.length === 0 && (
@@ -215,6 +220,8 @@ export function Money() {
             </div>
           );
         })}
+      </div>
+      </div>
       </div>
 
       <Sheet open={!!confirmDelete} onClose={() => setConfirmDelete(null)} title={L.deleteEntry} sub={confirmDelete?.label}>

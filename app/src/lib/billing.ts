@@ -7,7 +7,50 @@
 // is a browser that can top up someone else's.
 
 import { invokeFunction } from './functions';
+import { supabase } from './supabase';
 import type { PlanCode } from './plans';
+
+/**
+ * How long a payment buys. Mirrors the `billing_periods` table, which is what
+ * the server actually prices from — these figures only drive what the page
+ * shows, so a stale copy here can mislabel a price but never change one.
+ */
+export type PeriodCode = 'monthly' | 'quarterly' | 'annual';
+export interface BillingPeriod { code: PeriodCode; months: number; discountPct: number; freeMonths: number }
+export const PERIODS: BillingPeriod[] = [
+  { code: 'monthly', months: 1, discountPct: 0, freeMonths: 0 },
+  { code: 'quarterly', months: 3, discountPct: 10, freeMonths: 0 },
+  { code: 'annual', months: 12, discountPct: 0, freeMonths: 2 },
+];
+
+/** USD due for a plan over a period — the same sum the subscribe function does. */
+export function periodUsd(monthlyUsd: number, period: BillingPeriod): number {
+  const payable = period.months - period.freeMonths;
+  return Math.round(monthlyUsd * payable * (1 - period.discountPct / 100) * 100) / 100;
+}
+
+export interface LatestPayment {
+  reference: string;
+  status: PayStatus;
+  amount: number;
+  label: string | null;
+  billing_period: string | null;
+  created_at: string;
+  updated_at: string | null;
+}
+
+/** The account's most recent subscription payment, whatever became of it. */
+export async function latestPayment(ownerId: string): Promise<LatestPayment | null> {
+  const { data } = await supabase
+    .from('payments')
+    .select('reference, status, amount, label, billing_period, created_at, updated_at')
+    .eq('paid_by', ownerId)
+    .eq('purpose', 'subscription')
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  return (data as LatestPayment | null) ?? null;
+}
 
 export type PayStatus = 'PENDING' | 'COMPLETED' | 'FAILED' | 'CANCELLED';
 
@@ -54,8 +97,8 @@ export function gatewayConfig(): Promise<GatewayConfig> {
 }
 
 /** Push a payment prompt to the number the client gave. */
-export function startPayment(planCode: PlanCode, phone: string): Promise<PayStart> {
-  return call<PayStart>({ plan_code: planCode, phone });
+export function startPayment(planCode: PlanCode, phone: string, period: PeriodCode = 'monthly'): Promise<PayStart> {
+  return call<PayStart>({ plan_code: planCode, phone, period });
 }
 
 /**

@@ -291,10 +291,28 @@ export function Close() {
   }
 
   // --- The counting form ---
+  // Progress, said twice on a desk — at the top on a phone, in the side panel
+  // on a computer — so it is always in view while counting.
+  const progressCard = (cls: string) => (
+      <div className={`card ${cls}`} style={{ padding: 14, marginBottom: 14, display: 'flex', alignItems: 'center', gap: 12 }}>
+        <div style={{ flex: 1 }}>
+          <div style={{ fontSize: 11.5, color: 'var(--ink3)', fontWeight: 700 }}>{L.counted}</div>
+          <div style={{ marginTop: 3, fontSize: 16, fontWeight: 800 }}>{countedItems}<span style={{ fontSize: 12, color: 'var(--ink3)' }}> / {products.length}</span></div>
+        </div>
+        <div style={{ width: 1, alignSelf: 'stretch', background: 'var(--line)' }} />
+        <div style={{ flex: 1, textAlign: 'right' }}>
+          <div style={{ fontSize: 11.5, color: 'var(--ink3)', fontWeight: 700 }}>{soldUnits} {L.unitsSold}</div>
+          <div style={{ marginTop: 3, fontSize: 16, fontWeight: 800 }}>{fmt0(expected)}</div>
+        </div>
+      </div>
+  );
   return (
-    <div className="screen sb">
+    <div className="screen sb desk-wide">
       <ScreenHeader title={screenTitle} sub={closingDayLabel} />
       {dayPicker()}
+
+      <div className="desk">
+      <div className="desk-main">
 
       {session?.owner_comments && (
         <div className="card" style={{ padding: 14, marginBottom: 14, background: 'var(--badSoft)' }}>
@@ -306,17 +324,7 @@ export function Close() {
         </div>
       )}
 
-      <div className="card" style={{ padding: 14, marginBottom: 14, display: 'flex', alignItems: 'center', gap: 12 }}>
-        <div style={{ flex: 1 }}>
-          <div style={{ fontSize: 11.5, color: 'var(--ink3)', fontWeight: 700 }}>{L.counted}</div>
-          <div style={{ marginTop: 3, fontSize: 16, fontWeight: 800 }}>{countedItems}<span style={{ fontSize: 12, color: 'var(--ink3)' }}> / {products.length}</span></div>
-        </div>
-        <div style={{ width: 1, alignSelf: 'stretch', background: 'var(--line)' }} />
-        <div style={{ flex: 1, textAlign: 'right' }}>
-          <div style={{ fontSize: 11.5, color: 'var(--ink3)', fontWeight: 700 }}>{soldUnits} {L.unitsSold}</div>
-          <div style={{ marginTop: 3, fontSize: 16, fontWeight: 800 }}>{fmt0(expected)}</div>
-        </div>
-      </div>
+      {progressCard('phone-only')}
 
       {groups.map(({ cat, items }, gi) => {
         const tv = tintVars(gi);
@@ -380,6 +388,10 @@ export function Close() {
         );
       })}
 
+      </div>
+
+      <aside className="desk-side" data-sticky>
+      {progressCard('desk-only')}
       <div style={{ fontSize: 13, fontWeight: 800, color: 'var(--ink2)', textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 10 }}>{L.moneyCollected}</div>
       <div className="card" style={{ padding: 6, marginBottom: 20 }}>
         {moneyFields.map((f, i) => (
@@ -441,6 +453,8 @@ export function Close() {
       <button className="btn-primary tap" style={{ width: '100%' }} onClick={() => nav('/diff')}>
         {L.continue}
       </button>
+      </aside>
+      </div>
 
       {daySheet()}
 

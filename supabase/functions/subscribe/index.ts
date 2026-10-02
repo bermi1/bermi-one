@@ -94,6 +94,32 @@ function msisdn(input: string): string {
   return digits;
 }
 
+async function hmac64(secret: string, message: string): Promise<string> {
+  const key = await crypto.subtle.importKey('raw', new TextEncoder().encode(secret), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
+  const sig = await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(message));
+  return btoa(String.fromCharCode(...new Uint8Array(sig)));
+}
+
+/**
+ * Hand a final outcome to payme-webhook, signed exactly as Payme signs it.
+ *
+ * There is one place that activates a plan — the webhook, which is idempotent
+ * and keeps the audit trail. Anything else that learns a payment's outcome
+ * first (this status check, the reconciler, HQ) forwards it there instead of
+ * writing the status itself. Writing COMPLETED here used to make the real
+ * callback look like a duplicate, and the plan never switched on.
+ */
+async function forwardToWebhook(secret: string, payload: Record<string, unknown>): Promise<boolean> {
+  const raw = JSON.stringify({ ...payload, source: 'reconcile' });
+  const ts = String(Math.floor(Date.now() / 1000));
+  const res = await fetch(`${SUPABASE_URL}/functions/v1/payme-webhook`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'X-Timestamp': ts, 'X-Middleware-Signature': await hmac64(secret, raw + ts) },
+    body: raw,
+  });
+  return res.ok;
+}
+
 async function signed(p: Payme, payload: Record<string, unknown>, path: string) {
   const message = JSON.stringify(payload);
   const timestamp = String(Math.floor(Date.now() / 1000));
@@ -136,7 +162,7 @@ async function handle(req: Request): Promise<Response> {
   if (!user) return json({ error: 'Not signed in' }, 401);
   const uid = user.id;
 
-  let body: { action?: string; plan_code?: string; phone?: string; reference?: string } = {};
+  let body: { action?: string; plan_code?: string; phone?: string; reference?: string; period?: string } = {};
   try { body = await req.json(); } catch { return json({ error: 'Bad JSON' }, 400); }
 
   const pm = await paymeConfig(admin);
@@ -171,7 +197,7 @@ async function handle(req: Request): Promise<Response> {
         const res = await signed(pm, { reference: 'BSUB_PROBE_CONFIG' }, '/query');
         const text = await res.text();
         let message = text.slice(0, 200);
-        try { const j = JSON.parse(text); message = j.error || j.message || j.provider_message || message; } catch { /* keep text */ }
+        try { const j = JSON.parse(text); message = j.messages?.error || (typeof j.error === 'string' ? j.error : '') || j.message || j.provider_message || message; } catch { /* keep text */ }
         gateway = { status: res.status, message, accepted: res.status !== 401 && res.status !== 403 };
       } catch (e) {
         gateway = { status: 0, message: e instanceof Error ? e.message : String(e), accepted: false };
@@ -200,7 +226,7 @@ async function handle(req: Request): Promise<Response> {
     // payment status is not this caller's to read.
     const { data: mine } = await admin
       .from('payments')
-      .select('reference, status, amount')
+      .select('reference, status, amount, provider_transaction_id')
       .eq('reference', body.reference)
       .eq('paid_by', uid)
       .maybeSingle();
@@ -219,11 +245,17 @@ async function handle(req: Request): Promise<Response> {
     // know" into "we asked and it is still waiting".
     if (out?.provider_checked !== false) {
       const p = String(out?.payment_status ?? '').toUpperCase();
-      const status = p === 'COMPLETED' ? 'COMPLETED' : p === 'FAILED' ? 'FAILED' : p === 'CANCELLED' ? 'CANCELLED' : 'PENDING';
-      if (status !== mine.status) {
-        await admin.from('payments').update({ status, updated_at: new Date().toISOString() }).eq('reference', body.reference);
+      if (p === 'COMPLETED' || p === 'FAILED' || p === 'CANCELLED') {
+        await forwardToWebhook(pm.secret, {
+          reference: body.reference,
+          result: p === 'COMPLETED' ? 'SUCCESS' : 'FAILED',
+          payment_status: p,
+          transid: mine.provider_transaction_id ?? null,
+        });
+        const { data: after } = await admin.from('payments').select('status').eq('reference', body.reference).maybeSingle();
+        return json({ status: after?.status ?? p, amount: mine.amount, provider_message: out?.provider_message ?? null });
       }
-      return json({ status, amount: mine.amount, provider_message: out?.provider_message ?? null });
+      return json({ status: 'PENDING', amount: mine.amount, provider_message: out?.provider_message ?? null });
     }
 
     return json({ status: 'PENDING', amount: mine.amount, provider_checked: false, provider_message: out?.provider_message ?? null });
@@ -234,6 +266,20 @@ async function handle(req: Request): Promise<Response> {
 
   const phone = msisdn(body.phone ?? '');
   if (!/^255[0-9]{9}$/.test(phone)) return json({ error: 'Enter a valid phone number.' }, 400);
+
+  // One prompt at a time. Five pushes in a few minutes to the same phone is
+  // how a person ends up approving none of them.
+  const { data: waiting } = await admin
+    .from('payments')
+    .select('reference')
+    .eq('paid_by', uid)
+    .eq('status', 'PENDING')
+    .gte('created_at', new Date(Date.now() - 3 * 60_000).toISOString())
+    .limit(1)
+    .maybeSingle();
+  if (waiting) {
+    return json({ error: 'A payment prompt is already waiting on your phone. Approve it, or wait 3 minutes to send a new one.', code: 'PROMPT_WAITING', reference: waiting.reference }, 409);
+  }
 
   // The plan is looked up by code and priced from the database. The browser
   // saying what it costs would make the price a suggestion.
@@ -261,9 +307,22 @@ async function handle(req: Request): Promise<Response> {
     .limit(1)
     .maybeSingle();
 
-  const usd = Number(plan.amount);
+  // The billing period — monthly, quarterly or annual — priced from the
+  // database the same way as the plan: the browser names it, never its cost.
+  const { data: period } = await admin
+    .from('billing_periods')
+    .select('code, months, days, discount_pct, free_months')
+    .eq('code', body.period || 'monthly')
+    .eq('active', true)
+    .maybeSingle();
+  if (!period) return json({ error: 'Unknown billing period' }, 400);
+
+  const monthly = Number(plan.amount);
+  const payableMonths = Math.max(1, period.months - (period.free_months ?? 0));
+  const usd = Math.round(monthly * payableMonths * (1 - Number(period.discount_pct ?? 0) / 100) * 100) / 100;
   const amount = Math.round(usd * RATE);
   if (amount <= 0) return json({ error: 'That plan has no price set.' }, 400);
+  const periodLabel = period.code === 'annual' ? '1 year' : period.code === 'quarterly' ? '3 months' : '1 month';
 
   const stamp = new Date().toISOString().replace(/[-:TZ.]/g, '').slice(0, 14);
   const reference = `BSUB_${stamp}_${crypto.randomUUID().slice(0, 8).toUpperCase()}`;
@@ -287,7 +346,9 @@ async function handle(req: Request): Promise<Response> {
     amount,
     msisdn: phone,
     channel: 'CASHIN',
-    label: `Bermi One — ${plan.name} ($${usd})`,
+    label: `Bermi One — ${plan.name}, ${periodLabel} ($${usd})`,
+    billing_period: period.code,
+    period_days: period.days,
     sandbox: pm.sandbox,
     request_payload: payload,
     created_by: uid,
@@ -330,6 +391,7 @@ async function handle(req: Request): Promise<Response> {
     reference,
     amount,
     usd,
+    period: period.code,
     plan: plan.name,
     status: 'PENDING',
     message: (provider.message as string) ?? null,

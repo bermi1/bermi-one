@@ -246,8 +246,78 @@ export function Stock() {
     if (!ok) flash(lang === 'sw' ? 'Ruhusu dirisha jipya kwenye kivinjari' : 'Allow pop-ups to print the sheet');
   }
 
+  // Totals, the delivery button and the owner's tools: above and below the
+  // list on a phone, in the side panel on a computer.
+  const statsBlock = (
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 16 }}>
+        <div className="card" style={{ padding: 14 }}>
+          <div style={{ fontSize: 11, color: 'var(--ink3)', fontWeight: 700 }}>{L.totalStock}</div>
+          <div style={{ marginTop: 4, fontSize: 17, fontWeight: 800 }}>{totalUnits || '—'}</div>
+        </div>
+        <div className="card" style={{ padding: 14 }}>
+          <div style={{ fontSize: 11, color: 'var(--ink3)', fontWeight: 700 }}>{L.stockValue}</div>
+          <div style={{ marginTop: 4, fontSize: 17, fontWeight: 800 }}>{fmt0(totalValue)}</div>
+        </div>
+      </div>
+  );
+  const receiveBlock = (
+    <>
+      {!reorderMode && !editAllMode && (
+        <button
+          className="btn-primary tap"
+          style={{ width: '100%', marginBottom: 12, padding: '13px 16px', display: 'flex', alignItems: 'center', gap: 12, textAlign: 'left' }}
+          onClick={() => setReceiveOpen(true)}
+        >
+          <Icon name="in" size={18} />
+          <span style={{ flex: 1 }}>
+            <span style={{ display: 'block', fontSize: 14.5, fontWeight: 800 }}>{L.addStockCta}</span>
+            <span style={{ display: 'block', marginTop: 2, fontSize: 11.5, fontWeight: 600, opacity: 0.8 }}>{stockDestinationNote}</span>
+          </span>
+          <Icon name="right" size={16} style={{ opacity: 0.7 }} />
+        </button>
+      )}
+    </>
+  );
+  const toolsBlock = (
+    <>
+      {!reorderMode && !editAllMode && (
+        <>
+          {owner && (
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginTop: 12 }}>
+              <button className="btn-ghost tap" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }} onClick={() => setAddOpen(true)}>
+                <Icon name="plus" size={16} />
+                {lang === 'sw' ? 'Bidhaa mpya' : 'Add product'}
+              </button>
+              <button className="btn-ghost tap" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }} onClick={openBulk}>
+                <Icon name="upload" size={16} />
+                {L.bulkUpload}
+              </button>
+              <button className="btn-ghost tap" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }} onClick={() => setEditAllMode(true)}>
+                <Icon name="edit" size={16} />
+                {L.bulkEdit}
+              </button>
+              <button className="btn-ghost tap" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }} onClick={exportCsv}>
+                <Icon name="download" size={16} />
+                {L.exportCsv}
+              </button>
+            </div>
+          )}
+          <button className="btn-ghost tap" style={{ width: '100%', marginTop: 8, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }} onClick={() => void printSheet()}>
+            <Icon name="doc" size={16} />
+            {L.printStockSheet}
+          </button>
+          {!owner && (
+            <div style={{ marginTop: 12, fontSize: 12, color: 'var(--ink3)', textAlign: 'center', lineHeight: 1.5 }}>
+              {L.staffStockNote}
+            </div>
+          )}
+        </>
+      )}
+    </>
+  );
+
   return (
-    <div className="screen sb">
+    <div className="screen sb desk-wide">
       <AppHeader />
       <ScreenHeader
         title={L.stock}
@@ -280,40 +350,12 @@ export function Stock() {
         <SessionHistory />
       ) : (
       <>
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 16 }}>
-        <div className="card" style={{ padding: 14 }}>
-          <div style={{ fontSize: 11, color: 'var(--ink3)', fontWeight: 700 }}>{L.totalStock}</div>
-          <div style={{ marginTop: 4, fontSize: 17, fontWeight: 800 }}>{totalUnits || '—'}</div>
-        </div>
-        <div className="card" style={{ padding: 14 }}>
-          <div style={{ fontSize: 11, color: 'var(--ink3)', fontWeight: 700 }}>{L.stockValue}</div>
-          <div style={{ marginTop: 4, fontSize: 17, fontWeight: 800 }}>{fmt0(totalValue)}</div>
-        </div>
+      <div className="desk">
+      <div className="desk-main">
+      <div className="phone-only">
+      {statsBlock}
+      {receiveBlock}
       </div>
-
-      {/*
-        Receiving a delivery is a shift job, not an owner job. The person on the
-        counter is the one who signs for the crate at four in the afternoon, and
-        making them ring the owner to record it is how stock quietly stops
-        matching the shelf. What stays owner-only is everything that changes
-        what a counted day is WORTH — prices, profit per unit, adding and
-        removing products — because the whole verification model rests on those
-        not moving after a count.
-      */}
-      {!reorderMode && !editAllMode && (
-        <button
-          className="btn-primary tap"
-          style={{ width: '100%', marginBottom: 12, padding: '13px 16px', display: 'flex', alignItems: 'center', gap: 12, textAlign: 'left' }}
-          onClick={() => setReceiveOpen(true)}
-        >
-          <Icon name="in" size={18} />
-          <span style={{ flex: 1 }}>
-            <span style={{ display: 'block', fontSize: 14.5, fontWeight: 800 }}>{L.addStockCta}</span>
-            <span style={{ display: 'block', marginTop: 2, fontSize: 11.5, fontWeight: 600, opacity: 0.8 }}>{stockDestinationNote}</span>
-          </span>
-          <Icon name="right" size={16} style={{ opacity: 0.7 }} />
-        </button>
-      )}
 
       {editAllMode && (
         <div className="card" style={{ padding: 12, marginBottom: 12, display: 'flex', alignItems: 'center', gap: 10, background: 'var(--brandSoft)' }}>
@@ -506,39 +548,14 @@ export function Stock() {
         })
       )}
 
-      {!reorderMode && !editAllMode && (
-        <>
-          {owner && (
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginTop: 12 }}>
-              <button className="btn-ghost tap" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }} onClick={() => setAddOpen(true)}>
-                <Icon name="plus" size={16} />
-                {lang === 'sw' ? 'Bidhaa mpya' : 'Add product'}
-              </button>
-              <button className="btn-ghost tap" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }} onClick={openBulk}>
-                <Icon name="upload" size={16} />
-                {L.bulkUpload}
-              </button>
-              <button className="btn-ghost tap" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }} onClick={() => setEditAllMode(true)}>
-                <Icon name="edit" size={16} />
-                {L.bulkEdit}
-              </button>
-              <button className="btn-ghost tap" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }} onClick={exportCsv}>
-                <Icon name="download" size={16} />
-                {L.exportCsv}
-              </button>
-            </div>
-          )}
-          <button className="btn-ghost tap" style={{ width: '100%', marginTop: 8, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }} onClick={() => void printSheet()}>
-            <Icon name="doc" size={16} />
-            {L.printStockSheet}
-          </button>
-          {!owner && (
-            <div style={{ marginTop: 12, fontSize: 12, color: 'var(--ink3)', textAlign: 'center', lineHeight: 1.5 }}>
-              {L.staffStockNote}
-            </div>
-          )}
-        </>
-      )}
+      <div className="phone-only">{toolsBlock}</div>
+      </div>
+      <aside className="desk-side desk-only" data-sticky>
+      {statsBlock}
+      {receiveBlock}
+      {toolsBlock}
+      </aside>
+      </div>
       </>
       )}
       <input ref={fileInputRef} type="file" accept=".csv,.txt" style={{ display: 'none' }} onChange={onFilePicked} />

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ScreenHeader } from '../components/ScreenHeader';
 import { Sheet } from '../components/Sheet';
@@ -7,7 +7,8 @@ import { useSettings } from '../lib/useSettings';
 import { useData } from '../state/DataContext';
 import { useToast } from '../state/ToastContext';
 import { PLANS, TRIAL_DAYS, localPrice, localPriceNote, requiredPlan, type Plan, type PlanCode } from '../lib/plans';
-import { checkPayment, isValidPhone, startPayment, type PayStatus } from '../lib/billing';
+import { PERIODS, checkPayment, isValidPhone, latestPayment, periodUsd, startPayment, type BillingPeriod, type LatestPayment, type PayStatus } from '../lib/billing';
+import { useAuth } from '../state/AuthContext';
 import { COUNTRIES } from '../lib/countries';
 import { isNative } from '../lib/native';
 
@@ -30,6 +31,26 @@ export function Pricing() {
 
   const [country, setCountry] = useState(activeBusiness?.country_code || 'TZ');
   const [paying, setPaying] = useState<Plan | null>(null);
+  const [period, setPeriod] = useState<BillingPeriod>(PERIODS[0]);
+  const { session: authSession } = useAuth();
+  const uid = authSession?.user?.id ?? null;
+
+  /*
+    The last payment, on the page itself. The pay sheet only watches while it
+    is open; the answer from Airtel or M-Pesa can take minutes, and the person
+    should be able to close the sheet and still see where it got to.
+  */
+  const [latest, setLatest] = useState<LatestPayment | null>(null);
+  const loadLatest = useCallback(async () => {
+    if (!uid) return;
+    try { setLatest(await latestPayment(uid)); } catch { /* the strip is a courtesy */ }
+  }, [uid]);
+  useEffect(() => { void loadLatest(); }, [loadLatest, paying]);
+  useEffect(() => {
+    if (latest?.status !== 'PENDING') return;
+    const t = window.setInterval(() => { void loadLatest(); void refreshSubscription(); }, 30_000);
+    return () => window.clearInterval(t);
+  }, [latest?.status, loadLatest, refreshSubscription]);
 
   /*
     In the downloaded app this page states what the plan is and stops there.
@@ -52,12 +73,12 @@ export function Pricing() {
     : null;
 
   return (
-    <div className="screen sb">
+    <div className="screen sb desk-wide">
       <ScreenHeader
         title={native ? (sw ? 'Kifurushi chako' : 'Your plan') : (sw ? 'Bei na vifurushi' : 'Plans and pricing')}
         sub={native
           ? (sw ? 'Kile kifurushi chako kinachojumuisha.' : 'What your plan covers.')
-          : (sw ? 'Lipa kwa mwezi. Acha wakati wowote.' : 'Billed monthly. Cancel whenever.')}
+          : (sw ? 'Lipa kwa mwezi, miezi 3 au mwaka. Acha wakati wowote.' : 'Pay monthly, quarterly or yearly. Cancel whenever.')}
       />
 
       {/* Where the account stands, before anything is being sold to it. */}
@@ -111,6 +132,26 @@ export function Pricing() {
         )}
       </div>
 
+      {!native && latest && <LatestStrip p={latest} country={country} sw={sw} />}
+
+      {!native && (
+        <div className="period-switch" role="tablist">
+          {PERIODS.map((pd) => (
+            <button
+              key={pd.code}
+              role="tab"
+              aria-selected={period.code === pd.code}
+              className="tap"
+              data-on={period.code === pd.code || undefined}
+              onClick={() => setPeriod(pd)}
+            >
+              <span>{periodName(pd, sw)}</span>
+              {periodPerk(pd, sw) && <em>{periodPerk(pd, sw)}</em>}
+            </button>
+          ))}
+        </div>
+      )}
+
       {!native && (
       <div className="sb" style={{ display: 'flex', gap: 8, overflowX: 'auto', paddingBottom: 4, marginBottom: 14 }}>
         {COUNTRIES.map((c) => (
@@ -147,7 +188,7 @@ export function Pricing() {
         </div>
       )}
 
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+      <div className="plan-grid">
         {PLANS.map((p) => (
           <PlanCard
             key={p.code}
@@ -158,6 +199,7 @@ export function Pricing() {
             current={p.code === activeCode}
             businesses={businesses.length}
             native={native}
+            period={period}
             onChoose={() => setPaying(p)}
           />
         ))}
@@ -179,6 +221,7 @@ export function Pricing() {
         </div>
         {[
           sw ? 'Kifurushi kimoja kinafunika akaunti yako yote, si kila biashara.' : 'One plan covers your whole account, not each business.',
+          ...(native ? [] : [sw ? 'Lipa miezi 3 upate punguzo la 10%. Lipa mwaka mzima upate miezi 2 bure.' : 'Pay for 3 months and save 10%. Pay for a year and get 2 months free.']),
           sw ? 'Biashara moja ni Starter. Mbili au tatu ni Standard. Nne au zaidi ni Premium.' : 'One business is Starter. Two or three is Standard. Four or more is Premium.',
           ...(native ? [] : [sw ? 'Unalipa kwa simu yako. Utapokea ombi la PIN.' : 'You pay from your phone — a prompt arrives and you enter your PIN.']),
           sw ? 'Taarifa zako ni zako. Unaweza kuzitoa wakati wowote.' : 'Your records stay yours — export them any time, on any plan.',
@@ -195,9 +238,10 @@ export function Pricing() {
       {!native && (
         <PaySheet
           plan={paying}
+          period={period}
           country={country}
-          onClose={() => setPaying(null)}
-          onPaid={() => { void refreshSubscription(); flash(sw ? 'Malipo yamekamilika' : 'Payment received'); }}
+          onClose={() => { setPaying(null); void loadLatest(); }}
+          onPaid={() => { void refreshSubscription(); void loadLatest(); flash(sw ? 'Malipo yamekamilika' : 'Payment received'); }}
         />
       )}
     </div>
@@ -260,8 +304,9 @@ export function Pricing() {
   }
 }
 
-function PlanCard({ plan, country, lang, recommended, current, businesses, native, onChoose }: {
+function PlanCard({ plan, country, lang, recommended, current, businesses, native, period, onChoose }: {
   plan: Plan;
+  period: BillingPeriod;
   country: string;
   lang: 'en' | 'sw';
   recommended: boolean;
@@ -271,9 +316,14 @@ function PlanCard({ plan, country, lang, recommended, current, businesses, nativ
   onChoose: () => void;
 }) {
   const sw = lang === 'sw';
-  const usd = `$${plan.usd}`;
-  const local = localPrice(plan.usd, country);
+  const totalUsd = periodUsd(plan.usd, period);
+  const usd = `$${fmtUsd(totalUsd)}`;
+  const local = localPrice(totalUsd, country);
   const showsLocal = local !== usd;
+  const months = period.months;
+  const savedUsd = Math.round((plan.usd * months - totalUsd) * 100) / 100;
+  const perMonth = months > 1 ? localPrice(Math.round((totalUsd / months) * 100) / 100, country) : null;
+  const saved = savedUsd > 0 ? localPrice(savedUsd, country) : null;
 
   // Says plainly when a tier cannot hold what the account already runs, rather
   // than letting someone buy it and hit a wall afterwards.
@@ -293,7 +343,7 @@ function PlanCard({ plan, country, lang, recommended, current, businesses, nativ
       {/* The price sits in a tinted head, so the tiers read as cards rather
           than as one long list of ticks. */}
       <div style={{ padding: '17px 18px 15px', background: recommended ? 'var(--brandSoft)' : 'var(--card2)' }}>
-        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 }}>
+        <div className="plan-head" style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 }}>
           <div style={{ minWidth: 0 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 7, flexWrap: 'wrap' }}>
               <span style={{ fontSize: 17.5, fontWeight: 800, letterSpacing: -0.35 }}>{plan.name}</span>
@@ -311,17 +361,25 @@ function PlanCard({ plan, country, lang, recommended, current, businesses, nativ
             <div style={{ marginTop: 5, fontSize: 12.5, color: 'var(--ink2)', lineHeight: 1.45 }}>{plan.blurb[lang]}</div>
           </div>
           {!native && (
-            <div style={{ textAlign: 'right', flexShrink: 0 }}>
+            <div className="plan-price" style={{ textAlign: 'right', flexShrink: 0 }}>
               <div style={{ fontSize: 22, fontWeight: 800, letterSpacing: -0.7 }}>{showsLocal ? local : usd}</div>
               <div style={{ fontSize: 10.5, color: 'var(--ink3)', fontWeight: 700, marginTop: 1 }}>
-                {showsLocal ? `${usd} · ` : ''}{sw ? 'kwa mwezi' : 'per month'}
+                {showsLocal ? `${usd} · ` : ''}{periodPer(period, sw)}
               </div>
+              {perMonth && (
+                <div style={{ fontSize: 10.5, color: 'var(--ink2)', fontWeight: 700, marginTop: 3 }}>
+                  ≈ {perMonth} {sw ? '/ mwezi' : '/ month'}
+                </div>
+              )}
+              {saved && (
+                <div className="save-pill">{sw ? `Unaokoa ${saved}` : `You save ${saved}`}</div>
+              )}
             </div>
           )}
         </div>
       </div>
 
-      <div style={{ padding: '14px 18px 18px' }}>
+      <div className="plan-body" style={{ padding: '14px 18px 18px' }}>
         {plan.includes[lang].map((line) => (
           <div key={line} style={{ display: 'flex', gap: 9, padding: '4px 0', alignItems: 'flex-start' }}>
             <Icon name="check" size={13} style={{ color: 'var(--ok)', flexShrink: 0, marginTop: 2 }} />
@@ -343,7 +401,7 @@ function PlanCard({ plan, country, lang, recommended, current, businesses, nativ
           >
             <Icon name="phone" size={15} />
             {current
-              ? (sw ? 'Ongeza mwezi' : 'Add a month')
+              ? addLabel(period, sw)
               : (sw ? `Lipa ${showsLocal ? local : usd}` : `Pay ${showsLocal ? local : usd}`)}
           </button>
         )}
@@ -361,8 +419,9 @@ function PlanCard({ plan, country, lang, recommended, current, businesses, nativ
  * status or after two minutes; a payment still pending then is not lost, it is
  * just slower than someone wants to sit and watch.
  */
-function PaySheet({ plan, country, onClose, onPaid }: {
+function PaySheet({ plan, period, country, onClose, onPaid }: {
   plan: Plan | null;
+  period: BillingPeriod;
   country: string;
   onClose: () => void;
   onPaid: () => void;
@@ -379,7 +438,7 @@ function PaySheet({ plan, country, onClose, onPaid }: {
   const timer = useRef<number | null>(null);
 
   useEffect(() => {
-    if (!plan) { setReference(null); setStatus(null); setMessage(''); setBusy(false); }
+    if (!plan) { setReference(null); setStatus(null); setMessage(''); setBusy(false); setTimedOut(false); }
   }, [plan]);
 
   useEffect(() => {
@@ -387,13 +446,12 @@ function PaySheet({ plan, country, onClose, onPaid }: {
     const started = Date.now();
 
     const tick = async () => {
-      if (Date.now() - started > 120_000) {
-        // Not a failure — a prompt nobody answered, which is a different thing
-        // and has a different next step. Stopping silently left the screen
-        // saying "check your phone" for ever.
-        setTimedOut(true);
-        return;
-      }
+      // Past two minutes the sheet says so, but it keeps asking — every 15s
+      // instead of every 4 — for as long as it is open. Airtel and M-Pesa can
+      // take a while, and the answer should land here when it comes, not only
+      // on the next visit.
+      const slow = Date.now() - started > 120_000;
+      if (slow) setTimedOut(true);
       try {
         const out = await checkPayment(reference);
         if (out.status !== 'PENDING') {
@@ -405,7 +463,7 @@ function PaySheet({ plan, country, onClose, onPaid }: {
       } catch {
         // A failed check is not a failed payment — keep waiting.
       }
-      timer.current = window.setTimeout(tick, 4000);
+      timer.current = window.setTimeout(tick, slow ? 15_000 : 4000);
     };
 
     timer.current = window.setTimeout(tick, 4000);
@@ -414,8 +472,9 @@ function PaySheet({ plan, country, onClose, onPaid }: {
 
   if (!plan) return null;
 
-  const local = localPrice(plan.usd, country);
-  const shown = local !== `$${plan.usd}` ? `${local} ($${plan.usd})` : `$${plan.usd}`;
+  const totalUsd = periodUsd(plan.usd, period);
+  const local = localPrice(totalUsd, country);
+  const shown = local !== `$${fmtUsd(totalUsd)}` ? `${local} ($${fmtUsd(totalUsd)})` : `$${fmtUsd(totalUsd)}`;
 
   async function pay() {
     if (!isValidPhone(phone)) {
@@ -425,7 +484,7 @@ function PaySheet({ plan, country, onClose, onPaid }: {
     setBusy(true);
     setMessage('');
     try {
-      const out = await startPayment(plan!.code as PlanCode, phone);
+      const out = await startPayment(plan!.code as PlanCode, phone, period.code);
       setReference(out.reference);
       setStatus(out.status || 'PENDING');
       setMessage(out.message || '');
@@ -437,6 +496,15 @@ function PaySheet({ plan, country, onClose, onPaid }: {
         worth trying again in a minute; anything else is worth telling us about.
       */
       const raw = e instanceof Error ? e.message : String(e);
+      // One prompt at a time: a second one while the first is still on the
+      // phone is how people end up paying twice.
+      if (/already waiting/i.test(raw)) {
+        setMessage(sw
+          ? 'Tayari kuna ombi la malipo kwenye simu yako. Likubali, au subiri dakika 3 kutuma jipya.'
+          : raw);
+        setBusy(false);
+        return;
+      }
       const notConfigured = /not configured/i.test(raw);
       // "The payment gateway refused the request: …" was matching the bare word
       // "gateway" below and being reported as unreachable — hiding the one
@@ -465,7 +533,7 @@ function PaySheet({ plan, country, onClose, onPaid }: {
 
   const tone =
     status === 'COMPLETED' ? { bg: 'var(--okSoft)', ink: 'var(--ok)', icon: 'check', text: sw ? 'Malipo yamepokelewa' : 'Payment received' }
-    : status === 'FAILED' ? { bg: 'var(--badSoft)', ink: 'var(--bad)', icon: 'alert', text: sw ? 'Malipo yameshindikana' : 'Payment failed' }
+    : status === 'FAILED' ? { bg: 'var(--badSoft)', ink: 'var(--bad)', icon: 'alert', text: sw ? 'Hayakuidhinishwa' : 'Not approved' }
     : status === 'CANCELLED' ? { bg: 'var(--badSoft)', ink: 'var(--bad)', icon: 'x', text: sw ? 'Umesitisha' : 'Cancelled' }
     : timedOut
       ? { bg: 'var(--card2)', ink: 'var(--ink2)', icon: 'clock', text: sw ? 'Bado hatujapata jibu' : 'We have not heard back yet' }
@@ -476,7 +544,7 @@ function PaySheet({ plan, country, onClose, onPaid }: {
       open
       onClose={onClose}
       title={sw ? `Lipa ${plan.name}` : `Pay for ${plan.name}`}
-      sub={shown + ' · ' + (sw ? 'kwa mwezi' : 'per month')}
+      sub={shown + ' · ' + periodPer(period, sw)}
     >
       {reference ? (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
@@ -487,18 +555,30 @@ function PaySheet({ plan, country, onClose, onPaid }: {
             <div style={{ fontSize: 14.5, fontWeight: 800, color: tone.ink }}>{tone.text}</div>
             <div style={{ marginTop: 6, fontSize: 19, fontWeight: 800 }}>{shown}</div>
             {message && <div style={{ marginTop: 6, fontSize: 12.5, color: 'var(--ink2)', lineHeight: 1.5 }}>{message}</div>}
+            {status === 'FAILED' && !message && (
+              <div style={{ marginTop: 6, fontSize: 12.5, color: 'var(--ink2)', lineHeight: 1.5 }}>
+                {sw
+                  ? 'Ombi liliisha muda au lilikataliwa. Hakuna pesa iliyokatwa. Jaribu tena.'
+                  : 'The prompt expired or was declined. Nothing was charged. Try again.'}
+              </div>
+            )}
             {timedOut && status === 'PENDING' && (
               <div style={{ marginTop: 6, fontSize: 12.5, color: 'var(--ink2)', lineHeight: 1.5 }}>
                 {sw
-                  ? 'Malipo hayajapotea. Yakikamilika kifurushi kitawaka chenyewe. Ukituuliza, tupe rejea hii.'
-                  : 'Nothing is lost. If it goes through, the plan switches on by itself. If you ask us about it, quote this reference.'}
+                  ? 'Bado tunasubiri Airtel/M-Pesa kuthibitisha. Unaweza kufunga — kifurushi kitawaka chenyewe malipo yakipita, na hali itaonekana kwenye ukurasa huu.'
+                  : 'Still waiting for Airtel / M-Pesa to confirm. You can close this — the plan switches on by itself when it goes through, and the result shows on this page.'}
               </div>
             )}
             {/* Selectable: support asks for this, and a number you cannot copy
                 is a number that gets read out wrong. */}
             <div style={{ marginTop: 9, fontSize: 10, color: 'var(--ink3)', fontWeight: 700, letterSpacing: 0.4, userSelect: 'all' }}>{reference}</div>
           </div>
-          <button className="btn-primary tap" style={{ width: '100%' }} onClick={onClose}>
+          {(status === 'FAILED' || status === 'CANCELLED') && (
+            <button className="btn-primary tap" style={{ width: '100%' }} onClick={() => { setReference(null); setStatus(null); setMessage(''); setTimedOut(false); }}>
+              {sw ? 'Jaribu tena' : 'Try again'}
+            </button>
+          )}
+          <button className={status === 'FAILED' || status === 'CANCELLED' ? 'btn-ghost tap' : 'btn-primary tap'} style={{ width: '100%' }} onClick={onClose}>
             {status === 'COMPLETED' ? (sw ? 'Vizuri' : 'Done') : (sw ? 'Funga' : 'Close')}
           </button>
         </div>
@@ -529,4 +609,56 @@ function PaySheet({ plan, country, onClose, onPaid }: {
       )}
     </Sheet>
   );
+}
+
+function fmtUsd(n: number): string {
+  return Number.isInteger(n) ? String(n) : n.toFixed(2);
+}
+
+function periodName(p: BillingPeriod, sw: boolean): string {
+  return p.code === 'monthly' ? (sw ? 'Kila mwezi' : 'Monthly') : p.code === 'quarterly' ? (sw ? 'Miezi 3' : 'Quarterly') : (sw ? 'Mwaka' : 'Annual');
+}
+
+function periodPerk(p: BillingPeriod, sw: boolean): string {
+  if (p.freeMonths) return sw ? `Miezi ${p.freeMonths} bure` : `${p.freeMonths} months free`;
+  if (p.discountPct) return sw ? `Okoa ${p.discountPct}%` : `Save ${p.discountPct}%`;
+  return '';
+}
+
+function periodPer(p: BillingPeriod, sw: boolean): string {
+  return p.code === 'monthly' ? (sw ? 'kwa mwezi' : 'per month') : p.code === 'quarterly' ? (sw ? 'kwa miezi 3' : 'for 3 months') : (sw ? 'kwa mwaka' : 'per year');
+}
+
+function addLabel(p: BillingPeriod, sw: boolean): string {
+  return p.code === 'monthly' ? (sw ? 'Ongeza mwezi' : 'Add a month') : p.code === 'quarterly' ? (sw ? 'Ongeza miezi 3' : 'Add 3 months') : (sw ? 'Ongeza mwaka' : 'Add a year');
+}
+
+/** Where the last payment got to, so nobody has to keep the sheet open to find out. */
+function LatestStrip({ p, country, sw }: { p: LatestPayment; country: string; sw: boolean }) {
+  const when = new Date(p.updated_at || p.created_at);
+  const age = Date.now() - new Date(p.created_at).getTime();
+  // An old failure is history, not news.
+  if (p.status !== 'PENDING' && age > 3 * 86_400_000) return null;
+  const time = when.toLocaleString(sw ? 'sw-TZ' : 'en-GB', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });
+  const amount = `${countryCur(country)} ${Math.round(p.amount).toLocaleString('en-US')}`;
+  const tone = p.status === 'COMPLETED'
+    ? { cls: 'ok', icon: 'check', text: sw ? 'Malipo yamepokelewa — kifurushi kimewaka' : 'Payment received — your plan is on' }
+    : p.status === 'PENDING'
+      ? { cls: 'wait', icon: 'clock', text: sw ? 'Tunasubiri uthibitisho wa malipo' : 'Waiting for the payment to confirm' }
+      : { cls: 'bad', icon: 'alert', text: sw ? 'Malipo ya mwisho hayakuidhinishwa — hakuna pesa iliyokatwa' : 'Last payment was not approved — nothing was charged' };
+  return (
+    <div className="pay-strip" data-tone={tone.cls}>
+      <Icon name={tone.icon} size={16} />
+      <div style={{ minWidth: 0, flex: 1 }}>
+        <div className="pay-strip-title">{tone.text}</div>
+        <div className="pay-strip-sub">{amount} · {time} · <span style={{ userSelect: 'all' }}>{p.reference}</span></div>
+      </div>
+      {p.status === 'PENDING' && <span className="pay-strip-dot" />}
+    </div>
+  );
+}
+
+/** Payments are collected in TSh; the strip states the amount actually pushed. */
+function countryCur(_country: string): string {
+  return 'TSh';
 }

@@ -176,6 +176,8 @@ async function handle(req: Request): Promise<Response> {
         .maybeSingle();
 
       if (!planId) intervalDays = sub?.subscription_plans?.interval_days ?? 30;
+      // A quarterly or annual payment buys that many days, not one month's.
+      if (payment.period_days) intervalDays = payment.period_days;
 
       // Extend from whichever is later: the end of the period already paid
       // for, or now. Paying early should add time rather than throw the rest

@@ -116,9 +116,11 @@ export function Manage() {
   ];
 
   return (
-    <div className="screen sb">
+    <div className="screen sb desk-wide">
       <ScreenHeader title={L.manage} sub={displayName} />
 
+      <div className="desk even">
+      <div className="desk-main">
       <div className="card tap" onClick={() => nav('/pricing')} style={{ padding: 16, marginBottom: 12, display: 'flex', alignItems: 'center', gap: 12 }}>
         <div style={{ width: 38, height: 38, borderRadius: 12, background: onTrial ? 'var(--brandSoft)' : 'var(--okSoft)', color: onTrial ? 'var(--brand)' : 'var(--ok)', display: 'grid', placeItems: 'center' }}>
           <Icon name={onTrial ? 'spark' : 'check'} size={18} />
@@ -195,7 +197,9 @@ export function Manage() {
         <Icon name="plus" size={15} />
         {L.addBusiness}
       </button>
+      </div>
 
+      <aside className="desk-side">
       <div style={{ fontSize: 13, fontWeight: 800, color: 'var(--ink2)', textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 10 }}>{L.wholeBusiness}</div>
       <div className="card" style={{ padding: 6, marginBottom: 18 }}>
         <div className="tap" onClick={() => nav('/business')} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '11px 8px' }}>
@@ -298,6 +302,8 @@ export function Manage() {
         <Icon name="logout" size={15} />
         {L.signOut}
       </button>
+      </aside>
+      </div>
 
       <Sheet open={addOpen} onClose={() => setAddOpen(false)} title={L.addBusiness}>
         <input autoFocus placeholder={L.businessProfile} value={newName} onChange={(e) => setNewName(e.target.value)} className="card" style={{ width: '100%', padding: '14px 16px', border: 'none', fontSize: 15, fontWeight: 600, marginBottom: 12 }} />

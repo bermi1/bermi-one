@@ -115,7 +115,7 @@ async function probePayme(appId: string, secret: string, sandbox: boolean) {
     const res = await fetch('https://portal.paymeafrica.com/api/v1/query', { method: 'POST', headers, body: message });
     const text = await res.text();
     let msg = text.slice(0, 200);
-    try { const j = JSON.parse(text); msg = j.error || j.message || j.provider_message || msg; } catch { /* keep text */ }
+    try { const j = JSON.parse(text); msg = j.messages?.error || (typeof j.error === 'string' ? j.error : '') || j.message || j.provider_message || msg; } catch { /* keep text */ }
     return { app_id: appId, sandbox, status: res.status, message: msg || `HTTP ${res.status}`, accepted: res.status !== 401 && res.status !== 403 };
   } catch (e) {
     return { app_id: appId, sandbox, status: 0, message: e instanceof Error ? e.message : String(e), accepted: false };
@@ -494,10 +494,21 @@ async function handle(req: Request): Promise<Response> {
 
       // provider_checked: false means the live check failed, not that the
       // payment is confirmed pending — do not write that through as an answer.
+      // A final state goes through payme-webhook, the one place that
+      // activates a plan; writing it here would make that step look done.
       if (out?.provider_checked !== false) {
         const p = String(out?.payment_status ?? '').toUpperCase();
-        const status = p === 'COMPLETED' ? 'COMPLETED' : p === 'FAILED' ? 'FAILED' : p === 'CANCELLED' ? 'CANCELLED' : 'PENDING';
-        await admin.from('payments').update({ status, updated_at: new Date().toISOString() }).eq('reference', body.reference);
+        if (p === 'COMPLETED' || p === 'FAILED' || p === 'CANCELLED') {
+          const raw = JSON.stringify({ reference: body.reference, result: p === 'COMPLETED' ? 'SUCCESS' : 'FAILED', payment_status: p, source: 'reconcile' });
+          const ts = String(Math.floor(Date.now() / 1000));
+          const k = await crypto.subtle.importKey('raw', new TextEncoder().encode(secret), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
+          const sg = await crypto.subtle.sign('HMAC', k, new TextEncoder().encode(raw + ts));
+          await fetch(`${SUPABASE_URL}/functions/v1/payme-webhook`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-Timestamp': ts, 'X-Middleware-Signature': btoa(String.fromCharCode(...new Uint8Array(sg))) },
+            body: raw,
+          });
+        }
       }
       return json(out, res.status);
     }

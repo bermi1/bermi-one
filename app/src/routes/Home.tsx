@@ -78,12 +78,14 @@ export function Home() {
   ];
 
   return (
-    <div className="screen sb">
+    <div className="screen sb desk-wide">
       <AppHeader />
-      <div style={{ fontSize: 13.5, color: 'var(--ink2)', fontWeight: 600, marginTop: 6 }}>
+      <div className="home-greet" style={{ fontSize: 13.5, color: 'var(--ink2)', fontWeight: 600, marginTop: 6 }}>
         {lang === 'sw' ? 'Habari za asubuhi' : 'Good morning'}, {displayName}
       </div>
 
+      <div className="desk">
+      <div className="desk-main">
       <div style={{ marginTop: 14, borderRadius: 26, background: 'var(--grad)', padding: 22, boxShadow: '0 20px 44px rgba(47,91,255,.3)', position: 'relative', overflow: 'hidden' }}>
         <div style={{ position: 'absolute', width: 180, height: 180, borderRadius: '50%', background: 'rgba(255,255,255,.1)', top: -60, right: -50 }} />
         <div style={{ display: 'flex', gap: 24, position: 'relative' }}>
@@ -155,6 +157,9 @@ export function Home() {
         </div>
       </div>
 
+      </div>
+
+      <aside className="desk-side">
       <div style={{ marginTop: 16, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
         <div className="card tap" onClick={() => nav('/stock')} style={{ padding: 16 }}>
           <div style={{ fontSize: 11.5, color: 'var(--ink3)', fontWeight: 700 }}>{L.stockValue}</div>
@@ -191,6 +196,8 @@ export function Home() {
           </div>
         </div>
       )}
+      </aside>
+      </div>
     </div>
   );
 }

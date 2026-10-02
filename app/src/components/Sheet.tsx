@@ -1,13 +1,23 @@
-import type { ReactNode } from 'react';
+import { useEffect, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { Icon } from '../lib/icons';
 
+/**
+ * A bottom sheet on a phone; on a desktop the same component is a centred
+ * dialog (see .sheet in index.css), and Escape closes it.
+ */
 export function Sheet({ open, onClose, title, sub, children }: { open: boolean; onClose: () => void; title?: string; sub?: string; children: ReactNode }) {
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [open, onClose]);
   if (!open) return null;
   return createPortal(
     <div className="sheet-scrim" onClick={onClose}>
-      <div className="sheet" onClick={(e) => e.stopPropagation()}>
-        <div style={{ width: 36, height: 4, borderRadius: 2, background: 'var(--line)', margin: '4px auto 14px' }} />
+      <div className="sheet" role="dialog" aria-modal="true" aria-label={title} onClick={(e) => e.stopPropagation()}>
+        <div className="sheet-grab" />
         {(title || sub) && (
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16 }}>
             <div>

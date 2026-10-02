@@ -55,9 +55,11 @@ export function Staff() {
   }
 
   return (
-    <div className="screen sb">
+    <div className="screen sb desk-wide">
       <ScreenHeader title={L.staffCount} back sub={`${staffMembers.length} ${lang === 'sw' ? 'wafanyakazi' : 'staff'}`} />
 
+      <div className="desk">
+      <aside className="desk-side">
       {/* How it works, said once, where the owner sets it up. */}
       <div className="card" style={{ padding: 14, marginBottom: 12, display: 'flex', gap: 12, alignItems: 'flex-start' }}>
         <div style={{ width: 34, height: 34, borderRadius: 11, background: 'var(--brandSoft)', color: 'var(--brand)', display: 'grid', placeItems: 'center', flexShrink: 0 }}>
@@ -83,6 +85,9 @@ export function Staff() {
         <button className="chip tap" onClick={() => setOwnerPinOpen(true)}>{ownerPinSet ? (sw ? 'Badili' : 'Change') : (sw ? 'Weka' : 'Set')}</button>
       </div>
 
+      </aside>
+
+      <div className="desk-main">
       {staffMembers.length === 0 ? (
         <div className="card" style={{ padding: 40, textAlign: 'center' }}>
           <div style={{ width: 46, height: 46, borderRadius: 15, margin: '0 auto 14px', background: 'var(--card2)', display: 'grid', placeItems: 'center', color: 'var(--ink3)' }}>
@@ -123,6 +128,8 @@ export function Staff() {
         <Icon name="plus" size={15} />
         {L.addStaffMember}
       </button>
+      </div>
+      </div>
 
       <Sheet open={addOpen} onClose={() => setAddOpen(false)} title={L.addStaffMember}>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
