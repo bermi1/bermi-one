@@ -222,8 +222,6 @@ export function answerQuestion(data: AssistantData, question: string, fmt: (n: n
     const revLast = revenueOf(lastWeek);
     const opexThis = opexOf(thisWeek);
     const lossThis = lossesOf(thisWeek);
-    const cogsThis = Math.round(revThis * 0.6);
-    const netThis = revThis - cogsThis - opexThis - lossThis;
     let trend = '';
     if (revLast > 0) {
       const pct = Math.round(((revThis - revLast) / revLast) * 100);
@@ -231,9 +229,11 @@ export function answerQuestion(data: AssistantData, question: string, fmt: (n: n
         ? (sw ? `\n\nMapato yameongezeka ${pct}% kuliko wiki iliyopita.` : `\n\nRevenue is up ${pct}% versus last week.`)
         : (sw ? `\n\nMapato yamepungua ${Math.abs(pct)}% kuliko wiki iliyopita.` : `\n\nRevenue is down ${Math.abs(pct)}% versus last week.`);
     }
+    // Profit is only stated from verified closings (the analyst); a guess at
+    // cost of goods would be a number nobody recorded.
     return (sw
-      ? `Wiki hii\n\nMapato: ${fmt(revThis)}\nGharama za bidhaa: ${fmt(cogsThis)}\nMatumizi: ${fmt(opexThis)}\nFaida halisi: ${fmt(netThis)}`
-      : `This week\n\nRevenue: ${fmt(revThis)}\nCost of goods: ${fmt(cogsThis)}\nOperating expenses: ${fmt(opexThis)}\nNet profit: ${fmt(netThis)}`) + trend;
+      ? `Wiki hii\n\nMapato: ${fmt(revThis)}\nMatumizi: ${fmt(opexThis)}\nHasara: ${fmt(lossThis)}\n\nFaida halisi itaonekana baada ya siku 3 za kufunga zilizothibitishwa.`
+      : `This week\n\nRevenue: ${fmt(revThis)}\nExpenses: ${fmt(opexThis)}\nLosses: ${fmt(lossThis)}\n\nProfit appears once there are 3 verified closings to read it from.`) + trend;
   }
 
   // --- Recent history ---
@@ -259,13 +259,11 @@ export function defaultSummary(data: AssistantData, fmt: (n: number) => string):
   const thisWeek = inWindow(ledger, 7, 0);
   const revThis = revenueOf(thisWeek);
   const opexThis = opexOf(thisWeek);
-  const cogsThis = Math.round(revThis * 0.6);
-  const netThis = revThis - cogsThis - opexThis;
   const insights = deriveInsights({ products, counts: session?.counts || {}, accounts, actionLog, lang });
   const top = insights[0];
   const base = sw
-    ? `${activeBusinessName}\n\nMapato ya wiki: ${fmt(revThis)}\nFaida halisi: ${fmt(netThis)}`
-    : `${activeBusinessName}\n\nThis week's revenue: ${fmt(revThis)}\nNet profit: ${fmt(netThis)}`;
+    ? `${activeBusinessName}\n\nMapato ya wiki: ${fmt(revThis)}\nMatumizi: ${fmt(opexThis)}`
+    : `${activeBusinessName}\n\nThis week's revenue: ${fmt(revThis)}\nExpenses: ${fmt(opexThis)}`;
   const noted = top ? `\n\n${sw ? 'Nimegundua' : 'I noticed'}: ${top.text}` : '';
   const hint = sw
     ? '\n\nUliza kuhusu bidhaa fulani, aina, fedha, tofauti, faida, hasara, deni, au nifanye nini.'
