@@ -1,0 +1,33 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Bermi One">
+  <defs>
+    <linearGradient id="bermi" x1="0.06" y1="0.94" x2="0.96" y2="0.06">
+      <stop offset="0" stop-color="#0433cf"/>
+      <stop offset="0.45" stop-color="#0757e8"/>
+      <stop offset="1" stop-color="#029dff"/>
+    </linearGradient>
+    <!-- The arrow is punched out of the B rather than drawn on top, so the mark
+         stays one shape and reads correctly on any background. The stroke on
+         the mask widens the cut, which is what gives the arrow its breathing
+         room; the apex stops short of the right edge so the letter stays
+         closed rather than sliced open. -->
+    <mask id="cut">
+      <rect width="512" height="512" fill="#fff"/>
+      <path d="M232 178 L330 249 a8 8 0 0 1 0 13 L232 337 a8 8 0 0 1 -12 -6 L220 184 a8 8 0 0 1 12 -6 Z"
+            fill="#000" stroke="#000" stroke-width="26" stroke-linejoin="round"/>
+    </mask>
+  </defs>
+
+  <!-- Two lobes with daylight between them: the letter reads as a B, and the
+       arrow passes through the gap instead of sitting on a solid slab. -->
+  <g fill="url(#bermi)" mask="url(#cut)">
+    <path d="M150 121 a13 13 0 0 1 13 -13 L322 108 a71 71 0 0 1 0 142 L163 250 a13 13 0 0 1 -13 -13 Z"/>
+    <path d="M150 275 a13 13 0 0 1 13 -13 L337 262 a71 71 0 0 1 0 142 L163 404 a13 13 0 0 1 -13 -13 Z"/>
+  </g>
+
+  <!-- the three tiles: data arriving -->
+  <g fill="url(#bermi)">
+    <rect x="86" y="190" width="58" height="58" rx="11"/>
+    <rect x="142" y="246" width="52" height="52" rx="10"/>
+    <rect x="68" y="266" width="40" height="40" rx="9"/>
+  </g>
+</svg>

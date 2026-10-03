@@ -3,6 +3,7 @@
 //   node render.mjs --out film.mp4 [--scale 2] [--audio track.wav]
 //   node render.mjs --stills 0,5.5,12 --outdir shots/
 //   node render.mjs --events events.json
+//   node render.mjs --page ../phone-film/index.html --w 1080 --h 1920 --out phone.mp4
 //
 // Needs playwright-core and a static ffmpeg with x264 (FFMPEG env var).
 // PLAYWRIGHT_CORE may point at playwright-core's index.mjs when it is not
@@ -25,9 +26,10 @@ const browser = await chromium.launch({
   executablePath: process.env.CHROME || undefined,
   args: ['--no-sandbox', '--force-color-profile=srgb', '--hide-scrollbars'],
 });
-const page = await browser.newPage({ viewport: { width: 1920, height: 1080 }, deviceScaleFactor: scale });
+const W = Number(args.w || 1920), H = Number(args.h || 1080);
+const page = await browser.newPage({ viewport: { width: W, height: H }, deviceScaleFactor: scale });
 page.on('pageerror', (e) => console.error('pageerror', e.message));
-await page.goto(pathToFileURL(join(here, 'index.html')).href);
+await page.goto(pathToFileURL(args.page ? join(process.cwd(), args.page) : join(here, 'index.html')).href);
 await page.evaluate(() => window.ready);
 const dur = await page.evaluate(() => window.DUR);
 
