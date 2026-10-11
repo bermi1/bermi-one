@@ -7,8 +7,10 @@
 // instead of disappearing into a log line.
 //
 // Runs unauthenticated but not unprotected: it is called by a schedule, and a
-// shared NOTIFY_WORKER_KEY has to match. There is no user session behind a cron
-// job, so a JWT would have nothing to verify.
+// shared key has to match: NOTIFY_WORKER_KEY from the environment, or the
+// internal cron key kept in Vault (the one pg_cron already sends to
+// payme-reconcile), so the schedule works without a dashboard secret. There is
+// no user session behind a cron job, so a JWT would have nothing to verify.
 
 import { createClient } from 'jsr:@supabase/supabase-js@2';
 
@@ -92,11 +94,22 @@ async function sendEmail(to: string, subject: string, body: string): Promise<{ o
   return { ok: true, id: String(parsed.id ?? ''), message: 'sent' };
 }
 
+let vaultKey: string | null = null;
+async function allowed(key: string): Promise<boolean> {
+  if (!key) return false;
+  if (WORKER_KEY && key === WORKER_KEY) return true;
+  if (vaultKey === null) {
+    const { data } = await admin.rpc('payme_reconcile_key');
+    vaultKey = typeof data === 'string' ? data : '';
+  }
+  return !!vaultKey && key === vaultKey;
+}
+
 Deno.serve(async (req) => {
   if (req.method !== 'POST') return new Response('POST only', { status: 405 });
 
   const key = req.headers.get('X-Worker-Key') ?? new URL(req.url).searchParams.get('key') ?? '';
-  if (!WORKER_KEY || key !== WORKER_KEY) return new Response('Forbidden', { status: 403 });
+  if (!(await allowed(key))) return new Response('Forbidden', { status: 403 });
 
   // Queue whatever periodic reports are due before draining. One schedule runs
   // the whole thing: the database decides what is due (and stamps it so a
@@ -113,6 +126,9 @@ Deno.serve(async (req) => {
     .from('notifications')
     .select('*')
     .eq('status', 'queued')
+    // Only channels this worker can deliver. A campaign queued before the SMS
+    // key is set waits for it, rather than burning its retries and failing.
+    .in('channel', [...(TEXTIFY_KEY ? ['sms'] : []), ...(RESEND_KEY ? ['email'] : [])])
     .lte('scheduled_for', new Date().toISOString())
     .order('created_at', { ascending: true })
     .limit(BATCH);

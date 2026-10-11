@@ -225,6 +225,18 @@ async function handle(req: Request): Promise<Response> {
     })
     .eq('reference', reference);
 
+  // A shop customer's order, or a shop buying SMS credits: the database knows
+  // what that payment means (order paid and the shop's balance credited, or
+  // credits added) and does it once, however many times this is called.
+  if (payment.purpose === 'shop_order' || payment.purpose === 'sms_credits') {
+    const fn = status === 'COMPLETED' ? 'payment_completed_effects' : status === 'FAILED' || status === 'CANCELLED' ? 'payment_failed_effects' : null;
+    if (fn) {
+      const { data: effect, error: effectError } = await admin.rpc(fn, { p_reference: reference });
+      outcome = effectError ? `${fn}_failed: ${effectError.message}` : `${outcome}; ${effect}`;
+      if (effectError) console.error('payme-webhook:', fn, effectError.message);
+    }
+  }
+
   await record({ reference, signatureOk: true, handled: true, outcome, headers, body });
 
   return new Response('ok', { status: 200 });

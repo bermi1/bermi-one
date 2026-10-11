@@ -16,3 +16,8 @@ verify_jwt = false
 # Called by a schedule, which has no user session either. Protected by a shared
 # NOTIFY_WORKER_KEY header rather than a JWT.
 verify_jwt = false
+
+[functions.shop-pay]
+# Shop customers have no session: an order's secret token is the authority for
+# paying it, and SMS purchases check the owner's JWT inside the function.
+verify_jwt = false
