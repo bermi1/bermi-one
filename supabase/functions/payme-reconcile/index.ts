@@ -25,7 +25,13 @@ async function hmac64(secret: string, message: string): Promise<string> {
 
 Deno.serve(async (req) => {
   try {
-    const { data: key } = await admin.rpc('payme_reconcile_key');
+    const { data: key, error: keyError } = await admin.rpc('payme_reconcile_key');
+    if (keyError) {
+      // Never the key itself — only its shape, so a rejected credential can be told apart.
+      const sr = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || '';
+      const names = Object.keys(Deno.env.toObject()).filter((n) => n.startsWith('SUPABASE_')).join(',');
+      console.error('payme-reconcile: key lookup failed:', keyError.code, keyError.message, '| service key shape:', sr.slice(0, 3), sr.length, '| env:', names);
+    }
     if (!key || req.headers.get('x-reconcile-key') !== key) return json({ error: 'Forbidden' }, 401);
 
     const { data: cfg } = await admin.rpc('payme_config');

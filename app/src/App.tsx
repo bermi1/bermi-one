@@ -18,6 +18,7 @@ import { checkPlatformAdmin } from './lib/platform';
 import { BOOT_CEILING_MS } from './lib/boot';
 import { Icon } from './lib/icons';
 import { StaffSignIn } from './components/StaffAccess';
+import { clockSkewMs, loadErrorKind } from './lib/supabase';
 
 /*
   What loads first, and what waits.
@@ -84,21 +85,50 @@ function handOverFromSplash() {
  * dropped request was enough to get here.
  */
 function StillStarting({ error, onRetry }: { error: string | null; onRetry: () => void }) {
+  // The profile — and with it the language setting — is exactly what failed to
+  // load, so the phone's own language decides.
+  const sw = typeof navigator !== 'undefined' && /^sw/i.test(navigator.language || '');
+  const kind = error ? loadErrorKind(error) : null;
+  const skew = clockSkewMs();
+  const clockWrong = skew !== null && Math.abs(skew) > 5 * 60_000;
+
+  // A sign-in the server has not caught up with clears by itself: ask again
+  // without making anyone press anything.
+  useEffect(() => {
+    if (kind !== 'auth-time') return;
+    const t = setTimeout(onRetry, 10_000);
+    return () => clearTimeout(t);
+  }, [kind, error, onRetry]);
+
+  const title = !error
+    ? (sw ? 'Bado inafunguka…' : 'Still opening…')
+    : kind === 'auth-time'
+      ? (sw ? 'Inathibitisha kuingia kwako…' : 'Confirming your sign-in…')
+      : (sw ? 'Bermi One imeshindwa kufunguka' : 'Bermi One could not load');
+  const body = !error
+    ? (sw ? 'Inachukua muda kuliko kawaida. Mtandao wako unaweza kuwa wa polepole.' : 'This is taking longer than it should. Your connection may be slow.')
+    : kind === 'auth-time'
+      ? (sw ? 'Seva bado inapokea kuingia kwako. Bermi itajaribu tena yenyewe baada ya sekunde chache. Hakuna kilichopotea.' : 'The server is still catching up with your sign-in. Bermi will try again on its own in a few seconds. Nothing you have recorded is lost.')
+      : kind === 'network'
+        ? (sw ? 'Imeshindwa kufikia seva. Angalia mtandao kisha ujaribu tena. Hakuna kilichopotea.' : 'The app could not reach the server. Check your connection and try again. Nothing you have recorded is lost.')
+        : (sw ? 'Hakuna ulichorekodi kilichopotea — ni programu imeshindwa kufikia seva.' : 'Nothing you have recorded is lost — this is the app failing to reach the server.');
+
   return (
     <div style={{ minHeight: '100dvh', display: 'grid', placeItems: 'center', padding: 24, background: 'var(--bg)' }}>
       <div style={{ width: '100%', maxWidth: 340, textAlign: 'center' }}>
         <img src="/icons/bermi-mark.svg" alt="" width={64} height={64} style={{ marginBottom: 18 }} />
-        <div style={{ fontSize: 17, fontWeight: 800, letterSpacing: -0.3 }}>
-          {error ? 'Bermi One could not load' : 'Still opening…'}
-        </div>
-        <div style={{ marginTop: 8, fontSize: 13, color: 'var(--ink2)', lineHeight: 1.6 }}>
-          {error
-            ? 'Nothing you have recorded is lost — this is the app failing to reach the server.'
-            : 'This is taking longer than it should. Your connection may be slow.'}
-        </div>
+        <div style={{ fontSize: 17, fontWeight: 800, letterSpacing: -0.3 }}>{title}</div>
+        <div style={{ marginTop: 8, fontSize: 13, color: 'var(--ink2)', lineHeight: 1.6 }}>{body}</div>
+        {clockWrong && (
+          <div style={{ marginTop: 12, padding: '10px 12px', borderRadius: 12, background: 'var(--warnSoft)', color: 'var(--warn)', fontSize: 12.5, fontWeight: 700, lineHeight: 1.5 }}>
+            {sw
+              ? 'Tarehe au saa ya simu yako inaonekana si sahihi. Washa "saa ya kiotomatiki" kwenye mipangilio.'
+              : 'Your phone\'s date or time looks wrong. Turn on automatic date & time in Settings.'}
+          </div>
+        )}
         {error && (
-          <div style={{ marginTop: 12, padding: '10px 12px', borderRadius: 12, background: 'var(--card2)', fontSize: 11.5, color: 'var(--ink3)', fontWeight: 600, wordBreak: 'break-word', lineHeight: 1.5 }}>
-            {error}
+          <div style={{ marginTop: 12, fontSize: 11, color: 'var(--ink3)', fontWeight: 600, wordBreak: 'break-word', lineHeight: 1.5 }}>
+            {sw ? 'Maelezo' : 'Details'}: {error}
           </div>
         )}
         <button
@@ -107,7 +137,7 @@ function StillStarting({ error, onRetry }: { error: string | null; onRetry: () =
           onClick={onRetry}
         >
           <Icon name="refresh" size={15} />
-          Try again
+          {sw ? 'Jaribu tena' : 'Try again'}
         </button>
       </div>
     </div>
