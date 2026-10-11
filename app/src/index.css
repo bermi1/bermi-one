@@ -597,3 +597,11 @@ textarea.field,textarea.s-input{resize:vertical;min-height:84px;line-height:1.5}
 [data-theme="dark"] .s-badge{filter:saturate(1.15)}
 .field{min-width:0}
 .icon-btn,.btn-primary,.chip{flex-shrink:0}
+
+/* ---- Page changes without a flash ------------------------------------------
+   One background behind everything, so nothing of a different colour shows
+   while a screen mounts; and the new screen is visible from its first frame. */
+body{background:var(--bg)}
+@keyframes page-in{from{opacity:.85;transform:translateY(6px)}to{opacity:1;transform:none}}
+.page-in{animation:page-in .18s cubic-bezier(.2,.8,.2,1) both}
+.screen{animation:none}

@@ -16,8 +16,20 @@
 
     <!-- Installed-app chrome. The theme colour follows the app's own light and
          dark grounds so the status bar never fights the screen under it. -->
-    <meta name="theme-color" media="(prefers-color-scheme: light)" content="#f4f6fd" />
-    <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#0b0f1a" />
+    <meta name="theme-color" content="#f5f7fc" />
+    <!-- The theme this device last used, applied before anything paints, so a
+         dark-mode user never sees a white splash or a white frame between pages. -->
+    <script>
+      (function () {
+        try {
+          var t = localStorage.getItem('bermi:theme');
+          if (t === 'dark' || t === 'light') {
+            document.documentElement.dataset.theme = t;
+            if (t === 'dark') document.querySelector('meta[name="theme-color"]').setAttribute('content', '#0a0c16');
+          }
+        } catch (e) {}
+      })();
+    </script>
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="default" />
@@ -37,6 +49,11 @@
         transition: opacity .34s ease;
       }
       #boot[data-done] { opacity: 0; pointer-events: none; }
+      html[data-theme="dark"], html[data-theme="dark"] body { background: #0a0c16; }
+      html[data-theme="dark"] #boot { background: #0a0c16; }
+      html[data-theme="dark"] #boot .word { color: #f2f5ff; }
+      html[data-theme="dark"] #boot .slogan { color: #97a3c0; }
+      html[data-theme="dark"] #boot .slogan b { color: #8aa4ff; } html[data-theme="dark"] #boot .caret { background: #8aa4ff; }
       #boot img { width: 116px; height: 116px; animation: rise .6s cubic-bezier(.2,.8,.2,1) both; }
       #boot .word { font-size: 26px; font-weight: 800; letter-spacing: -0.8px; color: #14161c;
                     animation: rise .6s .08s cubic-bezier(.2,.8,.2,1) both; }

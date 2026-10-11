@@ -2,6 +2,7 @@ import { NavLink } from 'react-router-dom';
 import { Icon } from '../lib/icons';
 import { useSettings } from '../lib/useSettings';
 import { useData } from '../state/DataContext';
+import { chunkForPath, preload } from '../lib/routeChunks';
 
 export function BottomNav() {
   const { owner, L, lang } = useSettings();
@@ -40,6 +41,7 @@ export function BottomNav() {
           <NavLink
             key={it.to}
             to={it.to}
+            onPointerDown={() => { const c = chunkForPath(it.to, salon); if (c) preload(c); }}
             className="nav-item"
             style={({ isActive }) => ({
               background: isActive ? 'var(--brandSoft)' : 'transparent',

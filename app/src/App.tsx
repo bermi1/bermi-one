@@ -19,6 +19,7 @@ import { checkPlatformAdmin } from './lib/platform';
 import { BOOT_CEILING_MS } from './lib/boot';
 import { Icon } from './lib/icons';
 import { StaffSignIn } from './components/StaffAccess';
+import { CHUNKS, preloadAll } from './lib/routeChunks';
 import { clockSkewMs, jwtTrouble, loadErrorKind } from './lib/supabase';
 
 /*
@@ -30,37 +31,45 @@ import { clockSkewMs, jwtTrouble, loadErrorKind } from './lib/supabase';
   phone on a Tanzanian mobile network that difference is the difference between
   the app opening and the app appearing to be broken.
 */
-const Onboarding = lazy(() => import('./routes/Onboarding').then((m) => ({ default: m.Onboarding })));
-const Approval = lazy(() => import('./routes/Approval').then((m) => ({ default: m.Approval })));
-const Money = lazy(() => import('./routes/Money').then((m) => ({ default: m.Money })));
-const Reports = lazy(() => import('./routes/Reports').then((m) => ({ default: m.Reports })));
-const AI = lazy(() => import('./routes/AI').then((m) => ({ default: m.AI })));
-const Manage = lazy(() => import('./routes/Manage').then((m) => ({ default: m.Manage })));
-const BusinessProfile = lazy(() => import('./routes/BusinessProfile').then((m) => ({ default: m.BusinessProfile })));
-const Staff = lazy(() => import('./routes/Staff').then((m) => ({ default: m.Staff })));
-const Hq = lazy(() => import('./portal/Hq').then((m) => ({ default: m.Hq })));
-const Suspended = lazy(() => import('./routes/Suspended').then((m) => ({ default: m.Suspended })));
-const Pricing = lazy(() => import('./routes/Pricing').then((m) => ({ default: m.Pricing })));
-const Help = lazy(() => import('./routes/Help').then((m) => ({ default: m.Help })));
-const Legal = lazy(() => import('./routes/Legal').then((m) => ({ default: m.Legal })));
-const SetPassword = lazy(() => import('./routes/SetPassword').then((m) => ({ default: m.SetPassword })));
-const Book = lazy(() => import('./routes/Book').then((m) => ({ default: m.Book })));
-const SalonToday = lazy(() => import('./routes/salon/SalonToday').then((m) => ({ default: m.SalonToday })));
-const Bookings = lazy(() => import('./routes/salon/Bookings').then((m) => ({ default: m.Bookings })));
-const Clients = lazy(() => import('./routes/salon/Clients').then((m) => ({ default: m.Clients })));
-const Services = lazy(() => import('./routes/salon/Services').then((m) => ({ default: m.Services })));
-const Payouts = lazy(() => import('./routes/salon/Payouts').then((m) => ({ default: m.Payouts })));
-const SalonReports = lazy(() => import('./routes/salon/SalonReports').then((m) => ({ default: m.SalonReports })));
+const Onboarding = lazy(() => CHUNKS.onboarding().then((m) => ({ default: m.Onboarding })));
+const Approval = lazy(() => CHUNKS.approval().then((m) => ({ default: m.Approval })));
+const Money = lazy(() => CHUNKS.money().then((m) => ({ default: m.Money })));
+const Reports = lazy(() => CHUNKS.reports().then((m) => ({ default: m.Reports })));
+const AI = lazy(() => CHUNKS.ai().then((m) => ({ default: m.AI })));
+const Manage = lazy(() => CHUNKS.manage().then((m) => ({ default: m.Manage })));
+const BusinessProfile = lazy(() => CHUNKS.business().then((m) => ({ default: m.BusinessProfile })));
+const Staff = lazy(() => CHUNKS.staff().then((m) => ({ default: m.Staff })));
+const Hq = lazy(() => CHUNKS.hq().then((m) => ({ default: m.Hq })));
+const Suspended = lazy(() => CHUNKS.suspended().then((m) => ({ default: m.Suspended })));
+const Pricing = lazy(() => CHUNKS.pricing().then((m) => ({ default: m.Pricing })));
+const Help = lazy(() => CHUNKS.help().then((m) => ({ default: m.Help })));
+const Legal = lazy(() => CHUNKS.legal().then((m) => ({ default: m.Legal })));
+const SetPassword = lazy(() => CHUNKS.setPassword().then((m) => ({ default: m.SetPassword })));
+const Book = lazy(() => CHUNKS.book().then((m) => ({ default: m.Book })));
+const SalonToday = lazy(() => CHUNKS.salonToday().then((m) => ({ default: m.SalonToday })));
+const Bookings = lazy(() => CHUNKS.bookings().then((m) => ({ default: m.Bookings })));
+const Clients = lazy(() => CHUNKS.clients().then((m) => ({ default: m.Clients })));
+const Services = lazy(() => CHUNKS.services().then((m) => ({ default: m.Services })));
+const Payouts = lazy(() => CHUNKS.payouts().then((m) => ({ default: m.Payouts })));
+const SalonReports = lazy(() => CHUNKS.salonReports().then((m) => ({ default: m.SalonReports })));
 
 /**
  * What fills the gap while a screen is fetched.
  *
- * Deliberately blank rather than a spinner: on any connection worth the name
- * the chunk arrives inside a frame or two, and a spinner that flashes for
- * 80ms reads as a fault rather than as progress.
+ * Rarely seen now — every screen is preloaded in the background once the app
+ * is up — but when it is (a cold cache on a slow network), it looks like the
+ * app laying out the page, in the theme's colours, never an empty void.
  */
 function Pending() {
-  return <div style={{ minHeight: '40vh' }} />;
+  return (
+    <div className="screen" aria-busy="true" aria-label="Loading">
+      <div className="skeleton" style={{ height: 38, width: '55%', borderRadius: 12, marginTop: 6 }} />
+      <div className="skeleton" style={{ height: 16, width: '35%', borderRadius: 8, marginTop: 10 }} />
+      <div className="skeleton" style={{ height: 120, marginTop: 22 }} />
+      <div className="skeleton" style={{ height: 76, marginTop: 12 }} />
+      <div className="skeleton" style={{ height: 76, marginTop: 12 }} />
+    </div>
+  );
 }
 
 function ThemeRoot() {
@@ -68,6 +77,11 @@ function ThemeRoot() {
   const theme = profile?.theme || 'light';
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
+    // Remembered on the device, so the next open paints in the right theme
+    // from the very first frame instead of flashing light then dark.
+    try { localStorage.setItem('bermi:theme', theme); } catch { /* private mode */ }
+    const meta = document.querySelector('meta[name="theme-color"]');
+    if (meta) meta.setAttribute('content', theme === 'dark' ? '#0a0c16' : '#f5f7fc');
   }, [theme]);
   return null;
 }
@@ -174,6 +188,14 @@ function AppRoutes() {
     screen someone can read and act on.
   */
   const [booted, setBooted] = useState(false);
+  const isSalonBiz = useData().activeBusiness?.type === 'barber';
+  // Once the app is up, fetch every screen's code in idle time so moving
+  // between pages never waits on the network.
+  useEffect(() => {
+    if (!session || !ready) return;
+    const t = setTimeout(() => preloadAll(isSalonBiz), 400);
+    return () => clearTimeout(t);
+  }, [session, ready, isSalonBiz]);
   useEffect(() => {
     const t = setTimeout(() => setBooted(true), BOOT_CEILING_MS);
     return () => clearTimeout(t);

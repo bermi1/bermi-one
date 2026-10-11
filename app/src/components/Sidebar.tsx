@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
 import { InstallPill } from './InstallPill';
+import { chunkForPath, preload } from '../lib/routeChunks';
 import { Icon } from '../lib/icons';
 import { useSettings } from '../lib/useSettings';
 import { useData } from '../state/DataContext';
@@ -124,7 +125,7 @@ export function Sidebar() {
           <div key={g.title} className="side-group">
             <div className="side-group-title">{g.title}</div>
             {g.items.map((it) => (
-              <NavLink key={it.to} to={it.to} className="sidebar-item">
+              <NavLink key={it.to} to={it.to} className="sidebar-item" onPointerEnter={() => { const c = chunkForPath(it.to, salon); if (c) preload(c); }} onPointerDown={() => { const c = chunkForPath(it.to, salon); if (c) preload(c); }}>
                 <Icon name={it.icon} size={18} />
                 <span>{it.label}</span>
               </NavLink>
