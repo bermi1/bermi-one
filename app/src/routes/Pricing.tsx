@@ -284,20 +284,20 @@ export function Pricing() {
         ))}
 
         <input
-          className="card"
+          className="field"
           inputMode="tel"
           placeholder={L.alertsPhone}
           defaultValue={activeBusiness.alerts_phone || ''}
           onBlur={(e) => { const v = e.target.value.trim(); if (v !== (activeBusiness.alerts_phone || '')) void updateBusiness({ alerts_phone: v || null }); }}
-          style={{ width: '100%', marginTop: 12, padding: '12px 14px', border: '1px solid var(--line)', fontSize: 13.5 }}
+          style={{ width: '100%', marginTop: 12 }}
         />
         <input
-          className="card"
+          className="field"
           inputMode="email"
           placeholder={L.alertsEmail}
           defaultValue={activeBusiness.alerts_email || ''}
           onBlur={(e) => { const v = e.target.value.trim(); if (v !== (activeBusiness.alerts_email || '')) void updateBusiness({ alerts_email: v || null }); }}
-          style={{ width: '100%', marginTop: 8, padding: '12px 14px', border: '1px solid var(--line)', fontSize: 13.5 }}
+          style={{ width: '100%', marginTop: 8 }}
         />
       </div>
     );
@@ -598,8 +598,8 @@ function PaySheet({ plan, period, country, onClose, onPaid }: {
             placeholder="0754 000 000"
             value={phone}
             onChange={(e) => setPhone(e.target.value)}
-            className="card"
-            style={{ padding: '14px 16px', border: 'none', fontSize: 16, fontWeight: 700 }}
+            className="field"
+            
           />
           {message && <div style={{ fontSize: 12.5, color: 'var(--bad)', fontWeight: 600 }}>{message}</div>}
           <button className="btn-primary tap" style={{ width: '100%' }} data-disabled={busy} onClick={pay}>

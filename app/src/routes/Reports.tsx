@@ -173,8 +173,8 @@ export function Reports() {
 
           {preset === 'custom' && (
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 14 }}>
-              <input type="date" value={customFrom} onChange={(e) => setCustomFrom(e.target.value)} className="card" style={{ padding: '11px 12px', border: 'none', fontSize: 13 }} />
-              <input type="date" value={customTo} onChange={(e) => setCustomTo(e.target.value)} className="card" style={{ padding: '11px 12px', border: 'none', fontSize: 13 }} />
+              <input type="date" value={customFrom} onChange={(e) => setCustomFrom(e.target.value)} className="field"  />
+              <input type="date" value={customTo} onChange={(e) => setCustomTo(e.target.value)} className="field"  />
             </div>
           )}
 
@@ -288,8 +288,8 @@ export function Reports() {
                     placeholder={L.whatsappNumber}
                     value={phone}
                     onChange={(e) => setPhone(e.target.value)}
-                    className="card"
-                    style={{ flex: 1, padding: '11px 12px', border: '1px solid var(--line)', fontSize: 13 }}
+                    className="field"
+                    style={{ flex: 1 }}
                   />
                   <button className="btn-primary tap" style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '0 16px' }} onClick={sendWhatsapp}>
                     <Icon name="share" size={15} />

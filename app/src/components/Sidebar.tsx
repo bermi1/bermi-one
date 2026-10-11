@@ -4,7 +4,7 @@ import { InstallPill } from './InstallPill';
 import { Icon } from '../lib/icons';
 import { useSettings } from '../lib/useSettings';
 import { useData } from '../state/DataContext';
-import { bizMeta } from '../lib/types';
+import { bizMeta, typeName } from '../lib/types';
 import { BusinessSwitchSheet } from './BusinessSwitchSheet';
 import { Sheet } from './Sheet';
 import { RolePanel } from './StaffAccess';
@@ -114,7 +114,7 @@ export function Sidebar() {
         )}
         <span style={{ minWidth: 0, flex: 1, textAlign: 'left' }}>
           <span className="side-biz-name">{activeBusiness?.name || 'Bermi One'}</span>
-          <span className="side-biz-sub">{L.tagline}</span>
+          <span className="side-biz-sub">{activeBusiness ? typeName(activeBusiness.type, lang) : L.tagline}</span>
         </span>
         <Icon name="down" size={14} style={{ color: 'var(--ink3)', flexShrink: 0 }} />
       </button>

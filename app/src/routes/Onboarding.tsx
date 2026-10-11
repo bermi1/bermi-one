@@ -3,8 +3,8 @@ import { Icon } from '../lib/icons';
 import { useData } from '../state/DataContext';
 import { T } from '../lib/i18n';
 import { COUNTRIES } from '../lib/countries';
-import { BUSINESS_TYPES, tintVars } from '../lib/types';
-import { ComingSoonType } from '../components/ComingSoonType';
+import { BusinessTypePicker } from '../components/BusinessTypePicker';
+import { tintVars } from '../lib/types';
 
 type Answers = { products: boolean | null; suppliers: boolean | null; credit: boolean | null; staff: boolean | null };
 
@@ -110,45 +110,18 @@ export function Onboarding() {
               placeholder={lang === 'sw' ? 'Jina la biashara' : 'Business name'}
               value={name}
               onChange={(e) => setName(e.target.value)}
-              className="card"
-              style={{ width: '100%', marginTop: 20, padding: '14px 16px', border: 'none', fontSize: 15, fontWeight: 600 }}
+              className="field"
+              style={{ width: '100%', marginTop: 20 }}
             />
             <input
               placeholder={lang === 'sw' ? 'Mji (hiari)' : 'City (optional)'}
               value={city}
               onChange={(e) => setCity(e.target.value)}
-              className="card"
-              style={{ width: '100%', marginTop: 10, padding: '14px 16px', border: 'none', fontSize: 15, fontWeight: 600 }}
+              className="field"
+              style={{ width: '100%', marginTop: 10 }}
             />
 
-            <div style={{ marginTop: 18, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-              {BUSINESS_TYPES.map((b, i) => {
-                const tv = tintVars(i);
-                const active = type === b.id;
-                if (!b.live) return <ComingSoonType key={b.id} name={b.name} icon={b.icon} label={L.comingSoon} />;
-                return (
-                  <div
-                    key={b.id}
-                    className="tap"
-                    onClick={() => setType(b.id)}
-                    style={{
-                      padding: '14px 14px',
-                      borderRadius: 18,
-                      background: active ? 'var(--brandSoft)' : 'var(--card)',
-                      border: `1.5px solid ${active ? 'var(--brand)' : 'var(--line)'}`,
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: 10,
-                    }}
-                  >
-                    <div style={{ width: 30, height: 30, borderRadius: 10, background: tv.soft, color: tv.ink, display: 'grid', placeItems: 'center', flexShrink: 0 }}>
-                      <Icon name={b.icon} size={15} />
-                    </div>
-                    <div style={{ fontSize: 13, fontWeight: 700 }}>{b.name}</div>
-                  </div>
-                );
-              })}
-            </div>
+            <div style={{ marginTop: 18 }}><BusinessTypePicker value={type} onChange={setType} lang={lang} /></div>
 
             <div className="card" style={{ marginTop: 18, padding: 16, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
               <div>

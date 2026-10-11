@@ -187,18 +187,26 @@ export const KIND_ICON: Record<EntryKind, string> = {
  * `live: false` and cannot be picked yet.
  */
 export const BUSINESS_TYPES = [
-  { id: 'bar', name: 'Bar', icon: 'bottle', live: true },
-  { id: 'barber', name: 'Barbershop', icon: 'scissors', live: true },
-  { id: 'rest', name: 'Restaurant', icon: 'fork', live: false },
-  { id: 'pharm', name: 'Pharmacy', icon: 'pill', live: false },
-  { id: 'groc', name: 'Grocery', icon: 'cart', live: false },
-  { id: 'retail', name: 'Retail', icon: 'store', live: false },
-  { id: 'whole', name: 'Wholesale', icon: 'truck', live: false },
-  { id: 'serv', name: 'Service', icon: 'tool', live: false },
-  { id: 'hotel', name: 'Hotel', icon: 'bed', live: false },
-  { id: 'manu', name: 'Manufacturing', icon: 'factory', live: false },
-  { id: 'other', name: 'Other', icon: 'plus', live: false },
+  { id: 'bar', name: 'Bar & lounge', nameSw: 'Baa na lounge', icon: 'bottle', live: true,
+    desc: 'Nightly stock count, cash and profit', descSw: 'Hesabu ya stoo kila usiku, fedha na faida' },
+  { id: 'barber', name: 'Barbershop & salon', nameSw: 'Kinyozi na saluni', icon: 'scissors', live: true,
+    desc: 'Services, barbers, clients and payouts', descSw: 'Huduma, vinyozi, wateja na malipo' },
+  { id: 'rest', name: 'Restaurant', nameSw: 'Mgahawa', icon: 'fork', live: false, desc: '', descSw: '' },
+  { id: 'pharm', name: 'Pharmacy', nameSw: 'Famasia', icon: 'pill', live: false, desc: '', descSw: '' },
+  { id: 'groc', name: 'Grocery', nameSw: 'Duka la vyakula', icon: 'cart', live: false, desc: '', descSw: '' },
+  { id: 'retail', name: 'Retail shop', nameSw: 'Duka', icon: 'store', live: false, desc: '', descSw: '' },
+  { id: 'whole', name: 'Wholesale', nameSw: 'Jumla', icon: 'truck', live: false, desc: '', descSw: '' },
+  { id: 'serv', name: 'Services', nameSw: 'Huduma', icon: 'tool', live: false, desc: '', descSw: '' },
+  { id: 'hotel', name: 'Hotel', nameSw: 'Hoteli', icon: 'bed', live: false, desc: '', descSw: '' },
+  { id: 'manu', name: 'Manufacturing', nameSw: 'Viwanda', icon: 'factory', live: false, desc: '', descSw: '' },
+  { id: 'other', name: 'Other', nameSw: 'Nyingine', icon: 'plus', live: false, desc: '', descSw: '' },
 ] as const;
+
+/** The module's name in the person's language. */
+export function typeName(type: string, lang: string) {
+  const m = bizMeta(type);
+  return lang === 'sw' ? m.nameSw : m.name;
+}
 
 export function isLiveType(type: string): boolean {
   return BUSINESS_TYPES.some((b) => b.id === type && b.live);

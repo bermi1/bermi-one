@@ -115,16 +115,16 @@ export function ReceiveStock({ open, onClose, note, heldForNext }: { open: boole
           placeholder={L.supplierOptional}
           value={supplier}
           onChange={(e) => setSupplier(e.target.value)}
-          className="card"
-          style={{ padding: '12px 14px', border: 'none', fontSize: 13.5 }}
+          className="field"
+          
         />
         <input
           inputMode="numeric"
           placeholder={L.amountPaidOptional}
           value={spend}
           onChange={(e) => setSpend(e.target.value.replace(/[^0-9]/g, ''))}
-          className="card"
-          style={{ padding: '12px 14px', border: 'none', fontSize: 13.5 }}
+          className="field"
+          
         />
 
         {lines.length > 0 && (

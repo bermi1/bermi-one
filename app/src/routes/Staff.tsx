@@ -142,8 +142,8 @@ export function Staff() {
             placeholder={lang === 'sw' ? 'Jina' : 'Name'}
             value={name}
             onChange={(e) => setName(e.target.value)}
-            className="card"
-            style={{ padding: '12px 14px', border: 'none', fontSize: 14 }}
+            className="field"
+            
           />
           {salon && (
             <div className="s-seg">
@@ -156,15 +156,15 @@ export function Staff() {
             placeholder={lang === 'sw' ? 'Cheo (hiari) — mfano Mhudumu' : 'Title (optional) — e.g. Cashier'}
             value={title}
             onChange={(e) => setTitle(e.target.value)}
-            className="card"
-            style={{ padding: '12px 14px', border: 'none', fontSize: 14 }}
+            className="field"
+            
           />}
           <input
             placeholder={lang === 'sw' ? 'Simu (hiari)' : 'Phone (optional)'}
             value={phone}
             onChange={(e) => setPhone(e.target.value)}
-            className="card"
-            style={{ padding: '12px 14px', border: 'none', fontSize: 14 }}
+            className="field"
+            
           />
           <input
             placeholder={sw ? `PIN ya tarakimu ${PIN_LENGTH} (ya kuingia)` : `${PIN_LENGTH}-digit PIN (to sign in)`}
@@ -172,8 +172,8 @@ export function Staff() {
             autoComplete="off"
             value={pin}
             onChange={(e) => setPin(e.target.value.replace(/[^0-9]/g, '').slice(0, PIN_LENGTH))}
-            className="card"
-            style={{ padding: '12px 14px', border: 'none', fontSize: 14, letterSpacing: pin ? 6 : 0, fontWeight: 700 }}
+            className="field"
+            style={{ letterSpacing: pin ? 6 : 0 }}
           />
           <div style={{ fontSize: 11.5, color: 'var(--ink3)', fontWeight: 600, marginTop: -2 }}>
             {sw ? 'Mpe mfanyakazi PIN hii kwa siri. Wataitumia kuingia kwenye kifaa cha biashara.' : 'Give this PIN to them privately. They use it to sign in on the business device.'}

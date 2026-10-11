@@ -7,8 +7,8 @@ import { useSettings } from '../lib/useSettings';
 import { useData } from '../state/DataContext';
 import { useAuth } from '../state/AuthContext';
 import { useToast } from '../state/ToastContext';
-import { BUSINESS_TYPES, bizMeta, tintVars } from '../lib/types';
-import { ComingSoonType } from '../components/ComingSoonType';
+import { bizMeta, tintVars, typeName } from '../lib/types';
+import { BusinessTypePicker } from '../components/BusinessTypePicker';
 import { checkPlatformAdmin } from '../lib/platform';
 import { localPrice } from '../lib/plans';
 import { COUNTRIES } from '../lib/countries';
@@ -120,7 +120,6 @@ export function Manage() {
       title: L.support,
       items: [
         { name: L.getHelp, meta: '', icon: 'mail', onClick: () => nav('/help') },
-        { name: L.billing, meta: plan.name, icon: 'cash', onClick: () => nav('/pricing') },
       ],
     },
   ];
@@ -196,7 +195,7 @@ export function Manage() {
               </div>
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ fontSize: 13.5, fontWeight: 700 }}>{b.name}</div>
-                <div style={{ fontSize: 11, color: 'var(--ink3)', fontWeight: 600 }}>{[b.city, bm.name].filter(Boolean).join(' · ')}</div>
+                <div style={{ fontSize: 11, color: 'var(--ink3)', fontWeight: 600 }}>{[typeName(b.type, lang), b.city].filter(Boolean).join(' · ')}</div>
               </div>
               {active && <Icon name="check" size={15} style={{ color: 'var(--brand)' }} />}
             </div>
@@ -316,17 +315,8 @@ export function Manage() {
       </div>
 
       <Sheet open={addOpen} onClose={() => setAddOpen(false)} title={L.addBusiness}>
-        <input autoFocus placeholder={L.businessProfile} value={newName} onChange={(e) => setNewName(e.target.value)} className="card" style={{ width: '100%', padding: '14px 16px', border: 'none', fontSize: 15, fontWeight: 600, marginBottom: 12 }} />
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 16 }}>
-          {BUSINESS_TYPES.map((b) => b.live ? (
-            <div key={b.id} className="tap" onClick={() => setNewType(b.id)} style={{ padding: '10px 12px', borderRadius: 14, background: newType === b.id ? 'var(--brandSoft)' : 'var(--card2)', border: `1.5px solid ${newType === b.id ? 'var(--brand)' : 'transparent'}`, display: 'flex', alignItems: 'center', gap: 8 }}>
-              <Icon name={b.icon} size={14} />
-              <span style={{ fontSize: 12.5, fontWeight: 700 }}>{b.name}</span>
-            </div>
-          ) : (
-            <ComingSoonType key={b.id} name={b.name} icon={b.icon} label={L.comingSoon} compact />
-          ))}
-        </div>
+        <input autoFocus placeholder={lang === 'sw' ? 'Jina la biashara' : 'Business name'} value={newName} onChange={(e) => setNewName(e.target.value)} className="field" style={{ width: '100%', marginBottom: 12 }} />
+        <div style={{ marginBottom: 16 }}><BusinessTypePicker value={newType} onChange={setNewType} lang={lang} /></div>
         <div className="card" style={{ padding: 14, marginBottom: 16, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <div>
             <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--ink3)', textTransform: 'uppercase', letterSpacing: 0.4 }}>{L.country}</div>
@@ -371,8 +361,8 @@ export function Manage() {
           autoCorrect="off"
           spellCheck={false}
           placeholder={DELETE_WORD}
-          className="card"
-          style={{ width: '100%', padding: '14px 16px', border: 'none', fontSize: 16, fontWeight: 800, letterSpacing: 1.5, marginBottom: 14 }}
+          className="field"
+          style={{ width: '100%', letterSpacing: 1.5, marginBottom: 14 }}
         />
 
         {/* The inline background would otherwise beat the disabled rule in the

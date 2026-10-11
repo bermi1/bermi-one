@@ -158,8 +158,8 @@ export function Approval() {
             placeholder={L.whatNeedsFixing}
             value={rejectNote}
             onChange={(e) => setRejectNote(e.target.value)}
-            className="card"
-            style={{ width: '100%', padding: 14, border: 'none', fontSize: 14, resize: 'vertical' }}
+            className="field"
+            style={{ width: '100%', resize: 'vertical' }}
           />
           <button
             className="btn-primary tap"

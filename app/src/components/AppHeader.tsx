@@ -3,7 +3,7 @@ import { useScrolled } from '../lib/useScrolled';
 import { Icon } from '../lib/icons';
 import { useSettings } from '../lib/useSettings';
 import { useData } from '../state/DataContext';
-import { bizMeta } from '../lib/types';
+import { bizMeta, typeName } from '../lib/types';
 import { BusinessSwitchSheet } from './BusinessSwitchSheet';
 import { Sheet } from './Sheet';
 import { RolePanel } from './StaffAccess';
@@ -35,7 +35,7 @@ export function AppHeader() {
             <div style={{ fontSize: 14.5, fontWeight: 800, color: 'var(--ink)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
               {activeBusiness?.name || 'Bermi One'}
             </div>
-            <div style={{ fontSize: 11, color: 'var(--ink3)', fontWeight: 600 }}>{L.tagline}</div>
+            <div style={{ fontSize: 11.5, color: 'var(--ink3)', fontWeight: 700, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{activeBusiness ? typeName(activeBusiness.type, lang) : L.tagline}</div>
           </div>
           <Icon name="down" size={14} style={{ color: 'var(--ink3)', flexShrink: 0 }} />
         </div>

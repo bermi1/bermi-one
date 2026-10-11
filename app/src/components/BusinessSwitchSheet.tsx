@@ -3,13 +3,13 @@ import { Sheet } from './Sheet';
 import { Icon } from '../lib/icons';
 import { useData } from '../state/DataContext';
 import { useSettings } from '../lib/useSettings';
-import { bizMeta, BUSINESS_TYPES, tintVars } from '../lib/types';
-import { ComingSoonType } from './ComingSoonType';
+import { bizMeta, tintVars, typeName } from '../lib/types';
+import { BusinessTypePicker } from './BusinessTypePicker';
 import { COUNTRIES } from '../lib/countries';
 import { useToast } from '../state/ToastContext';
 
 export function BusinessSwitchSheet({ open, onClose }: { open: boolean; onClose: () => void }) {
-  const { L } = useSettings();
+  const { L, lang } = useSettings();
   const { businesses, activeBusiness, switchBusiness, addBusiness } = useData();
   const { flash } = useToast();
   const [adding, setAdding] = useState(false);
@@ -49,7 +49,7 @@ export function BusinessSwitchSheet({ open, onClose }: { open: boolean; onClose:
                   </div>
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ fontSize: 14.5, fontWeight: 700 }}>{b.name}</div>
-                    <div style={{ fontSize: 12, color: 'var(--ink3)' }}>{[b.city, meta.name].filter(Boolean).join(' · ')}</div>
+                    <div style={{ fontSize: 12, color: 'var(--ink3)' }}>{[typeName(b.type, lang), b.city].filter(Boolean).join(' · ')}</div>
                   </div>
                   {active && <Icon name="check" size={16} style={{ color: 'var(--brand)' }} />}
                 </div>
@@ -65,27 +65,13 @@ export function BusinessSwitchSheet({ open, onClose }: { open: boolean; onClose:
         <>
           <input
             autoFocus
-            placeholder={L.businessProfile}
+            placeholder={lang === 'sw' ? 'Jina la biashara' : 'Business name'}
             value={name}
             onChange={(e) => setName(e.target.value)}
-            className="card"
-            style={{ width: '100%', padding: '14px 16px', border: 'none', fontSize: 15, fontWeight: 600, marginBottom: 12 }}
+            className="field"
+            style={{ width: '100%', marginBottom: 12 }}
           />
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 16 }}>
-            {BUSINESS_TYPES.map((b) => b.live ? (
-              <div
-                key={b.id}
-                className="tap"
-                onClick={() => setType(b.id)}
-                style={{ padding: '10px 12px', borderRadius: 14, background: type === b.id ? 'var(--brandSoft)' : 'var(--card2)', border: `1.5px solid ${type === b.id ? 'var(--brand)' : 'transparent'}`, display: 'flex', alignItems: 'center', gap: 8 }}
-              >
-                <Icon name={b.icon} size={14} />
-                <span style={{ fontSize: 12.5, fontWeight: 700 }}>{b.name}</span>
-              </div>
-            ) : (
-              <ComingSoonType key={b.id} name={b.name} icon={b.icon} label={L.comingSoon} compact />
-            ))}
-          </div>
+          <div style={{ marginBottom: 16 }}><BusinessTypePicker value={type} onChange={setType} lang={lang} /></div>
           <div className="card" style={{ padding: 14, marginBottom: 16, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
             <div>
               <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--ink3)', textTransform: 'uppercase', letterSpacing: 0.4 }}>{L.country}</div>

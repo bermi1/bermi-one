@@ -118,7 +118,7 @@ export function AI() {
     : ['What sells the most?', 'What should I buy this week?', 'How is the business trending?', 'What product should I add?', 'Full analysis', 'Which day is busiest?', businesses.length > 1 ? 'How are all my businesses?' : 'What is not selling?'];
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}>
+    <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0, minWidth: 0, overflowX: 'clip' }}>
       <div style={{ padding: '16px 16px 0' }}>
         <ScreenHeader title={L.bermiAI} sub={(isSalon ? salonVisits === null : rows === null) ? (sw ? 'Inasoma historia ya mauzo…' : 'Reading your sales history…') : L.watching} />
       </div>
@@ -160,8 +160,8 @@ export function AI() {
             if (e.key === 'Enter' && input.trim()) ask(input.trim());
           }}
           placeholder={L.askPlaceholder}
-          className="card"
-          style={{ flex: 1, padding: '13px 16px', border: 'none', fontSize: 14 }}
+          className="field"
+          style={{ flex: 1 }}
         />
         <button className="icon-btn tap" style={{ width: 46, height: 46, background: 'var(--grad)', color: '#fff', border: 'none' }} onClick={() => input.trim() && ask(input.trim())}>
           <Icon name="right" size={18} />

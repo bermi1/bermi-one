@@ -51,7 +51,7 @@ export function SalonToday() {
   const greet = sw ? (hour < 12 ? 'Habari za asubuhi' : hour < 17 ? 'Habari za mchana' : 'Habari za jioni') : (hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening');
 
   return (
-    <div className="screen sb desk-wide">
+    <div className="screen sb desk-wide has-fab">
       <AppHeader />
       <div style={{ fontSize: 13.5, color: 'var(--ink2)', fontWeight: 600, marginTop: 6 }}>{greet}, {owner ? displayName : activeStaff?.name || displayName}</div>
 
@@ -62,7 +62,7 @@ export function SalonToday() {
             <div style={{ fontSize: 11.5, fontWeight: 700, opacity: 0.8 }}>{seesAll ? (sw ? 'Mapato ya leo' : 'Takings today') : (sw ? 'Mauzo yangu leo' : 'My sales today')}</div>
             <div style={{ fontSize: 28, fontWeight: 800, letterSpacing: -0.7, marginTop: 2 }}>{fmt0(revenue)}</div>
             <div style={{ display: 'flex', gap: 18, marginTop: 12, fontSize: 12, fontWeight: 700, position: 'relative' }}>
-              <span><b style={{ fontSize: 16 }}>{todays.length}</b> {sw ? 'wateja' : 'clients'}</span>
+              <span><b style={{ fontSize: 16 }}>{todays.length}</b> {sw ? 'wateja' : todays.length === 1 ? 'client' : 'clients'}</span>
               <span><b style={{ fontSize: 16 }}>{avg ? fmt(avg) : '—'}</b> {sw ? 'wastani' : 'avg ticket'}</span>
               <span><b style={{ fontSize: 16 }}>{tips ? fmt(tips) : '—'}</b> {sw ? 'bakshishi' : 'tips'}</span>
             </div>

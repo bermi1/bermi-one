@@ -57,13 +57,13 @@ export function OwnerUnlock({ onDone }: { onDone?: () => void }) {
       </div>
       <input
         type="password"
-        className="card"
+        className="field"
         autoFocus
         autoComplete="current-password"
         placeholder={sw ? 'Nenosiri' : 'Password'}
         value={password}
         onChange={(e) => setPassword(e.target.value)}
-        style={{ width: '100%', padding: '14px 16px', border: 'none', marginTop: 14 }}
+        style={{ width: '100%', marginTop: 14 }}
       />
       <div className="pin-error" role="alert">{error}</div>
       <button className="btn-primary tap" type="submit" data-disabled={!password || busy} style={{ width: '100%', border: 'none' }}>

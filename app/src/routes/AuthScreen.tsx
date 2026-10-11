@@ -51,17 +51,17 @@ function TypeCycle({ words }: { words: string[] }) {
 const COPY = {
   en: {
     heroPrefix: 'Run your ',
-    heroWords: ['bar', 'shop', 'restaurant', 'pharmacy', 'hardware store', 'salon', 'business'],
+    heroWords: ['bar', 'barbershop', 'restaurant', 'pharmacy', 'shop', 'salon', 'business'],
     heroSuffix: ' from one system.',
     heroSub: 'Bermi One is one system for every business you run — stock, cash, staff and reports, across every branch, on any phone.',
     props: [
-      { icon: 'box', t: 'Stock & inventory', d: 'Deliveries, counts and what sold — per product, per branch.' },
+      { icon: 'box', t: 'Stock or services', d: 'Bottles counted nightly, or every cut recorded with its price.' },
       { icon: 'wallet', t: 'Cash, mobile money & bank', d: 'Every shilling in and out, reconciled every day.' },
       { icon: 'users', t: 'Staff with their own PIN', d: 'They record the work; you keep prices and profit.' },
       { icon: 'chart', t: 'Every branch, one account', d: 'Reports and insights across all your businesses.' },
     ],
-    types: ['Bars & lounges', 'Shops', 'Restaurants', 'Pharmacies', 'Hardware', 'Salons'],
-    rolling: 'Live for bars & lounges today — more business types rolling out.',
+    types: ['Bars & lounges', 'Barbershops & salons', 'Restaurants', 'Pharmacies', 'Shops', 'Hardware'],
+    rolling: 'Live today for bars & lounges and barbershops — more business types coming.',
     loginSub: 'Sign in to pick up where you left off.',
     signupSub: '7 days free. No card needed.',
     show: 'Show password', hide: 'Hide password',
@@ -71,17 +71,17 @@ const COPY = {
   },
   sw: {
     heroPrefix: 'Endesha ',
-    heroWords: ['baa', 'duka', 'mgahawa', 'famasia', 'duka la vifaa', 'saluni', 'biashara'],
+    heroWords: ['baa', 'kinyozi', 'mgahawa', 'famasia', 'duka', 'saluni', 'biashara'],
     heroSuffix: ' yako kwa mfumo mmoja.',
     heroSub: 'Bermi One ni mfumo mmoja kwa kila biashara unayoendesha — bidhaa, fedha, wafanyakazi na ripoti, kwa kila tawi, kwenye simu yoyote.',
     props: [
-      { icon: 'box', t: 'Bidhaa na stoo', d: 'Mizigo, hesabu na kilichouzwa — kwa kila bidhaa na tawi.' },
+      { icon: 'box', t: 'Stoo au huduma', d: 'Chupa zinahesabiwa kila usiku, au kila huduma inarekodiwa na bei yake.' },
       { icon: 'wallet', t: 'Taslimu, pesa ya simu na benki', d: 'Kila shilingi inayoingia na kutoka, kila siku.' },
       { icon: 'users', t: 'Wafanyakazi wenye PIN zao', d: 'Wanarekodi kazi; wewe unabaki na bei na faida.' },
       { icon: 'chart', t: 'Kila tawi, akaunti moja', d: 'Ripoti na uchambuzi kwa biashara zako zote.' },
     ],
-    types: ['Baa na lounge', 'Maduka', 'Migahawa', 'Famasia', 'Vifaa', 'Saluni'],
-    rolling: 'Inafanya kazi kwa baa na lounge leo — aina nyingine za biashara zinakuja.',
+    types: ['Baa na lounge', 'Vinyozi na saluni', 'Migahawa', 'Famasia', 'Maduka', 'Vifaa'],
+    rolling: 'Inafanya kazi leo kwa baa, lounge na vinyozi — aina nyingine za biashara zinakuja.',
     loginSub: 'Ingia uendelee ulipoishia.',
     signupSub: 'Siku 7 bure. Hakuna kadi.',
     show: 'Onyesha nenosiri', hide: 'Ficha nenosiri',
@@ -126,6 +126,12 @@ export function AuthScreen() {
     setNotice('');
     const err = mode === 'login' ? await signIn(email.trim(), password) : await signUp(email.trim(), password);
     setBusy(false);
+    if (err === 'ALREADY_REGISTERED') {
+      setMode('login');
+      setError(lang === 'sw' ? 'Barua pepe hii tayari ina akaunti — ingia kwa nenosiri lako.' : 'This email already has an account — sign in with your password.');
+      setShake((n) => n + 1);
+      return;
+    }
     if (err) { setError(err); setShake((n) => n + 1); }
   }
 
@@ -172,7 +178,7 @@ export function AuthScreen() {
           <p className="auth-hero-sub">{C.heroSub}</p>
           <div className="auth-types">
             {C.types.map((t, i) => (
-              <span key={t} style={{ animationDelay: `${0.3 + i * 0.07}s` }} data-live={i === 0 || undefined}>{t}</span>
+              <span key={t} style={{ animationDelay: `${0.3 + i * 0.07}s` }} data-live={i < 2 || undefined}>{i < 2 ? '✓ ' : ''}{t}</span>
             ))}
           </div>
           <p className="auth-rolling">{C.rolling}</p>

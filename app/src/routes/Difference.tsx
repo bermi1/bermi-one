@@ -93,9 +93,9 @@ export function Difference() {
             placeholder={L.addNote}
             value={note}
             onChange={(e) => setNote(e.target.value)}
-            className="card"
+            className="field"
             rows={3}
-            style={{ width: '100%', marginTop: 12, padding: 14, border: 'none', fontSize: 14, resize: 'vertical' }}
+            style={{ width: '100%', marginTop: 12, resize: 'vertical' }}
           />
         </>
       )}

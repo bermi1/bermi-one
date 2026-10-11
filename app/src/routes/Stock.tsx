@@ -322,14 +322,10 @@ export function Stock() {
       <ScreenHeader
         title={L.stock}
         sub={`${products.length} ${L.products} · ${cats.length - 1} ${lang === 'sw' ? 'aina' : 'categories'}`}
-        right={
-          tab === 'items' && !editAllMode ? (
-            <button className="chip tap" onClick={() => setReorderMode((v) => !v)}>
-              {reorderMode ? L.doneEditing : L.reorderProducts}
-            </button>
-          ) : undefined
-        }
       />
+      {tab === 'items' && !editAllMode && reorderMode && (
+        <button className="btn-primary tap" style={{ width: '100%', marginBottom: 12, border: 'none' }} onClick={() => setReorderMode(false)}>{L.doneEditing}</button>
+      )}
 
       {owner && (
         <div style={{ display: 'flex', background: 'var(--card)', border: '1px solid var(--line)', borderRadius: 14, padding: 4, marginBottom: 14 }}>
@@ -386,6 +382,10 @@ export function Stock() {
                 {c}
               </button>
             ))}
+            <button className="tap" onClick={() => setReorderMode(true)}
+              style={{ flexShrink: 0, marginLeft: 'auto', padding: '8px 12px', borderRadius: 12, fontSize: 12.5, fontWeight: 700, background: 'var(--card)', color: 'var(--ink2)', border: '1px solid var(--line)', display: 'flex', alignItems: 'center', gap: 6 }}>
+              <Icon name="grip" size={13} /> {L.reorderProducts}
+            </button>
           </div>
         </>
       )}
@@ -514,20 +514,10 @@ export function Stock() {
                                 </span>
                               )}
                               {owner && (
-                                <Icon
-                                  name="edit"
-                                  size={12}
-                                  style={{ color: 'var(--ink3)' }}
-                                  onClick={(e) => { e.stopPropagation(); startEdit(p); }}
-                                />
-                              )}
-                              {owner && (
-                                <Icon
-                                  name="x"
-                                  size={12}
-                                  style={{ color: 'var(--ink3)' }}
-                                  onClick={(e) => { e.stopPropagation(); setConfirmDelete(p); }}
-                                />
+                                <span className="row-actions" onClick={(e) => e.stopPropagation()}>
+                                  <button type="button" className="mini-btn tap" aria-label={lang === 'sw' ? `Hariri ${p.name}` : `Edit ${p.name}`} onClick={() => startEdit(p)}><Icon name="edit" size={13} /></button>
+                                  <button type="button" className="mini-btn tap" aria-label={lang === 'sw' ? `Futa ${p.name}` : `Delete ${p.name}`} onClick={() => setConfirmDelete(p)}><Icon name="trash" size={13} /></button>
+                                </span>
                               )}
                             </div>
                           )}
@@ -593,19 +583,19 @@ export function Stock() {
 
       <Sheet open={addOpen} onClose={() => setAddOpen(false)} title={lang === 'sw' ? 'Bidhaa mpya' : 'New product'}>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-          <input placeholder={L.product} value={newP.name} onChange={(e) => setNewP({ ...newP, name: e.target.value })} className="card" style={{ padding: '12px 14px', border: 'none', fontSize: 14 }} />
+          <input placeholder={L.product} value={newP.name} onChange={(e) => setNewP({ ...newP, name: e.target.value })} className="field"  />
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-            <input list="cat-options" placeholder={lang === 'sw' ? 'Aina' : 'Category'} value={newP.cat} onChange={(e) => setNewP({ ...newP, cat: e.target.value })} className="card" style={{ padding: '12px 14px', border: 'none', fontSize: 14 }} />
-            <input placeholder={lang === 'sw' ? 'Kipimo' : 'Unit'} value={newP.unit} onChange={(e) => setNewP({ ...newP, unit: e.target.value })} className="card" style={{ padding: '12px 14px', border: 'none', fontSize: 14 }} />
+            <input list="cat-options" placeholder={lang === 'sw' ? 'Aina' : 'Category'} value={newP.cat} onChange={(e) => setNewP({ ...newP, cat: e.target.value })} className="field"  />
+            <input placeholder={lang === 'sw' ? 'Kipimo' : 'Unit'} value={newP.unit} onChange={(e) => setNewP({ ...newP, unit: e.target.value })} className="field"  />
           </div>
           <datalist id="cat-options">
             {cats.filter((c) => c !== 'All').map((c) => <option key={c} value={c} />)}
           </datalist>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-            <input placeholder={L.price} inputMode="numeric" value={newP.price} onChange={(e) => setNewP({ ...newP, price: e.target.value.replace(/[^0-9]/g, '') })} className="card" style={{ padding: '12px 14px', border: 'none', fontSize: 14 }} />
-            <input placeholder={L.profitPerUnit} inputMode="numeric" value={newP.profit} onChange={(e) => setNewP({ ...newP, profit: e.target.value.replace(/[^0-9]/g, '') })} className="card" style={{ padding: '12px 14px', border: 'none', fontSize: 14 }} />
+            <input placeholder={L.price} inputMode="numeric" value={newP.price} onChange={(e) => setNewP({ ...newP, price: e.target.value.replace(/[^0-9]/g, '') })} className="field"  />
+            <input placeholder={L.profitPerUnit} inputMode="numeric" value={newP.profit} onChange={(e) => setNewP({ ...newP, profit: e.target.value.replace(/[^0-9]/g, '') })} className="field"  />
           </div>
-          <input placeholder={lang === 'sw' ? 'Kiwango cha chini' : 'Low stock alert level'} inputMode="numeric" value={newP.low} onChange={(e) => setNewP({ ...newP, low: e.target.value.replace(/[^0-9]/g, '') })} className="card" style={{ padding: '12px 14px', border: 'none', fontSize: 14 }} />
+          <input placeholder={lang === 'sw' ? 'Kiwango cha chini' : 'Low stock alert level'} inputMode="numeric" value={newP.low} onChange={(e) => setNewP({ ...newP, low: e.target.value.replace(/[^0-9]/g, '') })} className="field"  />
           <button className="btn-primary tap" style={{ width: '100%', marginTop: 4 }} onClick={submitNewProduct}>
             {L.save}
           </button>
@@ -623,8 +613,8 @@ export function Stock() {
             value={bulkText}
             onChange={(e) => applyBulkText(e.target.value)}
             rows={6}
-            className="card"
-            style={{ width: '100%', padding: 12, border: 'none', fontSize: 13, fontFamily: 'monospace', resize: 'vertical' }}
+            className="field"
+            style={{ width: '100%', fontFamily: 'monospace', resize: 'vertical' }}
           />
           <div style={{ fontSize: 11.5, color: 'var(--ink3)' }}>{L.csvFormatHint}</div>
 

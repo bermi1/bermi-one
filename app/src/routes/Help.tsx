@@ -154,19 +154,19 @@ export function Help() {
           </div>
           <input
             autoFocus
-            className="card"
+            className="field"
             placeholder={L.helpSubject}
             value={subject}
             onChange={(e) => setSubject(e.target.value)}
-            style={{ padding: '13px 15px', border: 'none', fontSize: 14.5, fontWeight: 700 }}
+            
           />
           <textarea
             rows={5}
-            className="card"
+            className="field"
             placeholder={L.helpBody}
             value={body}
             onChange={(e) => setBody(e.target.value)}
-            style={{ padding: '13px 15px', border: 'none', fontSize: 13.5, resize: 'vertical' }}
+            style={{ resize: 'vertical' }}
           />
           <button className="btn-primary tap" style={{ width: '100%' }} data-disabled={busy} onClick={send}>{L.send}</button>
         </div>
@@ -196,11 +196,11 @@ export function Help() {
             </div>
             <textarea
               rows={3}
-              className="card"
+              className="field"
               placeholder={L.helpReply}
               value={reply}
               onChange={(e) => setReply(e.target.value)}
-              style={{ padding: '12px 14px', border: '1px solid var(--line)', fontSize: 13.5, resize: 'vertical' }}
+              style={{ resize: 'vertical' }}
             />
             <button className="btn-primary tap" style={{ width: '100%' }} data-disabled={busy || !reply.trim()} onClick={sendReply}>{L.send}</button>
           </div>

@@ -39,7 +39,7 @@ export function Bookings() {
   }, [appointments]);
 
   return (
-    <div className="screen sb desk-wide">
+    <div className="screen sb desk-wide has-fab">
       <ScreenHeader title={sw ? 'Miadi' : 'Bookings'} sub={sw ? 'Kalenda ya viti vyako' : 'Your chairs, by the day'} />
 
       {owner && <BookingLinkCard compact />}

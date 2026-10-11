@@ -58,9 +58,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const { error } = await supabase.auth.signInWithPassword({ email, password });
     return error ? error.message : null;
   }
+  /*
+    Sign up and go straight in.
+
+    Accounts are confirmed by the database the moment they are created
+    (auth_autoconfirm), so there is no email to wait for. If Supabase still
+    answers without a session — its "Confirm email" switch is on — the account
+    is already usable, so sign in with the same details rather than leave the
+    screen sitting there. An address that already has an account gets the same
+    treatment: right password, you are in; wrong one, you are told to sign in.
+  */
   async function signUp(email: string, password: string) {
-    const { error } = await supabase.auth.signUp({ email, password });
-    return error ? error.message : null;
+    const { data, error } = await supabase.auth.signUp({ email, password });
+    if (data?.session) return null;
+    if (error && !/already registered|already exists|rate limit|security purposes/i.test(error.message)) return error.message;
+    const { error: inErr } = await supabase.auth.signInWithPassword({ email, password });
+    if (!inErr) return null;
+    return /invalid login credentials/i.test(inErr.message) ? 'ALREADY_REGISTERED' : inErr.message;
   }
   async function signOut() {
     await supabase.auth.signOut();

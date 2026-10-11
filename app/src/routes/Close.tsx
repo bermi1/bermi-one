@@ -88,8 +88,8 @@ export function Close() {
             value={dayPick}
             max={businessDayIso()}
             onChange={(e) => setDayPick(e.target.value)}
-            className="card"
-            style={{ width: '100%', padding: '14px 16px', border: 'none', fontSize: 15, fontWeight: 700, marginBottom: 12 }}
+            className="field"
+            style={{ width: '100%', marginBottom: 12 }}
           />
           {/* The last week, because a day missed is nearly always a recent one. */}
           <div style={{ display: 'flex', gap: 7, flexWrap: 'wrap', marginBottom: 16 }}>
@@ -478,15 +478,15 @@ export function Close() {
             placeholder={L.amount}
             value={itemAmount}
             onChange={(e) => setItemAmount(e.target.value.replace(/[^0-9]/g, ''))}
-            className="card"
-            style={{ padding: '12px 14px', border: 'none', fontSize: 16, fontWeight: 800 }}
+            className="field"
+            
           />
           <input
             placeholder={itemKind === 'debt' ? L.whoOwes : L.entryNote}
             value={itemNote}
             onChange={(e) => setItemNote(e.target.value)}
-            className="card"
-            style={{ padding: '12px 14px', border: 'none', fontSize: 13.5 }}
+            className="field"
+            
           />
           <button className="btn-primary tap" style={{ width: '100%' }} data-disabled={!Number(itemAmount)} onClick={saveItem}>
             {L.add}
