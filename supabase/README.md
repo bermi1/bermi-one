@@ -55,3 +55,28 @@ queued by a database trigger the moment a closing is verified, and a worker
 drains them. A send that fails stays visible in `notifications` with its error
 and its attempt count, and retries with backoff up to four times before it is
 marked failed — rather than disappearing into a log line nobody reads.
+
+## Running on a 2 GB database (Supabase "Small")
+
+What keeps a small instance fast with a very large number of accounts:
+
+- **Every query is one tenant's rows, through an index.** Each table that grows
+  is indexed on `(business_id, <date> desc)`, so a bar with three years of
+  history costs the same to open as a new one.
+- **RLS is evaluated once per query, not once per row.** Policies call
+  `(select auth.uid())`, `(select is_platform_admin())` and
+  `(select my_business_ids())`, which Postgres runs once and caches.
+- **Reads are bounded.** The app loads the last 100 ledger lines, the open
+  session and a date window for reports. The API caps every response at 1,000
+  rows on top of that.
+- **Hot tables stay small.** `archive.move_old_rows()` runs nightly at 03:17 UTC
+  (pg_cron `archive-old-rows`) and moves `action_log` and `webhook_events` rows
+  older than 180 days into the `archive` schema — moved, not deleted.
+
+What the size limits is *concurrency*, not accounts. As a rule of thumb a Small
+instance (2 GB RAM, 2-core ARM, ~90 pooled connections) handles a few hundred
+API requests per second at these query costs — comfortably tens of thousands of
+daily active businesses, since a bar makes a few dozen requests a day. A million
+registered accounts is storage (a few GB), not load. When sustained CPU stays
+above ~70% in Reports → Database, move up one compute size in the dashboard;
+no code changes.

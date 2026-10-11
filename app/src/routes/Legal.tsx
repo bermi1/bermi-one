@@ -233,7 +233,7 @@ const TERMS: Record<Lang, Doc> = {
       { h: 'What we charge' },
       {
         list: [
-          'Every account starts with a 14-day free trial. No payment is needed to start.',
+          'Every account starts with a 7-day free trial. No payment is needed to start.',
           'After the trial, a subscription is charged per account, not per business, and the plan you need is decided by how many businesses you run.',
           'Subscriptions renew for the period you paid for. There is no automatic re-charge without a prompt you approve on your phone.',
           'Prices are set in US dollars and charged in your local currency at the rate shown when you pay.',
@@ -310,7 +310,7 @@ const TERMS: Record<Lang, Doc> = {
       { h: 'Tunatoza nini' },
       {
         list: [
-          'Kila akaunti inaanza na siku 14 za majaribio bure. Hakuna malipo yanayohitajika kuanza.',
+          'Kila akaunti inaanza na siku 7 za majaribio bure. Hakuna malipo yanayohitajika kuanza.',
           'Baada ya majaribio, kifurushi kinatozwa kwa akaunti, si kwa biashara, na kifurushi unachohitaji kinaamuliwa na idadi ya biashara unazoendesha.',
           'Vifurushi vinaendelea kwa kipindi ulicholipia. Hakuna kutozwa tena kiotomatiki bila ombi unaloidhinisha kwenye simu yako.',
           'Bei zimewekwa kwa dola za Marekani na kutozwa kwa sarafu yako kwa kiwango kinachoonyeshwa unapolipa.',

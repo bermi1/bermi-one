@@ -516,3 +516,25 @@ button{background:none;border:none;cursor:pointer;-webkit-tap-highlight-color:tr
   .plan-grid .plan-body>button{margin-top:auto!important}
   .plan-grid .plan-body>div:last-of-type{margin-bottom:14px}
 }
+
+/* ---- Feels like an app ---------------------------------------------------- */
+/* Press feedback: everything tappable gives under the finger. */
+.tap,.btn-primary,.chip,.icon-btn,.nav-item{transition:transform .12s ease,opacity .12s ease,background .2s,color .2s}
+.tap:active,.btn-primary:active,.chip:active,.icon-btn:active,.nav-item:active{transform:scale(.97)}
+/* No text selection on chrome, no callout on long-press, no rubber-band. */
+.top-bar,.bottom-nav,.sidebar,.chip,.nav-item,.btn-primary{-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}
+html,body{overscroll-behavior-y:none;touch-action:manipulation}
+img{-webkit-user-drag:none}
+/* Each screen arrives rather than snapping in. */
+@keyframes page-in{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+.page-in{animation:page-in .22s cubic-bezier(.2,.8,.2,1) both}
+@media (prefers-reduced-motion:reduce){.page-in{animation:none}.tap:active,.btn-primary:active,.chip:active{transform:none}}
+/* Skeleton shimmer for screens still fetching. */
+@keyframes sk{0%{background-position:-200px 0}100%{background-position:calc(200px + 100%) 0}}
+.skeleton{border-radius:16px;background:linear-gradient(90deg,var(--card2) 0,var(--card) 50%,var(--card2) 100%);background-size:200px 100%;animation:sk 1.2s ease-in-out infinite}
+/* Narrow phones: the install pill keeps its icon, drops its words. */
+@media (max-width:479px){.top-bar .install-pill span{display:none}.top-bar .install-pill{padding:8px!important;border-radius:12px}}
+.page-wrap{display:flex;flex-direction:column;flex:1;min-height:0;min-width:0}
+.app-main>.page-wrap{max-width:none;margin:0;width:100%}
+.page-wrap>*{width:100%}
+@media (min-width:700px) and (max-width:1023px){.page-wrap>*{max-width:640px;margin-left:auto;margin-right:auto}}

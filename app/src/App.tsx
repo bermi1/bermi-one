@@ -251,6 +251,7 @@ function AppRoutes() {
       <Sidebar />
       <div className="app-main">
         <Suspense fallback={<Pending />}>
+        <div key={location.pathname} className="page-in page-wrap">
         <Routes>
           <Route path="/home" element={owner ? <Home /> : <StaffHome />} />
           <Route path="/stock" element={<Stock />} />
@@ -267,6 +268,7 @@ function AppRoutes() {
           <Route path="/help" element={<Help />} />
           <Route path="*" element={<Navigate to="/home" replace />} />
         </Routes>
+        </div>
         </Suspense>
       </div>
       <BottomNav />

@@ -7,6 +7,7 @@ import { bizMeta } from '../lib/types';
 import { BusinessSwitchSheet } from './BusinessSwitchSheet';
 import { Sheet } from './Sheet';
 import { RolePanel } from './StaffAccess';
+import { InstallPill } from './InstallPill';
 
 export function AppHeader() {
   const { L, lang, theme, owner } = useSettings();
@@ -39,6 +40,7 @@ export function AppHeader() {
           <Icon name="down" size={14} style={{ color: 'var(--ink3)', flexShrink: 0 }} />
         </div>
         <div className="row" style={{ gap: 6, flexShrink: 0 }}>
+          <InstallPill />
           <button
             className="chip tap"
             type="button"

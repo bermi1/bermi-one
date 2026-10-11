@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
+import { InstallPill } from './InstallPill';
 import { Icon } from '../lib/icons';
 import { useSettings } from '../lib/useSettings';
 import { useData } from '../state/DataContext';
@@ -96,6 +97,7 @@ export function Sidebar() {
         ))}
       </nav>
 
+      <div style={{ padding: '0 12px 8px' }}><InstallPill variant="row" /></div>
       <div className="side-foot">
         {owner && (
           <button className="side-plan" onClick={() => nav('/pricing')}>
