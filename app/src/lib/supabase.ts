@@ -44,8 +44,16 @@ const nativeStorage = {
   phone whose clock runs slow produces.
 */
 const JWT_TIME = /PGRST30[13]|issued at future|JWT expired/i;
-const BACKOFF_MS = [800, 1500, 3000, 6000, 12000, 20000];
+// About ten seconds in all. A gap of a second or two clears inside it; a gap of
+// minutes does not clear by waiting, and longer only delays the explanation.
+const BACKOFF_MS = [800, 1500, 3000, 5000];
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+/** When a request last came back with a token-time refusal, if recently. */
+let lastJwtTrouble = 0;
+export function jwtTrouble() {
+  return Date.now() - lastJwtTrouble < 60_000;
+}
 
 /** Server clock minus this device's clock, from the last response that said. */
 let skewMs: number | null = null;
@@ -79,6 +87,7 @@ async function patientFetch(input: RequestInfo | URL, init?: RequestInit): Promi
   for (const wait of BACKOFF_MS) {
     const body = await jwtTimeError(res);
     if (!body) break;
+    lastJwtTrouble = Date.now();
     await sleep(wait);
     let next = init;
     if (/expired/i.test(body) && !refreshed) {

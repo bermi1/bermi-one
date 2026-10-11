@@ -18,7 +18,7 @@ import { checkPlatformAdmin } from './lib/platform';
 import { BOOT_CEILING_MS } from './lib/boot';
 import { Icon } from './lib/icons';
 import { StaffSignIn } from './components/StaffAccess';
-import { clockSkewMs, loadErrorKind } from './lib/supabase';
+import { clockSkewMs, jwtTrouble, loadErrorKind } from './lib/supabase';
 
 /*
   What loads first, and what waits.
@@ -88,27 +88,35 @@ function StillStarting({ error, onRetry }: { error: string | null; onRetry: () =
   // The profile — and with it the language setting — is exactly what failed to
   // load, so the phone's own language decides.
   const sw = typeof navigator !== 'undefined' && /^sw/i.test(navigator.language || '');
-  const kind = error ? loadErrorKind(error) : null;
+  // Still waiting, but the requests underneath are being refused for token
+  // time: that is the server, not the connection, and it should say so.
+  const [refused, setRefused] = useState(jwtTrouble());
+  useEffect(() => {
+    if (error) return;
+    const t = setInterval(() => setRefused(jwtTrouble()), 1000);
+    return () => clearInterval(t);
+  }, [error]);
+  const kind = error ? loadErrorKind(error) : refused ? 'auth-time' : null;
   const skew = clockSkewMs();
   const clockWrong = skew !== null && Math.abs(skew) > 5 * 60_000;
 
   // A sign-in the server has not caught up with clears by itself: ask again
   // without making anyone press anything.
   useEffect(() => {
-    if (kind !== 'auth-time') return;
+    if (!error || kind !== 'auth-time') return;
     const t = setTimeout(onRetry, 10_000);
     return () => clearTimeout(t);
   }, [kind, error, onRetry]);
 
-  const title = !error
-    ? (sw ? 'Bado inafunguka…' : 'Still opening…')
-    : kind === 'auth-time'
-      ? (sw ? 'Inathibitisha kuingia kwako…' : 'Confirming your sign-in…')
+  const title = kind === 'auth-time'
+    ? (sw ? 'Inathibitisha kuingia kwako…' : 'Confirming your sign-in…')
+    : !error
+      ? (sw ? 'Bado inafunguka…' : 'Still opening…')
       : (sw ? 'Bermi One imeshindwa kufunguka' : 'Bermi One could not load');
-  const body = !error
-    ? (sw ? 'Inachukua muda kuliko kawaida. Mtandao wako unaweza kuwa wa polepole.' : 'This is taking longer than it should. Your connection may be slow.')
-    : kind === 'auth-time'
-      ? (sw ? 'Seva bado inapokea kuingia kwako. Bermi itajaribu tena yenyewe baada ya sekunde chache. Hakuna kilichopotea.' : 'The server is still catching up with your sign-in. Bermi will try again on its own in a few seconds. Nothing you have recorded is lost.')
+  const body = kind === 'auth-time'
+    ? (sw ? 'Seva ya Supabase haikubali kuingia kwa sasa. Data yako iko salama — Bermi inaendelea kujaribu na itafunguka yenyewe.' : 'The Supabase server is not accepting sign-ins right now. Your data is safe — Bermi keeps trying and will open on its own.')
+    : !error
+      ? (sw ? 'Inachukua muda kuliko kawaida. Mtandao wako unaweza kuwa wa polepole.' : 'This is taking longer than it should. Your connection may be slow.')
       : kind === 'network'
         ? (sw ? 'Imeshindwa kufikia seva. Angalia mtandao kisha ujaribu tena. Hakuna kilichopotea.' : 'The app could not reach the server. Check your connection and try again. Nothing you have recorded is lost.')
         : (sw ? 'Hakuna ulichorekodi kilichopotea — ni programu imeshindwa kufikia seva.' : 'Nothing you have recorded is lost — this is the app failing to reach the server.');
