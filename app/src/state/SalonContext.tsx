@@ -2,7 +2,8 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState, t
 import { supabase } from '../lib/supabase';
 import { useData } from './DataContext';
 import { logAction } from '../ontology/actions';
-import type { ApptSource, ApptStatus, SalonAppointment, SalonClient, SalonService, SalonVisit, VisitLine } from '../lib/salon';
+import type { ApptSource, ApptStatus, QueueStatus, QueueTicket, SalonAppointment, SalonClient, SalonService, SalonVisit, VisitLine } from '../lib/salon';
+import { localDate } from '../lib/salon';
 
 /*
   The barbershop's working set.
@@ -58,6 +59,11 @@ interface SalonCtx {
   fetchAppointments: (fromIso: string, toIso: string) => Promise<SalonAppointment[]>;
   fetchClientVisits: (clientId: string) => Promise<SalonVisit[]>;
   ensureSlug: () => Promise<string | null>;
+  /** Today's walk-in queue, oldest number first. Refreshed every 20 s while open. */
+  queue: QueueTicket[];
+  refreshQueue: () => Promise<void>;
+  addToQueue: (name: string, phone?: string, serviceIds?: string[], barberId?: string | null) => Promise<string | null>;
+  setQueueStatus: (id: string, status: QueueStatus, barberId?: string | null) => Promise<void>;
 }
 
 const Ctx = createContext<SalonCtx | null>(null);
@@ -86,6 +92,7 @@ export function SalonProvider({ children }: { children: ReactNode }) {
   const [clients, setClients] = useState<SalonClient[]>([]);
   const [visits, setVisits] = useState<SalonVisit[]>([]);
   const [appointments, setAppointments] = useState<SalonAppointment[]>([]);
+  const [queue, setQueue] = useState<QueueTicket[]>([]);
 
   const reload = useCallback(async () => {
     if (!bizId) return;
@@ -107,9 +114,42 @@ export function SalonProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     setLoaded(false);
-    setServices([]); setClients([]); setVisits([]); setAppointments([]);
+    setServices([]); setClients([]); setVisits([]); setAppointments([]); setQueue([]);
     if (bizId) void reload();
   }, [bizId, reload]);
+
+  const refreshQueue = useCallback(async () => {
+    if (!bizId) return;
+    // The shop's day is computed server side in its time zone; the device's local date matches it for a shop's own phone.
+    const { data } = await supabase.from('salon_queue').select('*').eq('business_id', bizId).eq('day', localDate(new Date())).order('number').limit(500);
+    setQueue((data || []) as QueueTicket[]);
+  }, [bizId]);
+
+  // Online customers join while the shop is open, so keep the list fresh.
+  useEffect(() => {
+    if (!bizId) return;
+    void refreshQueue();
+    const t = setInterval(() => { if (document.visibilityState === 'visible') void refreshQueue(); }, 20_000);
+    return () => clearInterval(t);
+  }, [bizId, refreshQueue]);
+
+  const addToQueue = useCallback<SalonCtx['addToQueue']>(async (name, phone, serviceIds, barberId) => {
+    if (!bizId) return 'No business';
+    const { error } = await supabase.rpc('salon_queue_add', { p_business: bizId, p_name: name, p_phone: phone || null, p_service_ids: serviceIds || [], p_barber: barberId || null });
+    if (error) return error.message;
+    await refreshQueue();
+    return null;
+  }, [bizId, refreshQueue]);
+
+  const setQueueStatus = useCallback<SalonCtx['setQueueStatus']>(async (id, status, barberId) => {
+    const barber = barberId ? staffMembers.find((m) => m.id === barberId) : undefined;
+    const patch: Record<string, unknown> = { status };
+    if (status === 'called' || status === 'serving') patch.called_at = new Date().toISOString();
+    if (status === 'done' || status === 'left') patch.done_at = new Date().toISOString();
+    if (barber) { patch.barber_id = barber.id; patch.barber_name = barber.name; }
+    setQueue((xs) => xs.map((q) => (q.id === id ? { ...q, ...patch } as QueueTicket : q)));
+    await supabase.from('salon_queue').update(patch).eq('id', id);
+  }, [staffMembers]);
 
   const saveService = useCallback<SalonCtx['saveService']>(async (s) => {
     if (!bizId) return 'No business';
@@ -243,8 +283,10 @@ export function SalonProvider({ children }: { children: ReactNode }) {
   const value = useMemo<SalonCtx>(() => ({
     isSalon, loaded, services, clients, visits, appointments, reload, saveService, recordVisit, createAppointment,
     setAppointmentStatus, rescheduleAppointment, saveClient, fetchVisits, fetchAppointments, fetchClientVisits, ensureSlug,
+    queue, refreshQueue, addToQueue, setQueueStatus,
   }), [isSalon, loaded, services, clients, visits, appointments, reload, saveService, recordVisit, createAppointment,
-    setAppointmentStatus, rescheduleAppointment, saveClient, fetchVisits, fetchAppointments, fetchClientVisits, ensureSlug]);
+    setAppointmentStatus, rescheduleAppointment, saveClient, fetchVisits, fetchAppointments, fetchClientVisits, ensureSlug,
+    queue, refreshQueue, addToQueue, setQueueStatus]);
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }

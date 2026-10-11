@@ -4,6 +4,7 @@ import { supabase } from '../lib/supabase';
 import { Icon } from '../lib/icons';
 import { formatMoney, countryByCode } from '../lib/countries';
 import { hhmm, localDate, waLink } from '../lib/salon';
+import { QueueJoin } from './QueueJoin';
 
 interface PublicShop {
   name: string;
@@ -13,6 +14,8 @@ interface PublicShop {
   phone: string | null;
   hours: Record<string, [string | null, string | null] | null>;
   services: { id: string; name: string; category: string; price: number; duration_min: number }[];
+  queue_enabled?: boolean;
+  bookings_enabled?: boolean;
   barbers: { id: string; name: string }[];
 }
 
@@ -46,6 +49,7 @@ export function Book() {
   const [note, setNote] = useState('');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
+  const [mode, setMode] = useState<'queue' | 'book'>('queue');
   const [done, setDone] = useState<{ start_at: string; services: string; barber: string | null; estimate: number } | null>(null);
 
   useEffect(() => {
@@ -111,12 +115,20 @@ export function Book() {
             <button type="button" className="chip tap" style={{ background: 'rgba(255,255,255,.18)', color: '#fff', border: 'none' }} onClick={() => setSw(!sw)}>{sw ? 'English' : 'Kiswahili'}</button>
           </div>
           <div style={{ fontSize: 26, fontWeight: 800, letterSpacing: -0.6, marginTop: 14 }}>{shop.name}</div>
-          <div style={{ fontSize: 13.5, opacity: 0.85, fontWeight: 600, marginTop: 2 }}>{shop.city ? `${shop.city} · ` : ''}{t('Book your next visit', 'Weka miadi yako')}</div>
+          <div style={{ fontSize: 13.5, opacity: 0.85, fontWeight: 600, marginTop: 2 }}>{shop.city ? `${shop.city} · ` : ''}{shop.queue_enabled !== false ? t('Get your number for today', 'Pata namba yako ya leo') : t('Book your next visit', 'Weka miadi yako')}</div>
         </div>
       </div>
 
       <div style={{ maxWidth: 560, margin: '0 auto', padding: '8px 16px 48px' }}>
-        {done ? (
+        {shop.queue_enabled !== false && shop.bookings_enabled && !done && (
+          <div className="s-seg" style={{ marginTop: 16 }}>
+            <button type="button" aria-pressed={mode === 'queue'} onClick={() => setMode('queue')}>{t('Join today’s queue', 'Ingia foleni ya leo')}</button>
+            <button type="button" aria-pressed={mode === 'book'} onClick={() => setMode('book')}>{t('Book a time', 'Weka muda')}</button>
+          </div>
+        )}
+        {shop.queue_enabled !== false && (mode === 'queue' || !shop.bookings_enabled) && !done ? (
+          <QueueJoin slug={slug} sw={sw} services={shop.services} barbers={shop.barbers} />
+        ) : done ? (
           <div className="card" style={{ marginTop: 18, padding: 22, textAlign: 'center' }}>
             <div style={{ width: 56, height: 56, borderRadius: 18, background: 'var(--okSoft)', color: 'var(--ok)', display: 'grid', placeItems: 'center', margin: '0 auto' }}><Icon name="check" size={26} /></div>
             <div style={{ fontSize: 19, fontWeight: 800, marginTop: 12 }}>{t('Request sent', 'Ombi limetumwa')}</div>

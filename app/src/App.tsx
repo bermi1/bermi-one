@@ -46,6 +46,7 @@ const Help = lazy(() => CHUNKS.help().then((m) => ({ default: m.Help })));
 const Legal = lazy(() => CHUNKS.legal().then((m) => ({ default: m.Legal })));
 const SetPassword = lazy(() => CHUNKS.setPassword().then((m) => ({ default: m.SetPassword })));
 const Book = lazy(() => CHUNKS.book().then((m) => ({ default: m.Book })));
+const Ticket = lazy(() => CHUNKS.ticket().then((m) => ({ default: m.Ticket })));
 const SalonToday = lazy(() => CHUNKS.salonToday().then((m) => ({ default: m.SalonToday })));
 const Bookings = lazy(() => CHUNKS.bookings().then((m) => ({ default: m.Bookings })));
 const Clients = lazy(() => CHUNKS.clients().then((m) => ({ default: m.Clients })));
@@ -74,8 +75,10 @@ function Pending() {
 
 function ThemeRoot() {
   const { profile } = useData();
-  const theme = profile?.theme || 'light';
+  // Until the profile arrives, keep whatever the device remembered.
+  const theme = profile ? profile.theme || 'light' : null;
   useEffect(() => {
+    if (!theme) return;
     document.documentElement.dataset.theme = theme;
     // Remembered on the device, so the next open paints in the right theme
     // from the very first frame instead of flashing light then dark.
@@ -222,9 +225,9 @@ function AppRoutes() {
   }
 
   // A barbershop's public booking page: for its clients, who have no account.
-  if (location.pathname.startsWith('/book/')) {
+  if (location.pathname.startsWith('/book/') || location.pathname.startsWith('/q/')) {
     handOverFromSplash();
-    return <Suspense fallback={<Pending />}><Routes><Route path="/book/:slug" element={<Book />} /></Routes></Suspense>;
+    return <Suspense fallback={<Pending />}><Routes><Route path="/book/:slug" element={<Book />} /><Route path="/q/:token" element={<Ticket />} /></Routes></Suspense>;
   }
 
   /*

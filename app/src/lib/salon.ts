@@ -301,3 +301,25 @@ export function freeSlots(opts: {
   }
   return out;
 }
+
+export type QueueStatus = 'waiting' | 'called' | 'serving' | 'done' | 'left';
+export interface QueueTicket {
+  id: string;
+  business_id: string;
+  day: string;
+  number: number;
+  client_name: string;
+  client_phone: string | null;
+  service_ids: string[];
+  service_names: string | null;
+  minutes: number;
+  barber_id: string | null;
+  barber_name: string | null;
+  status: QueueStatus;
+  source: 'online' | 'desk';
+  token: string;
+  visit_id: string | null;
+  created_at: string;
+  called_at: string | null;
+  done_at: string | null;
+}

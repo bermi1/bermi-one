@@ -7,6 +7,7 @@ import { useData } from '../../state/DataContext';
 import { useSalon } from '../../state/SalonContext';
 import { NewSaleSheet } from '../../components/salon/NewSaleSheet';
 import { ApptActions } from '../../components/salon/ApptActions';
+import { QueuePanel } from '../../components/salon/QueuePanel';
 import { hhmm, localDate, type SalonAppointment } from '../../lib/salon';
 import { tintVars } from '../../lib/types';
 
@@ -82,6 +83,8 @@ export function SalonToday() {
               <Icon name="right" size={14} />
             </div>
           )}
+
+          {activeBusiness?.settings?.queue_enabled !== false && <QueuePanel />}
 
           {/* Record a service: one tap on what was done, then who did it and how it was paid. */}
           <div style={{ fontSize: 15, fontWeight: 800, marginTop: 20 }}>{sw ? 'Rekodi huduma' : 'Record a service'}</div>

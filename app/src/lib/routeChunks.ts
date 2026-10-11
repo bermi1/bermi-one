@@ -22,6 +22,7 @@ export const CHUNKS = {
   legal: () => import('../routes/Legal'),
   setPassword: () => import('../routes/SetPassword'),
   book: () => import('../routes/Book'),
+  ticket: () => import('../routes/Ticket'),
   salonToday: () => import('../routes/salon/SalonToday'),
   bookings: () => import('../routes/salon/Bookings'),
   clients: () => import('../routes/salon/Clients'),

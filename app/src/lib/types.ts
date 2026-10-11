@@ -54,6 +54,8 @@ export interface BusinessSettings {
   slot_min?: number;
   /** Appointments and the public booking link. Off by default: most shops run on walk-ins. */
   bookings_enabled?: boolean;
+  /** Walk-in queue with numbers, online and at the desk. On by default. */
+  queue_enabled?: boolean;
   /** May staff change a service's price on the ticket? Default yes. */
   staff_edit_price?: boolean;
   /** May staff give discounts? Default no. */

@@ -28,6 +28,7 @@ export function Services() {
   const [slot, setSlot] = useState(settings.slot_min || 30);
   const [publicPhone, setPublicPhone] = useState(settings.public_phone || '');
   const [bookingsOn, setBookingsOn] = useState(!!settings.bookings_enabled);
+  const [queueOn, setQueueOn] = useState(settings.queue_enabled !== false);
   const [editPrice, setEditPrice] = useState(settings.staff_edit_price !== false);
   const [discountOk, setDiscountOk] = useState(settings.staff_discount === true);
 
@@ -40,7 +41,7 @@ export function Services() {
     const barber_commission: Record<string, number> = {};
     for (const [k, v] of Object.entries(rates)) if (v.trim() !== '' && !Number.isNaN(Number(v))) barber_commission[k] = Math.min(100, Math.max(0, Number(v)));
     await updateBusiness({ settings: { ...settings, hours, barber_commission, slot_min: slot, public_phone: publicPhone.trim() || undefined,
-      bookings_enabled: bookingsOn, staff_edit_price: editPrice, staff_discount: discountOk } });
+      bookings_enabled: bookingsOn, queue_enabled: queueOn, staff_edit_price: editPrice, staff_discount: discountOk } });
     flash(sw ? 'Mipangilio imehifadhiwa' : 'Settings saved');
   }
 
@@ -119,7 +120,14 @@ export function Services() {
             ))}
           </div>
 
-          <div className="s-label">{sw ? 'Miadi' : 'Appointments'}</div>
+          <div className="s-label">{sw ? 'Foleni na miadi' : 'Queue & appointments'}</div>
+          <label className="card s-row" style={{ padding: '12px 14px', cursor: 'pointer', marginBottom: 8 }}>
+            <span style={{ flex: 1 }}>
+              <span style={{ display: 'block', fontSize: 13.5, fontWeight: 800 }}>{sw ? 'Foleni ya namba (wateja wa kupita)' : 'Walk-in queue with numbers'}</span>
+              <span style={{ fontSize: 11.5, color: 'var(--ink3)', fontWeight: 600 }}>{sw ? 'Wateja wanaona foleni ya leo mtandaoni na kupata namba — bila msimbo.' : 'Clients see today’s queue online and get a number — no codes.'}</span>
+            </span>
+            <input type="checkbox" checked={queueOn} onChange={(e) => setQueueOn(e.target.checked)} style={{ width: 20, height: 20, accentColor: 'var(--brand)' }} />
+          </label>
           <label className="card s-row" style={{ padding: '12px 14px', cursor: 'pointer' }}>
             <span style={{ flex: 1 }}>
               <span style={{ display: 'block', fontSize: 13.5, fontWeight: 800 }}>{sw ? 'Pokea miadi na booking mtandaoni' : 'Take appointments and online bookings'}</span>
@@ -128,8 +136,8 @@ export function Services() {
             <input type="checkbox" checked={bookingsOn} onChange={(e) => setBookingsOn(e.target.checked)} style={{ width: 20, height: 20, accentColor: 'var(--brand)' }} />
           </label>
 
+          {(queueOn || bookingsOn) && <BookingLinkCard />}
           {bookingsOn && (<>
-          <BookingLinkCard />
 
           <div className="s-label">{sw ? 'Saa za kazi' : 'Opening hours'}</div>
           <div className="card" style={{ padding: '4px 14px' }}>

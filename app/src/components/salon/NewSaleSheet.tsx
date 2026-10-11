@@ -6,7 +6,7 @@ import { useData } from '../../state/DataContext';
 import { useSalon } from '../../state/SalonContext';
 import { useToast } from '../../state/ToastContext';
 import { haptic } from '../../lib/haptics';
-import { visitCommission, visitTotals, type SalonAppointment, type SalonClient, type VisitLine } from '../../lib/salon';
+import { visitCommission, visitTotals, type QueueTicket, type SalonAppointment, type SalonClient, type VisitLine } from '../../lib/salon';
 
 type Method = 'cash' | 'mobile' | 'card' | 'split';
 
@@ -18,7 +18,12 @@ type Method = 'cash' | 'mobile' | 'card' | 'split';
  * service's price is editable on the ticket, because a fade on a regular is not
  * always list price and the book should say what was actually charged.
  */
-export function NewSaleSheet({ open, onClose, fromAppointment, initialServiceId }: { open: boolean; onClose: () => void; fromAppointment?: SalonAppointment | null; initialServiceId?: string | null }) {
+export function NewSaleSheet({ open, onClose, fromAppointment, initialServiceId, fromQueue, onRecorded }: {
+  open: boolean; onClose: () => void; fromAppointment?: SalonAppointment | null; initialServiceId?: string | null;
+  /** A walk-in from today's queue: their name, phone, chosen services and barber come along. */
+  fromQueue?: QueueTicket | null;
+  onRecorded?: () => void;
+}) {
   const { lang, fmt, owner } = useSettings();
   const sw = lang === 'sw';
   const { staffMembers, activeStaff, activeBusiness } = useData();
@@ -57,7 +62,17 @@ export function NewSaleSheet({ open, onClose, fromAppointment, initialServiceId 
     setPhone(a && !c ? a.client_phone || '' : '');
     setQuery('');
     setBarberId(a?.barber_id ?? (lockedToSelf ? activeStaff!.id : barbers.length === 1 ? barbers[0].id : null));
-    const first = a ? services.filter((s) => a.service_ids.includes(s.id)) : services.filter((s) => s.id === initialServiceId);
+    const q = fromQueue;
+    if (q && !a) {
+      const qc = q.client_phone ? clients.find((x) => x.phone === q.client_phone) || null : null;
+      setClient(qc);
+      setName(qc ? '' : q.client_name.startsWith('Walk-in #') ? '' : q.client_name);
+      setPhone(qc ? '' : q.client_phone || '');
+      if (q.barber_id) setBarberId(q.barber_id);
+    }
+    const first = a ? services.filter((s) => a.service_ids.includes(s.id))
+      : q ? services.filter((s) => q.service_ids.includes(s.id))
+      : services.filter((s) => s.id === initialServiceId);
     setLines(first.map((s) => ({ service_id: s.id, name: s.name, list_price: Number(s.price), price_charged: Number(s.price), qty: 1 })));
     setDiscount(''); setTip(''); setMethod('cash'); setSplit({ cash: '', mobile: '', card: '' }); setNote(''); setError(''); setBusy(false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -112,11 +127,12 @@ export function NewSaleSheet({ open, onClose, fromAppointment, initialServiceId 
     if (!res.ok) { setError(res.error); return; }
     haptic(20);
     flash(sw ? `Imerekodiwa — ${fmt(res.total)}` : `Recorded — ${fmt(res.total)}`);
+    onRecorded?.();
     onClose();
   }
 
   return (
-    <Sheet open={open} onClose={onClose} title={sw ? 'Mauzo mapya' : 'New sale'} sub={fromAppointment ? `${fromAppointment.client_name} · ${fromAppointment.service_names || ''}` : undefined}>
+    <Sheet open={open} onClose={onClose} title={sw ? 'Mauzo mapya' : 'New sale'} sub={fromAppointment ? `${fromAppointment.client_name} · ${fromAppointment.service_names || ''}` : fromQueue ? `#${fromQueue.number} · ${fromQueue.client_name}` : undefined}>
       {/* Who */}
       <div className="s-label">{sw ? 'Mteja' : 'Client'}</div>
       {client ? (

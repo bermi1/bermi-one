@@ -52,7 +52,7 @@ button{background:none;border:none;cursor:pointer;-webkit-tap-highlight-color:tr
 
 .btn-primary{background:var(--grad);color:#fff;font-weight:800;border-radius:16px;padding:15px 18px;text-align:center;box-shadow:0 14px 28px rgba(47,91,255,.3)}
 .btn-primary[data-disabled="true"]{background:var(--line);color:var(--ink3);box-shadow:none;pointer-events:none}
-.btn-ghost{background:var(--card);color:var(--ink);border:1px solid var(--line);border-radius:16px;padding:15px 18px;text-align:center}
+.btn-ghost{font:inherit;font-weight:700;background:var(--card);color:var(--ink);border:1px solid var(--line);border-radius:16px;padding:15px 18px;text-align:center}
 
 .bottom-nav{position:fixed;left:0;right:0;bottom:0;display:flex;justify-content:center;padding:0 16px calc(14px + env(safe-area-inset-bottom));z-index:40;pointer-events:none}
 .bottom-nav-inner{pointer-events:auto;display:flex;align-items:center;gap:2px;background:var(--card);background:color-mix(in srgb,var(--card) 86%,transparent);-webkit-backdrop-filter:saturate(180%) blur(20px);backdrop-filter:saturate(180%) blur(20px);border:1px solid var(--line);border-radius:20px;padding:6px;box-shadow:0 16px 40px rgba(10,16,32,.18);max-width:480px;width:100%}
