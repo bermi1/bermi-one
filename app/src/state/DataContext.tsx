@@ -18,6 +18,7 @@ import {
   type Profile,
   type Role,
   type StaffMember,
+  type SalonRole,
   type StockSession,
   type Theme,
 } from '../lib/types';
@@ -85,7 +86,7 @@ interface DataCtx {
 
   completeOnboarding: (input: { name: string; type: string; city: string; countryCode: string; answers: Record<string, boolean | null> }) => Promise<void>;
   addBusiness: (input: { name: string; type: string; city: string; countryCode: string }) => Promise<string | null>;
-  updateBusiness: (patch: Partial<Pick<Business, 'name' | 'city' | 'type' | 'country_code' | 'answers' | 'sms_alerts' | 'auto_report_weekly' | 'auto_report_monthly' | 'alerts_phone' | 'alerts_email'>>) => Promise<void>;
+  updateBusiness: (patch: Partial<Pick<Business, 'name' | 'city' | 'type' | 'country_code' | 'answers' | 'sms_alerts' | 'auto_report_weekly' | 'auto_report_monthly' | 'alerts_phone' | 'alerts_email' | 'settings'>>) => Promise<void>;
   switchBusiness: (id: string) => Promise<void>;
 
   updateProductPrice: (productId: string, price: number) => Promise<void>;
@@ -118,11 +119,15 @@ interface DataCtx {
   fetchReportSource: (businessIds: string[], from: string, to: string) => Promise<{ sessions: StockSession[]; ledger: LedgerEntry[] }>;
 
   addLedgerLines: (lines: NewEntryLine[], sessionId?: string) => Promise<void>;
+  /** Re-read balances and the latest cash book lines after a write made elsewhere (e.g. a salon visit RPC). */
+  refreshMoney: () => Promise<void>;
   fetchPortfolioSummary: (days: number) => Promise<BusinessSummary[]>;
   /** Cash/mobile/bank balances for several businesses at once — the combined cash book. */
   fetchBooks: (businessIds: string[]) => Promise<{ accounts: Accounts[]; ledger: LedgerEntry[] }>;
 
-  addStaffMember: (input: { name: string; phone: string; title: string; pin?: string }) => Promise<string | null>;
+  addStaffMember: (input: { name: string; phone: string; title: string; pin?: string; salonRole?: SalonRole }) => Promise<string | null>;
+  /** Owner edits a team member: name, phone, title, and in a barbershop, what they do. */
+  updateStaffMember: (id: string, patch: Partial<Pick<StaffMember, 'name' | 'phone' | 'title' | 'salon_role'>>) => Promise<string | null>;
   removeStaffMember: (id: string) => Promise<void>;
 }
 
@@ -423,7 +428,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
   );
 
   const updateBusiness = useCallback(
-    async (patch: Partial<Pick<Business, 'name' | 'city' | 'type' | 'country_code' | 'answers' | 'sms_alerts' | 'auto_report_weekly' | 'auto_report_monthly' | 'alerts_phone' | 'alerts_email'>>) => {
+    async (patch: Partial<Pick<Business, 'name' | 'city' | 'type' | 'country_code' | 'answers' | 'sms_alerts' | 'auto_report_weekly' | 'auto_report_monthly' | 'alerts_phone' | 'alerts_email' | 'settings'>>) => {
       if (!activeBusiness) return;
       setBusinesses((bs) => bs.map((b) => (b.id === activeBusiness.id ? { ...b, ...patch } : b)));
       await supabase.from('businesses').update(patch).eq('id', activeBusiness.id);
@@ -873,7 +878,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
   );
 
   const addStaffMember = useCallback<DataCtx['addStaffMember']>(
-    async ({ name, phone, title, pin }) => {
+    async ({ name, phone, title, pin, salonRole }) => {
       if (!activeBusiness || !name.trim()) return 'Enter a name';
       if (plan.limits.maxStaff >= 0 && staffMembers.length >= plan.limits.maxStaff) {
         return 'PLAN_LIMIT_STAFF';
@@ -882,7 +887,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
       // "Staff member added" — and logged it.
       const { data: member, error } = await supabase
         .from('staff_members')
-        .insert({ business_id: activeBusiness.id, name: name.trim(), phone: phone.trim() || null, title: title.trim() || null, sort_order: staffMembers.length })
+        .insert({ business_id: activeBusiness.id, name: name.trim(), phone: phone.trim() || null, title: title.trim() || null, sort_order: staffMembers.length, ...(salonRole ? { salon_role: salonRole } : {}) })
         .select()
         .single();
       if (error || !member) return error?.message || 'Could not add this person. Try again.';
@@ -1029,6 +1034,23 @@ export function DataProvider({ children }: { children: ReactNode }) {
 
   const displayName = profile?.full_name || authSession?.user?.email?.split('@')[0] || 'there';
 
+  const updateStaffMember = useCallback<DataCtx['updateStaffMember']>(async (id, patch) => {
+    const { data, error } = await supabase.from('staff_members').update(patch).eq('id', id).select().single();
+    if (error || !data) return error?.message || 'Could not save';
+    setStaffMembers((xs) => xs.map((m) => (m.id === id ? (data as StaffMember) : m)));
+    return null;
+  }, []);
+
+  const refreshMoney = useCallback(async () => {
+    if (!activeBusiness) return;
+    const [{ data: acc }, { data: led }] = await Promise.all([
+      supabase.from('accounts').select('*').eq('business_id', activeBusiness.id).maybeSingle(),
+      supabase.from('ledger_entries').select('*').eq('business_id', activeBusiness.id).order('created_at', { ascending: false }).limit(100),
+    ]);
+    if (acc) setAccounts(acc as Accounts);
+    if (led) setLedger(led as LedgerEntry[]);
+  }, [activeBusiness]);
+
   const value: DataCtx = {
     ready,
     loadError,
@@ -1087,9 +1109,11 @@ export function DataProvider({ children }: { children: ReactNode }) {
     deleteLedgerEntry,
     fetchReportSource,
     addLedgerLines,
+    refreshMoney,
     fetchPortfolioSummary,
     fetchBooks,
     addStaffMember,
+    updateStaffMember,
     removeStaffMember,
   };
 

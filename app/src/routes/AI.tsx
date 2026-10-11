@@ -6,6 +6,9 @@ import { useData } from '../state/DataContext';
 import { answerQuestion, defaultSummary, findProduct, type AssistantData, type BusinessSummary } from '../ontology/assistant';
 import { salesHistory, type SaleRow } from '../ontology/analytics';
 import { analyse, overview, type AiAnswer, type AiBlock, type AnalystCtx, type Tone } from '../ontology/analyst';
+import { salonAnalyse, salonOverview, type SalonAnalystCtx } from '../ontology/salonAnalyst';
+import { useSalon } from '../state/SalonContext';
+import type { SalonVisit } from '../lib/salon';
 
 interface Msg {
   who: 'user' | 'ai';
@@ -21,6 +24,21 @@ export function AI() {
   const { products, session, accounts, ledger, actionLog, businesses, activeBusiness, fetchPortfolioSummary, fetchReportSource } = useData();
   const scrollRef = useRef<HTMLDivElement>(null);
   const sw = lang === 'sw';
+  const salon = useSalon();
+  const isSalon = salon.isSalon;
+
+  // A barbershop is read from its paid visits rather than stock closings.
+  const [salonVisits, setSalonVisits] = useState<SalonVisit[] | null>(null);
+  useEffect(() => {
+    if (!isSalon) return;
+    let cancelled = false;
+    const from = new Date(Date.now() - 90 * 86_400_000).toISOString();
+    void salon.fetchVisits(from, new Date().toISOString()).then((v) => { if (!cancelled) setSalonVisits(v); });
+    return () => { cancelled = true; };
+  }, [isSalon, salon.fetchVisits]); // eslint-disable-line react-hooks/exhaustive-deps
+  const salonCtx: SalonAnalystCtx | null = useMemo(() => (isSalon && salonVisits ? {
+    visits: salonVisits, appts: salon.appointments, clients: salon.clients, services: salon.services, lang, fmt, businessName: activeBusiness?.name || L.appName,
+  } : null), [isSalon, salonVisits, salon.appointments, salon.clients, salon.services, lang, fmt, activeBusiness, L.appName]);
 
   const [portfolio, setPortfolio] = useState<BusinessSummary[] | null>(null);
   useEffect(() => {
@@ -62,12 +80,19 @@ export function AI() {
 
   // Once the history is in, open with where the business actually stands.
   useEffect(() => {
-    if (!analystCtx || asked.current) return;
+    if (asked.current) return;
+    if (salonCtx) { const o = salonOverview(salonCtx); if (o) setMessages([{ who: 'ai', answer: o }]); return; }
+    if (!analystCtx || isSalon) return;
     const o = overview(analystCtx);
     if (o) setMessages([{ who: 'ai', answer: o }]);
-  }, [analystCtx]);
+  }, [analystCtx, salonCtx, isSalon]);
 
   function reply(q: string): Msg {
+    if (salonCtx) {
+      const a = salonAnalyse(q, salonCtx);
+      if (a) return { who: 'ai', answer: a };
+      return { who: 'ai', text: sw ? 'Naweza kuchambua vinyozi, huduma, bei, saa za shughuli, wateja wanaorudi na mwenendo. Jaribu: "kinyozi bora?" au "bei gani nipandishe?"' : 'I can analyse barbers, services, pricing, busy hours, returning clients and the trend. Try "who is my best barber?" or "what should I charge more for?"' };
+    }
     if (analystCtx) {
       const a = analyse(q, analystCtx, findProduct(products, q));
       if (a) return { who: 'ai', answer: a };
@@ -85,14 +110,17 @@ export function AI() {
     }, 350);
   }
 
-  const suggestions = sw
+  const suggestions = isSalon
+    ? (sw ? ['Kinyozi bora?', 'Huduma gani inauza zaidi?', 'Bei gani nipandishe?', 'Saa zipi ni za polepole?', 'Wateja gani hawarudi?', 'Mwenendo wa wiki', 'Uchambuzi kamili']
+      : ['Who is my best barber?', 'What sells the most?', 'What should I charge more for?', 'When are we slow?', 'Who has stopped coming?', 'Weekly trend', 'Full analysis'])
+    : sw
     ? ['Bidhaa gani inauza zaidi?', 'Ninunue nini wiki hii?', 'Mwenendo wa biashara?', 'Niongeze bidhaa gani?', 'Uchambuzi kamili', 'Siku gani ni bora?', businesses.length > 1 ? 'Biashara zangu zote?' : 'Bidhaa zinazokwama?']
     : ['What sells the most?', 'What should I buy this week?', 'How is the business trending?', 'What product should I add?', 'Full analysis', 'Which day is busiest?', businesses.length > 1 ? 'How are all my businesses?' : 'What is not selling?'];
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}>
       <div style={{ padding: '16px 16px 0' }}>
-        <ScreenHeader title={L.bermiAI} sub={rows === null ? (sw ? 'Inasoma historia ya mauzo…' : 'Reading your sales history…') : L.watching} />
+        <ScreenHeader title={L.bermiAI} sub={(isSalon ? salonVisits === null : rows === null) ? (sw ? 'Inasoma historia ya mauzo…' : 'Reading your sales history…') : L.watching} />
       </div>
       <div ref={scrollRef} className="sb" style={{ flex: 1, overflowY: 'auto', padding: '0 16px', display: 'flex', flexDirection: 'column', gap: 10 }}>
         {messages.map((m, i) => (

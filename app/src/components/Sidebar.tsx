@@ -25,7 +25,43 @@ export function Sidebar() {
   const [roleOpen, setRoleOpen] = useState(false);
   const meta = activeBusiness ? bizMeta(activeBusiness.type) : null;
 
-  const groups: { title: string; items: { to: string; icon: string; label: string }[] }[] = owner
+  const salon = activeBusiness?.type === 'barber';
+  const groups: { title: string; items: { to: string; icon: string; label: string }[] }[] = salon
+    ? [
+        {
+          title: sw ? 'Kazi' : 'Work',
+          items: [
+            { to: '/home', icon: 'home', label: sw ? 'Leo' : 'Today' },
+            ...(activeBusiness?.settings?.bookings_enabled ? [{ to: '/bookings', icon: 'calendar', label: sw ? 'Miadi' : 'Bookings' }] : []),
+            { to: '/clients', icon: 'users', label: sw ? 'Wateja' : 'Clients' },
+            { to: '/money', icon: owner ? 'wallet' : 'receipt', label: owner ? L.money : L.myEntries },
+            ...(owner ? [
+              { to: '/reports', icon: 'chart', label: L.reports },
+              { to: '/payouts', icon: 'coins', label: sw ? 'Malipo ya vinyozi' : 'Barber payouts' },
+              { to: '/ai', icon: 'spark', label: L.bermiAI },
+            ] : []),
+          ],
+        },
+        ...(owner ? [
+          {
+            title: sw ? 'Biashara' : 'Business',
+            items: [
+              { to: '/services', icon: 'scissors', label: sw ? 'Huduma na mipangilio' : 'Services & setup' },
+              { to: '/manage', icon: 'grid', label: L.manage },
+              { to: '/staff', icon: 'user', label: sw ? 'Timu' : 'Team' },
+              { to: '/business', icon: 'building', label: L.businessProfile },
+            ],
+          },
+          {
+            title: sw ? 'Akaunti' : 'Account',
+            items: [
+              { to: '/pricing', icon: 'receipt', label: sw ? 'Kifurushi na malipo' : 'Plan & billing' },
+              { to: '/help', icon: 'info', label: L.getHelp },
+            ],
+          },
+        ] : []),
+      ]
+    : owner
     ? [
         {
           title: sw ? 'Kazi' : 'Work',

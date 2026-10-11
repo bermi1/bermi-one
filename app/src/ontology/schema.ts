@@ -22,7 +22,11 @@ export type ObjectTypeName =
   | 'Subscription'
   | 'Payment'
   | 'Inquiry'
-  | 'Notification';
+  | 'Notification'
+  | 'SalonService'
+  | 'SalonClient'
+  | 'SalonVisit'
+  | 'SalonAppointment';
 
 export interface ObjectTypeDef {
   label: string;
@@ -122,6 +126,34 @@ export const OBJECT_TYPES: Record<ObjectTypeName, ObjectTypeDef> = {
     properties: ['channel', 'kind', 'recipient', 'subject', 'status', 'attempts', 'scheduled_for', 'sent_at'],
     links: { Business: 'belongs to' },
   },
+  SalonService: {
+    label: 'Service',
+    labelSw: 'Huduma',
+    description: 'Something a barbershop sells by the chair: a cut, a shave, a trim.',
+    properties: ['name', 'category', 'price', 'duration_min', 'commission_pct', 'active', 'sort_order'],
+    links: { Business: 'belongs to' },
+  },
+  SalonClient: {
+    label: 'Client',
+    labelSw: 'Mteja',
+    description: 'A barbershop customer with a phone number and a visit history.',
+    properties: ['name', 'phone', 'notes', 'visits', 'total_spent', 'last_visit_at'],
+    links: { Business: 'belongs to', SalonVisit: 'has many', SalonAppointment: 'has many' },
+  },
+  SalonVisit: {
+    label: 'Visit',
+    labelSw: 'Ziara',
+    description: 'One paid ticket: the services given, the price each customer was actually charged, tip, discount, how it was paid and the barber’s commission.',
+    properties: ['client_name', 'barber_name', 'items', 'subtotal', 'discount', 'tip', 'total', 'commission', 'paid_cash', 'paid_mobile', 'paid_card', 'status', 'paid_at'],
+    links: { Business: 'belongs to', SalonClient: 'for', StaffMember: 'served by', LedgerEntry: 'posts to' },
+  },
+  SalonAppointment: {
+    label: 'Appointment',
+    labelSw: 'Miadi',
+    description: 'A booked chair: walk-in, phone or online, with its status from requested to done or no-show.',
+    properties: ['client_name', 'client_phone', 'barber_name', 'service_names', 'start_at', 'end_at', 'status', 'source'],
+    links: { Business: 'belongs to', SalonClient: 'for', SalonVisit: 'becomes' },
+  },
 };
 
 export type ActionTypeName =
@@ -138,7 +170,12 @@ export type ActionTypeName =
   | 'business.create'
   | 'business.update'
   | 'staff.add'
-  | 'staff.remove';
+  | 'staff.remove'
+  | 'service.create'
+  | 'service.update'
+  | 'visit.record'
+  | 'appointment.create'
+  | 'appointment.status';
 
 /*
   There is no delete verb, and that is deliberate.
@@ -171,4 +208,9 @@ export const ACTION_TYPES: Record<ActionTypeName, ActionTypeDef> = {
   'business.update': { labelSw: 'Sasisha wasifu wa biashara', label: 'Update business profile', objectType: 'Business' },
   'staff.add': { labelSw: 'Ongeza mfanyakazi', label: 'Add staff member', objectType: 'StaffMember' },
   'staff.remove': { labelSw: 'Ondoa mfanyakazi', label: 'Remove staff member', objectType: 'StaffMember' },
+  'service.create': { labelSw: 'Ongeza huduma', label: 'Add service', objectType: 'SalonService' },
+  'service.update': { labelSw: 'Sasisha huduma', label: 'Update service', objectType: 'SalonService' },
+  'visit.record': { labelSw: 'Rekodi ziara', label: 'Record visit', objectType: 'SalonVisit' },
+  'appointment.create': { labelSw: 'Weka miadi', label: 'Book appointment', objectType: 'SalonAppointment' },
+  'appointment.status': { labelSw: 'Badilisha hali ya miadi', label: 'Update appointment', objectType: 'SalonAppointment' },
 };

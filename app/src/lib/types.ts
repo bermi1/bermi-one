@@ -40,6 +40,26 @@ export interface Business {
   auto_report_monthly?: boolean;
   alerts_phone?: string | null;
   alerts_email?: string | null;
+  /** Public booking link, /book/<slug> — barbershops only, set on first share. */
+  slug?: string | null;
+  /** Module settings: opening hours, barber commission rates, booking slot length. */
+  settings?: BusinessSettings;
+}
+
+export interface BusinessSettings {
+  /** ISO weekday "1" (Mon) … "7" (Sun) → [open, close] as "HH:MM", or null when closed. */
+  hours?: Record<string, [string, string] | null>;
+  /** staff_member id → commission % for that barber (overrides each service's rate). */
+  barber_commission?: Record<string, number>;
+  slot_min?: number;
+  /** Appointments and the public booking link. Off by default: most shops run on walk-ins. */
+  bookings_enabled?: boolean;
+  /** May staff change a service's price on the ticket? Default yes. */
+  staff_edit_price?: boolean;
+  /** May staff give discounts? Default no. */
+  staff_discount?: boolean;
+  tz?: string;
+  public_phone?: string;
 }
 
 export interface Product {
@@ -74,7 +94,11 @@ export interface StaffMember {
   phone: string | null;
   title: string | null;
   sort_order: number;
+  /** Barbershop only: who cuts hair, who takes the money, or both. */
+  salon_role?: SalonRole;
 }
+
+export type SalonRole = 'barber' | 'cashier' | 'both';
 
 export interface Accounts {
   business_id: string;
@@ -157,13 +181,14 @@ export const KIND_ICON: Record<EntryKind, string> = {
 };
 
 /**
- * Bar is the only module that is actually built out — the closing sheet, the
- * profit-per-bottle template and the reports are all shaped around it. The rest
- * are listed so people can see where this is going, but they are marked
+ * Bar and Barbershop are built out: the bar around its nightly closing sheet,
+ * the barbershop around the chair — services, clients, bookings, payouts. The
+ * rest are listed so people can see where this is going, but they are marked
  * `live: false` and cannot be picked yet.
  */
 export const BUSINESS_TYPES = [
   { id: 'bar', name: 'Bar', icon: 'bottle', live: true },
+  { id: 'barber', name: 'Barbershop', icon: 'scissors', live: true },
   { id: 'rest', name: 'Restaurant', icon: 'fork', live: false },
   { id: 'pharm', name: 'Pharmacy', icon: 'pill', live: false },
   { id: 'groc', name: 'Grocery', icon: 'cart', live: false },

@@ -98,7 +98,17 @@ export function Manage() {
     }
   }
 
+  const salon = activeBusiness?.type === 'barber';
+  const sw = lang === 'sw';
   const groups: { title: string; items: { name: string; meta: string; icon: string; onClick?: () => void }[] }[] = [
+    ...(salon ? [{
+      title: sw ? 'Kinyozi' : 'Barbershop',
+      items: [
+        { name: sw ? 'Huduma, bei na saa za kazi' : 'Services, prices & hours', meta: '', icon: 'scissors', onClick: () => nav('/services') },
+        { name: sw ? 'Ripoti' : 'Reports', meta: '', icon: 'chart', onClick: () => nav('/reports') },
+        { name: sw ? 'Malipo ya vinyozi' : 'Barber payouts', meta: '', icon: 'coins', onClick: () => nav('/payouts') },
+      ],
+    }] : []),
     {
       title: L.people,
       items: [

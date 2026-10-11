@@ -2,6 +2,7 @@ import { Suspense, lazy, useEffect, useState } from 'react';
 import { BrowserRouter, Navigate, Route, Routes, useLocation } from 'react-router-dom';
 import { AuthProvider, useAuth } from './state/AuthContext';
 import { DataProvider, useData } from './state/DataContext';
+import { SalonProvider } from './state/SalonContext';
 import { ToastProvider } from './state/ToastContext';
 import { IconSprite } from './lib/icons';
 import { BottomNav } from './components/BottomNav';
@@ -43,6 +44,13 @@ const Pricing = lazy(() => import('./routes/Pricing').then((m) => ({ default: m.
 const Help = lazy(() => import('./routes/Help').then((m) => ({ default: m.Help })));
 const Legal = lazy(() => import('./routes/Legal').then((m) => ({ default: m.Legal })));
 const SetPassword = lazy(() => import('./routes/SetPassword').then((m) => ({ default: m.SetPassword })));
+const Book = lazy(() => import('./routes/Book').then((m) => ({ default: m.Book })));
+const SalonToday = lazy(() => import('./routes/salon/SalonToday').then((m) => ({ default: m.SalonToday })));
+const Bookings = lazy(() => import('./routes/salon/Bookings').then((m) => ({ default: m.Bookings })));
+const Clients = lazy(() => import('./routes/salon/Clients').then((m) => ({ default: m.Clients })));
+const Services = lazy(() => import('./routes/salon/Services').then((m) => ({ default: m.Services })));
+const Payouts = lazy(() => import('./routes/salon/Payouts').then((m) => ({ default: m.Payouts })));
+const SalonReports = lazy(() => import('./routes/salon/SalonReports').then((m) => ({ default: m.SalonReports })));
 
 /**
  * What fills the gap while a screen is fetched.
@@ -191,6 +199,12 @@ function AppRoutes() {
     return <Suspense fallback={<Pending />}><Legal /></Suspense>;
   }
 
+  // A barbershop's public booking page: for its clients, who have no account.
+  if (location.pathname.startsWith('/book/')) {
+    handOverFromSplash();
+    return <Suspense fallback={<Pending />}><Routes><Route path="/book/:slug" element={<Book />} /></Routes></Suspense>;
+  }
+
   /*
     Still starting up. While the splash is still on the glass there is nothing
     to show that it is not showing better, so this renders nothing — but only
@@ -241,7 +255,8 @@ function AppRoutes() {
   // so nothing gets recorded under nobody's name.
   if (!owner && activeBusiness && !activeStaff) return <StaffSignIn />;
 
-  const isOwnerOnly = ['/reports', '/ai', '/manage', '/business', '/staff', '/pricing', '/help'].includes(location.pathname) && !owner;
+  const isOwnerOnly = ['/reports', '/ai', '/manage', '/business', '/staff', '/pricing', '/help', '/payouts'].includes(location.pathname) && !owner;
+  const salon = activeBusiness?.type === 'barber';
   if (isOwnerOnly) return <Navigate to="/home" replace />;
 
 
@@ -253,13 +268,24 @@ function AppRoutes() {
         <Suspense fallback={<Pending />}>
         <div key={location.pathname} className="page-in page-wrap">
         <Routes>
-          <Route path="/home" element={owner ? <Home /> : <StaffHome />} />
-          <Route path="/stock" element={<Stock />} />
-          <Route path="/close" element={<Close />} />
-          <Route path="/diff" element={<Difference />} />
-          <Route path="/approval" element={<Approval />} />
+          <Route path="/home" element={salon ? <SalonToday /> : owner ? <Home /> : <StaffHome />} />
+          {salon ? (
+            <>
+              <Route path="/bookings" element={<Bookings />} />
+              <Route path="/clients" element={<Clients />} />
+              <Route path="/services" element={<Services />} />
+              <Route path="/payouts" element={<Payouts />} />
+            </>
+          ) : (
+            <>
+              <Route path="/stock" element={<Stock />} />
+              <Route path="/close" element={<Close />} />
+              <Route path="/diff" element={<Difference />} />
+              <Route path="/approval" element={<Approval />} />
+            </>
+          )}
           <Route path="/money" element={<Money />} />
-          <Route path="/reports" element={<Reports />} />
+          <Route path="/reports" element={salon ? <SalonReports /> : <Reports />} />
           <Route path="/ai" element={<AI />} />
           <Route path="/manage" element={<Manage />} />
           <Route path="/business" element={<BusinessProfile />} />
@@ -282,6 +308,7 @@ export default function App() {
     <BrowserRouter>
       <AuthProvider>
         <DataProvider>
+          <SalonProvider>
           <ToastProvider>
             <IconSprite />
             {/* Outside the routes, so a recovery link opened while signed out
@@ -289,6 +316,7 @@ export default function App() {
             <NativeShell />
             <AppRoutes />
           </ToastProvider>
+          </SalonProvider>
         </DataProvider>
       </AuthProvider>
     </BrowserRouter>

@@ -13,7 +13,10 @@ import { PIN_LENGTH } from '../components/PinPad';
 export function Staff() {
   const nav = useNavigate();
   const { L, lang } = useSettings();
-  const { staffMembers, addStaffMember, removeStaffMember, setStaffPin, fetchStaffWithPins, ownerPinSet, setOwnerPin, lockToStaff } = useData();
+  const { staffMembers, addStaffMember, removeStaffMember, setStaffPin, fetchStaffWithPins, ownerPinSet, setOwnerPin, lockToStaff, activeBusiness } = useData();
+  const salon = activeBusiness?.type === 'barber';
+  const [salonRole, setSalonRole] = useState<'barber' | 'cashier' | 'both'>('barber');
+  const roleLabel = (r?: string) => (r === 'cashier' ? (sw ? 'Keshia' : 'Cashier') : r === 'both' ? (sw ? 'Kinyozi na keshia' : 'Barber & cashier') : (sw ? 'Kinyozi' : 'Barber'));
   const sw = lang === 'sw';
   const { flash } = useToast();
 
@@ -34,13 +37,14 @@ export function Staff() {
     setPhone('');
     setTitle('');
     setPin('');
+    setSalonRole('barber');
     setAddOpen(true);
   }
 
   async function save() {
     if (!name.trim() || pin.length !== PIN_LENGTH) return;
     setBusy(true);
-    const problem = await addStaffMember({ name, phone, title, pin });
+    const problem = await addStaffMember({ name, phone, title: salon && !title.trim() ? roleLabel(salonRole) : title, pin, ...(salon ? { salonRole } : {}) });
     if (problem === 'PLAN_LIMIT_STAFF') { setBusy(false); flash(L.planLimitStaff); nav('/pricing'); return; }
     if (problem) { setBusy(false); flash(problem); return; }
     setWithPin(await fetchStaffWithPins());
@@ -107,7 +111,7 @@ export function Staff() {
                 </div>
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ fontSize: 14, fontWeight: 700 }}>{m.name}</div>
-                  <div style={{ fontSize: 11.5, color: 'var(--ink3)', fontWeight: 600 }}>{[m.title, m.phone].filter(Boolean).join(' · ') || '—'}</div>
+                  <div style={{ fontSize: 11.5, color: 'var(--ink3)', fontWeight: 600 }}>{[salon ? roleLabel(m.salon_role) : m.title, m.phone].filter(Boolean).join(' · ') || '—'}</div>
                   <div style={{ marginTop: 3, fontSize: 10.5, fontWeight: 800, textTransform: 'uppercase', letterSpacing: 0.3, color: withPin.has(m.id) ? 'var(--ok)' : 'var(--warn)' }}>
                     {withPin.has(m.id) ? (sw ? 'Anaweza kuingia' : 'Can sign in') : (sw ? 'Hana PIN — hawezi kuingia' : 'No PIN — cannot sign in')}
                   </div>
@@ -141,13 +145,20 @@ export function Staff() {
             className="card"
             style={{ padding: '12px 14px', border: 'none', fontSize: 14 }}
           />
-          <input
+          {salon && (
+            <div className="s-seg">
+              {(['barber', 'cashier', 'both'] as const).map((r) => (
+                <button key={r} type="button" aria-pressed={salonRole === r} onClick={() => setSalonRole(r)}>{r === 'both' ? (sw ? 'Wote wawili' : 'Both') : roleLabel(r)}</button>
+              ))}
+            </div>
+          )}
+          {!salon && <input
             placeholder={lang === 'sw' ? 'Cheo (hiari) — mfano Mhudumu' : 'Title (optional) — e.g. Cashier'}
             value={title}
             onChange={(e) => setTitle(e.target.value)}
             className="card"
             style={{ padding: '12px 14px', border: 'none', fontSize: 14 }}
-          />
+          />}
           <input
             placeholder={lang === 'sw' ? 'Simu (hiari)' : 'Phone (optional)'}
             value={phone}
