@@ -1,7 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from './AuthContext';
-import { businessDayIso, snapshotLine, soldOf } from '../lib/calc';
+import { businessDayIso, roundQty, snapshotLine, soldOf } from '../lib/calc';
 import { logAction, fetchRecentActions, purgeActions, type ActionLogEntry } from '../ontology/actions';
 import { fetchMySubscription, trialDaysLeft, type Subscription } from '../lib/platform';
 import { planByCode, type Plan } from '../lib/plans';
@@ -512,7 +512,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
       const p = products.find((x) => x.id === productId);
       if (!p) return;
       const target = stockTarget;
-      const next = (target === 'incoming' ? p.incoming : p.added) + qty;
+      const next = roundQty((target === 'incoming' ? p.incoming : p.added) + qty);
       setProducts((ps) => ps.map((x) => (x.id === productId ? { ...x, [target]: next } : x)));
       await supabase.from('products').update({ [target]: next }).eq('id', productId);
       const where = target === 'incoming' ? ' (held for the next count)' : '';

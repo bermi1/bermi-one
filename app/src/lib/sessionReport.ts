@@ -2,7 +2,7 @@
 // as a record. Shares printKit with every other Bermi document so the blank
 // sheet, this report and the financial report all file together as one set.
 
-import { availableOf, closingItemsTotal, groupByCategory, linesOf, soldOfLine } from './calc';
+import { availableOf, closingItemsTotal, groupByCategory, linesOf, roundQty, soldOfLine } from './calc';
 import { esc, footer, masthead, openPrintable, printButton, printCss } from './printKit';
 import type { Business, ClosingItemKind, Lang, Product, StockSession } from './types';
 import { countryByCode } from './countries';
@@ -54,7 +54,7 @@ export function buildSessionReportHtml(opts: SessionReportOptions): string {
   const sym = countryByCode(business.country_code || 'TZ').sym;
   const money = (n: number) => sym + ' ' + Math.round(n).toLocaleString('en-US');
   const money0 = (n: number) => (Math.round(n) ? money(n) : '—');
-  const num0 = (n: number) => (n ? String(n) : '—');
+  const num0 = (n: number) => (n ? String(roundQty(n)) : '—');
   const counts = session.counts || {};
 
   /*

@@ -1,10 +1,25 @@
 import type { Product, SessionLine, StockSession } from './types';
 
+/**
+ * Stock can be counted in parts — half a bottle, 2.5 kg. Adding 2.5 and 0.1 in
+ * floating point gives 2.6000000000000001, so every quantity sum is rounded
+ * back to three places before it is shown or saved.
+ */
+export const roundQty = (n: number) => Math.round(n * 1000) / 1000;
+
+/** What a quantity box keeps of what was typed: digits and one decimal point (a comma counts as one), three places at most. */
+export function cleanQty(raw: string): string {
+  const s = raw.replace(/,/g, '.').replace(/[^0-9.]/g, '');
+  const dot = s.indexOf('.');
+  if (dot < 0) return s;
+  return s.slice(0, dot + 1) + s.slice(dot + 1).replace(/\./g, '').slice(0, 3);
+}
+
 /** Units sold for a product, given a closing count from the counts map (undefined = not yet counted). */
 export function soldOf(p: Product, counts: Record<string, number>): number {
   const closing = counts[p.id];
   if (closing === undefined || closing === null) return 0;
-  return Math.max(0, p.opening + p.added - Number(closing));
+  return Math.max(0, roundQty(p.opening + p.added - Number(closing)));
 }
 
 export function isCounted(counts: Record<string, number>): boolean {
@@ -12,7 +27,7 @@ export function isCounted(counts: Record<string, number>): boolean {
 }
 
 export function currentQty(p: Product, counts: Record<string, number>): number {
-  return p.opening + p.added - soldOf(p, counts);
+  return roundQty(p.opening + p.added - soldOf(p, counts));
 }
 
 export function expectedSales(products: Product[], counts: Record<string, number>): number {
@@ -63,14 +78,14 @@ export function snapshotLine(p: Product): SessionLine {
 
 /** What came in for this line before anything was sold. */
 export function availableOf(l: SessionLine): number {
-  return Number(l.opening || 0) + Number(l.added || 0);
+  return roundQty(Number(l.opening || 0) + Number(l.added || 0));
 }
 
 /** Units sold on a snapshot line. Uncounted lines sold nothing, not everything. */
 export function soldOfLine(l: SessionLine, counts: Record<string, number>): number {
   const closing = counts[l.id];
   if (closing === undefined || closing === null) return 0;
-  return Math.max(0, availableOf(l) - Number(closing));
+  return Math.max(0, roundQty(availableOf(l) - Number(closing)));
 }
 
 export interface SessionTotals {
@@ -102,6 +117,7 @@ export function sessionTotals(lines: SessionLine[], counts: Record<string, numbe
     t.stockValue += left * l.price;
     if (counted) t.counted += 1;
   }
+  for (const k of ['opening', 'added', 'available', 'closing', 'sold'] as const) t[k] = roundQty(t[k]);
   return t;
 }
 

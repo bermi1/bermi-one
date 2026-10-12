@@ -2,11 +2,12 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ScreenHeader } from '../components/ScreenHeader';
 import { Sheet } from '../components/Sheet';
+import { QtyInput } from '../components/QtyInput';
 import { Icon } from '../lib/icons';
 import { useSettings } from '../lib/useSettings';
 import { useData } from '../state/DataContext';
 import { useToast } from '../state/ToastContext';
-import { businessDayIso, expectedSales, profitOf, soldOf, closingItemsTotal, groupByCategory } from '../lib/calc';
+import { businessDayIso, roundQty, expectedSales, profitOf, soldOf, closingItemsTotal, groupByCategory } from '../lib/calc';
 import { tintVars, type ClosingItemKind } from '../lib/types';
 
 const DEDUCTION_SECTIONS: { kind: ClosingItemKind; icon: string }[] = [
@@ -160,7 +161,7 @@ export function Close() {
 
   const expected = expectedSales(products, counts);
   const grossProfit = profitOf(products, counts);
-  const soldUnits = products.reduce((s, p) => s + soldOf(p, counts), 0);
+  const soldUnits = roundQty(products.reduce((s, p) => s + soldOf(p, counts), 0));
   const countedItems = products.filter((p) => counts[p.id] !== undefined).length;
   const groups = useMemo(() => groupByCategory(products), [products]);
 
@@ -328,7 +329,7 @@ export function Close() {
 
       {groups.map(({ cat, items }, gi) => {
         const tv = tintVars(gi);
-        const catSold = items.reduce((s, p) => s + soldOf(p, counts), 0);
+        const catSold = roundQty(items.reduce((s, p) => s + soldOf(p, counts), 0));
         const catValue = items.reduce((s, p) => s + soldOf(p, counts) * p.price, 0);
         const done = items.filter((p) => counts[p.id] !== undefined).length;
         return (
@@ -343,7 +344,7 @@ export function Close() {
 
             <div className="card" style={{ padding: 6 }}>
               {items.map((p, i) => {
-                const avail = p.opening + p.added;
+                const avail = roundQty(p.opening + p.added);
                 const closingVal = counts[p.id];
                 const sold = soldOf(p, counts);
                 const isCounted = closingVal !== undefined;
@@ -362,15 +363,11 @@ export function Close() {
                           {' · '}{fmt(p.price)}/{p.unit}
                         </div>
                       </div>
-                      <input
-                        inputMode="numeric"
+                      <QtyInput
                         placeholder="—"
-                        value={closingVal === undefined ? '' : String(closingVal)}
-                        onChange={(e) => {
-                          const v = e.target.value.replace(/[^0-9]/g, '');
-                          void setClosingCount(p.id, v === '' ? null : Number(v));
-                        }}
-                        style={{ width: 54, textAlign: 'center', padding: '8px 0', borderRadius: 10, border: `1px solid ${isCounted ? 'var(--brand)' : 'var(--line)'}`, background: 'var(--card2)', fontSize: 14, fontWeight: 700 }}
+                        value={closingVal}
+                        onValue={(n) => void setClosingCount(p.id, n)}
+                        style={{ width: 58, textAlign: 'center', padding: '8px 0', borderRadius: 10, border: `1px solid ${isCounted ? 'var(--brand)' : 'var(--line)'}`, background: 'var(--card2)', fontSize: 14, fontWeight: 700 }}
                       />
                     </div>
                     {isCounted && (

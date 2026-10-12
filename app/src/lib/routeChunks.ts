@@ -60,12 +60,32 @@ export function reloadForNewVersion(): boolean {
   return true;
 }
 
-/** The loader React.lazy renders with: a stale file reloads into the new release instead of failing. */
+/** How long a screen's code may take before the page says so, instead of waiting for ever. */
+const SCREEN_TIMEOUT_MS = 20_000;
+
+function withTimeout<T>(p: Promise<T>): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const t = setTimeout(() => reject(new Error('SCREEN_TIMEOUT: the page took too long to download')), SCREEN_TIMEOUT_MS);
+    p.then((v) => { clearTimeout(t); resolve(v); }, (e) => { clearTimeout(t); reject(e); });
+  });
+}
+
+/**
+ * The loader React.lazy renders with. A dropped connection gets one more try;
+ * a stale file reloads into the new release; a download that hangs fails after
+ * twenty seconds so the page can offer Reload, rather than sitting there.
+ */
 export function loadScreen<N extends ChunkName>(name: N): ReturnType<(typeof CHUNKS)[N]> {
-  return CHUNKS[name]().catch((e: unknown) => {
-    if (isStaleChunk(e) && reloadForNewVersion()) return new Promise(() => {}); // the reload takes over
-    throw e;
-  }) as ReturnType<(typeof CHUNKS)[N]>;
+  const once = () => withTimeout(CHUNKS[name]() as Promise<unknown>);
+  return once()
+    .catch((e: unknown) => {
+      if (String((e as Error)?.message || e).startsWith('SCREEN_TIMEOUT')) throw e;
+      return new Promise((r) => setTimeout(r, 800)).then(once);
+    })
+    .catch((e: unknown) => {
+      if (isStaleChunk(e) && reloadForNewVersion()) return new Promise(() => {}); // the reload takes over
+      throw e;
+    }) as ReturnType<(typeof CHUNKS)[N]>;
 }
 
 const started = new Set<ChunkName>();

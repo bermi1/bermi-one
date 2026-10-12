@@ -4,7 +4,7 @@ import { Icon } from '../lib/icons';
 import { useSettings } from '../lib/useSettings';
 import { useData } from '../state/DataContext';
 import { useToast } from '../state/ToastContext';
-import { groupByCategory } from '../lib/calc';
+import { cleanQty, groupByCategory, roundQty } from '../lib/calc';
 
 /**
  * Receiving a delivery: pick what arrived, how many, and optionally what it
@@ -30,7 +30,7 @@ export function ReceiveStock({ open, onClose, note, heldForNext }: { open: boole
   const groups = useMemo(() => groupByCategory(filtered), [filtered]);
 
   const lines = products
-    .map((p) => ({ p, n: Number(qty[p.id] || 0) }))
+    .map((p) => ({ p, n: Number(qty[p.id] || 0) || 0 }))
     .filter((l) => l.n > 0);
   const totalUnits = lines.reduce((s, l) => s + l.n, 0);
 
@@ -94,14 +94,14 @@ export function ReceiveStock({ open, onClose, note, heldForNext }: { open: boole
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <div style={{ fontSize: 13, fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.name}</div>
                       <div style={{ fontSize: 10.5, color: 'var(--ink3)', fontWeight: 600 }}>
-                        {p.opening + p.added + p.incoming} {p.unit} {lang === 'sw' ? 'zilizopo' : 'on hand'}
+                        {roundQty(p.opening + p.added + p.incoming)} {p.unit} {lang === 'sw' ? 'zilizopo' : 'on hand'}
                       </div>
                     </div>
                     <input
-                      inputMode="numeric"
+                      inputMode="decimal"
                       placeholder="—"
                       value={v}
-                      onChange={(e) => setQty((q) => ({ ...q, [p.id]: e.target.value.replace(/[^0-9]/g, '') }))}
+                      onChange={(e) => setQty((q) => ({ ...q, [p.id]: cleanQty(e.target.value) }))}
                       style={{ width: 56, textAlign: 'center', padding: '7px 0', borderRadius: 9, border: `1px solid ${v ? 'var(--brand)' : 'var(--line)'}`, background: 'var(--card2)', fontSize: 13.5, fontWeight: 700 }}
                     />
                   </div>

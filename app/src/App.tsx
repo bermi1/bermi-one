@@ -294,8 +294,15 @@ function AppRoutes() {
       <Sidebar />
       <div className="app-main">
         <ScreenBoundary resetKey={location.pathname} sw={profile?.lang === 'sw'}>
-        <Suspense fallback={<Pending />}>
+        {/*
+          The boundary sits inside the keyed page, so every page gets a new one.
+          Navigation runs as a transition, and React keeps an already-shown
+          boundary on the old page while the next page's code downloads — on a
+          slow phone that looked like the app had frozen. A fresh boundary shows
+          the loading skeleton at once instead.
+        */}
         <div key={location.pathname} className="page-in page-wrap">
+        <Suspense fallback={<Pending />}>
         <Routes>
           <Route path="/home" element={salon ? <SalonToday /> : owner ? <Home /> : <StaffHome />} />
           {salon ? (
@@ -323,8 +330,8 @@ function AppRoutes() {
           <Route path="/help" element={<Help />} />
           <Route path="*" element={<Navigate to="/home" replace />} />
         </Routes>
-        </div>
         </Suspense>
+        </div>
         </ScreenBoundary>
       </div>
       <BottomNav />

@@ -2,11 +2,12 @@ import { useMemo, useRef, useState } from 'react';
 import { AppHeader } from '../components/AppHeader';
 import { ScreenHeader } from '../components/ScreenHeader';
 import { Sheet } from '../components/Sheet';
+import { QtyInput } from '../components/QtyInput';
 import { Icon } from '../lib/icons';
 import { useSettings } from '../lib/useSettings';
 import { useData } from '../state/DataContext';
 import { useToast } from '../state/ToastContext';
-import { currentQty, groupByCategory, stockValueOf } from '../lib/calc';
+import { cleanQty, currentQty, groupByCategory, roundQty, stockValueOf } from '../lib/calc';
 import { tintVars, type Product } from '../lib/types';
 import { parseTable, buildRows, FIELD_LABELS, excelToCsv, isExcelFile, type FieldKey, type ParsedTable } from '../lib/csv';
 import { SessionHistory } from '../components/SessionHistory';
@@ -458,12 +459,20 @@ export function Stock() {
                           ] as const).map(([key, label, fallback]) => (
                             <label key={key} style={{ display: 'block' }}>
                               <span style={{ fontSize: 9.5, color: 'var(--ink3)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.3 }}>{label}</span>
-                              <input
-                                inputMode="numeric"
-                                value={num(e[key], fallback)}
-                                onChange={(ev) => editField(p.id, { [key]: Number(ev.target.value.replace(/[^0-9]/g, '') || 0) })}
-                                style={{ width: '100%', padding: '6px 8px', borderRadius: 8, border: '1px solid var(--line)', background: 'var(--card2)', fontSize: 12.5, fontWeight: 700 }}
-                              />
+                              {key === 'opening' ? (
+                                <QtyInput
+                                  value={e[key] ?? fallback}
+                                  onValue={(n) => editField(p.id, { opening: n ?? 0 })}
+                                  style={{ width: '100%', padding: '6px 8px', borderRadius: 8, border: '1px solid var(--line)', background: 'var(--card2)', fontSize: 12.5, fontWeight: 700 }}
+                                />
+                              ) : (
+                                <input
+                                  inputMode="numeric"
+                                  value={num(e[key], fallback)}
+                                  onChange={(ev) => editField(p.id, { [key]: Number(ev.target.value.replace(/[^0-9]/g, '') || 0) })}
+                                  style={{ width: '100%', padding: '6px 8px', borderRadius: 8, border: '1px solid var(--line)', background: 'var(--card2)', fontSize: 12.5, fontWeight: 700 }}
+                                />
+                              )}
                             </label>
                           ))}
                         </div>
@@ -536,7 +545,7 @@ export function Stock() {
                         <div style={{ textAlign: 'right' }}>
                           <div style={{ fontSize: 14, fontWeight: 800, color: qty < p.low ? 'var(--warn)' : 'var(--ink)' }}>{qty || '—'}</div>
                           <div style={{ fontSize: 10.5, color: 'var(--ink3)', fontWeight: 600 }}>
-                            {p.unit}{p.added > 0 ? ` · +${p.added}` : ''}
+                            {p.unit}{p.added > 0 ? ` · +${roundQty(p.added)}` : ''}
                           </div>
                         </div>
                       </div>
@@ -606,7 +615,7 @@ export function Stock() {
             <input placeholder={L.price} inputMode="numeric" value={newP.price} onChange={(e) => setNewP({ ...newP, price: e.target.value.replace(/[^0-9]/g, '') })} className="field"  />
             <input placeholder={L.profitPerUnit} inputMode="numeric" value={newP.profit} onChange={(e) => setNewP({ ...newP, profit: e.target.value.replace(/[^0-9]/g, '') })} className="field"  />
           </div>
-          <input placeholder={lang === 'sw' ? 'Kiwango cha chini' : 'Low stock alert level'} inputMode="numeric" value={newP.low} onChange={(e) => setNewP({ ...newP, low: e.target.value.replace(/[^0-9]/g, '') })} className="field"  />
+          <input placeholder={lang === 'sw' ? 'Kiwango cha chini' : 'Low stock alert level'} inputMode="decimal" value={newP.low} onChange={(e) => setNewP({ ...newP, low: cleanQty(e.target.value) })} className="field"  />
           <button className="btn-primary tap" style={{ width: '100%', marginTop: 4 }} onClick={submitNewProduct}>
             {L.save}
           </button>
