@@ -13,7 +13,7 @@ import { PIN_LENGTH } from '../components/PinPad';
 export function Staff() {
   const nav = useNavigate();
   const { L, lang } = useSettings();
-  const { staffMembers, addStaffMember, removeStaffMember, setStaffPin, fetchStaffWithPins, ownerPinSet, setOwnerPin, lockToStaff, activeBusiness } = useData();
+  const { staffMembers, addStaffMember, updateStaffMember, removeStaffMember, setStaffPin, fetchStaffWithPins, ownerPinSet, setOwnerPin, lockToStaff, activeBusiness } = useData();
   const salon = activeBusiness?.type === 'barber';
   const [salonRole, setSalonRole] = useState<'barber' | 'cashier' | 'both'>('barber');
   const roleLabel = (r?: string) => (r === 'cashier' ? (sw ? 'Keshia' : 'Cashier') : r === 'both' ? (sw ? 'Kinyozi na keshia' : 'Barber & cashier') : (sw ? 'Kinyozi' : 'Barber'));
@@ -29,6 +29,7 @@ export function Staff() {
   const [withPin, setWithPin] = useState<Set<string>>(new Set());
   const [pinFor, setPinFor] = useState<{ id: string; name: string } | null>(null);
   const [ownerPinOpen, setOwnerPinOpen] = useState(false);
+  const [editFor, setEditFor] = useState<{ id: string; name: string; phone: string; title: string } | null>(null);
 
   useEffect(() => { void fetchStaffWithPins().then(setWithPin); }, [fetchStaffWithPins, staffMembers]);
 
@@ -43,14 +44,27 @@ export function Staff() {
 
   async function save() {
     if (!name.trim() || pin.length !== PIN_LENGTH) return;
+    if (!hasPhone(phone)) { flash(phoneProblem('PHONE_INVALID', sw)); return; }
     setBusy(true);
     const problem = await addStaffMember({ name, phone, title: salon && !title.trim() ? roleLabel(salonRole) : title, pin, ...(salon ? { salonRole } : {}) });
     if (problem === 'PLAN_LIMIT_STAFF') { setBusy(false); flash(L.planLimitStaff); nav('/pricing'); return; }
-    if (problem) { setBusy(false); flash(problem); return; }
+    if (problem) { setBusy(false); flash(phoneProblem(problem, sw)); return; }
     setWithPin(await fetchStaffWithPins());
     setBusy(false);
     setAddOpen(false);
     flash(lang === 'sw' ? 'Mfanyakazi ameongezwa' : 'Staff member added');
+  }
+
+  async function saveEdit() {
+    if (!editFor) return;
+    if (!editFor.name.trim()) { flash(sw ? 'Weka jina' : 'Enter a name'); return; }
+    if (!hasPhone(editFor.phone)) { flash(phoneProblem('PHONE_INVALID', sw)); return; }
+    setBusy(true);
+    const problem = await updateStaffMember(editFor.id, { name: editFor.name.trim(), phone: editFor.phone.trim(), ...(salon ? {} : { title: editFor.title.trim() || null }) });
+    setBusy(false);
+    if (problem) { flash(phoneProblem(problem, sw)); return; }
+    setEditFor(null);
+    flash(sw ? 'Imehifadhiwa' : 'Saved');
   }
 
   async function remove(id: string) {
@@ -111,7 +125,7 @@ export function Staff() {
                 </div>
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ fontSize: 14, fontWeight: 700 }}>{m.name}</div>
-                  <div style={{ fontSize: 11.5, color: 'var(--ink3)', fontWeight: 600 }}>{[salon ? roleLabel(m.salon_role) : m.title, m.phone].filter(Boolean).join(' · ') || '—'}</div>
+                  <div style={{ fontSize: 11.5, color: 'var(--ink3)', fontWeight: 600 }}>{[salon ? roleLabel(m.salon_role) : m.title, m.phone ? `${sw ? 'Anaingia kwa' : 'Signs in with'} ${m.phone}` : null].filter(Boolean).join(' · ') || '—'}</div>
                   <div style={{ marginTop: 3, fontSize: 10.5, fontWeight: 800, textTransform: 'uppercase', letterSpacing: 0.3, color: withPin.has(m.id) ? 'var(--ok)' : 'var(--warn)' }}>
                     {!withPin.has(m.id) ? (sw ? 'Hana PIN — hawezi kuingia' : 'No PIN — cannot sign in')
                       : hasPhone(m.phone) ? (sw ? 'Anaingia kwenye simu yake pia' : 'Can sign in on their own phone')
@@ -126,6 +140,9 @@ export function Staff() {
                     <Icon name="chat" size={14} />
                   </a>
                 )}
+                <button className="icon-btn tap" style={{ width: 32, height: 32 }} aria-label={sw ? 'Hariri' : 'Edit'} onClick={() => setEditFor({ id: m.id, name: m.name, phone: m.phone || '', title: m.title || '' })}>
+                  <Icon name="edit" size={14} />
+                </button>
                 <button className="chip tap" style={{ padding: '6px 10px', fontSize: 11.5 }} onClick={() => setPinFor({ id: m.id, name: m.name })}>
                   {withPin.has(m.id) ? (sw ? 'Badili PIN' : 'Change PIN') : (sw ? 'Weka PIN' : 'Set PIN')}
                 </button>
@@ -170,11 +187,12 @@ export function Staff() {
             
           />}
           <input
-            placeholder={lang === 'sw' ? 'Simu (hiari)' : 'Phone (optional)'}
+            placeholder={sw ? 'Namba ya simu — ataitumia kuingia' : 'Phone number — they sign in with this'}
+            inputMode="tel"
+            autoComplete="off"
             value={phone}
             onChange={(e) => setPhone(e.target.value)}
             className="field"
-            
           />
           <input
             placeholder={sw ? `PIN ya tarakimu ${PIN_LENGTH} (ya kuingia)` : `${PIN_LENGTH}-digit PIN (to sign in)`}
@@ -186,12 +204,26 @@ export function Staff() {
             style={{ letterSpacing: pin ? 6 : 0 }}
           />
           <div style={{ fontSize: 11.5, color: 'var(--ink3)', fontWeight: 600, marginTop: -2 }}>
-            {sw ? 'Mpe mfanyakazi PIN hii kwa siri. Wataitumia kuingia kwenye kifaa cha biashara.' : 'Give this PIN to them privately. They use it to sign in on the business device.'}
+            {sw
+              ? 'Namba hii ya simu na PIN hii ndivyo vya kuingia: kwenye simu yao (skrini ya kuingia → "Mfanyakazi"), au PIN tu kwenye kifaa cha biashara. Mpe PIN kwa siri.'
+              : 'This phone number and PIN are their sign-in: on their own phone (login → "Staff"), or the PIN alone on the business device. Give them the PIN privately.'}
           </div>
-          <button className="btn-primary tap" style={{ width: '100%', marginTop: 4 }} data-disabled={!name.trim() || pin.length !== PIN_LENGTH || busy} onClick={save}>
+          <button className="btn-primary tap" style={{ width: '100%', marginTop: 4 }} data-disabled={!name.trim() || !hasPhone(phone) || pin.length !== PIN_LENGTH || busy} onClick={save}>
             {L.save}
           </button>
         </div>
+      </Sheet>
+
+      <Sheet open={!!editFor} onClose={() => setEditFor(null)} title={sw ? 'Hariri mfanyakazi' : 'Edit staff member'}
+        sub={sw ? 'Namba ya simu ni ya kuingia. Ukiibadilisha, simu ya zamani inatoka.' : 'The phone number is their sign-in. Changing it signs the old phone out.'}>
+        {editFor && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            <input className="field" placeholder={sw ? 'Jina' : 'Name'} value={editFor.name} onChange={(e) => setEditFor({ ...editFor, name: e.target.value })} />
+            <input className="field" inputMode="tel" autoComplete="off" placeholder={sw ? 'Namba ya simu' : 'Phone number'} value={editFor.phone} onChange={(e) => setEditFor({ ...editFor, phone: e.target.value })} />
+            {!salon && <input className="field" placeholder={sw ? 'Cheo (hiari)' : 'Title (optional)'} value={editFor.title} onChange={(e) => setEditFor({ ...editFor, title: e.target.value })} />}
+            <button className="btn-primary tap" style={{ width: '100%', marginTop: 4 }} data-disabled={busy || !editFor.name.trim() || !hasPhone(editFor.phone)} onClick={saveEdit}>{L.save}</button>
+          </div>
+        )}
       </Sheet>
 
       <Sheet open={!!pinFor} onClose={() => setPinFor(null)} title={pinFor ? `${sw ? 'PIN ya' : 'PIN for'} ${pinFor.name}` : ''}>
@@ -242,4 +274,11 @@ function hasPhone(p: string | null | undefined) {
 function intl(p: string) {
   const d = p.replace(/\D/g, '');
   return d.startsWith('0') ? '255' + d.slice(1) : d;
+}
+
+/** The database's refusals, in words. */
+function phoneProblem(msg: string, sw: boolean) {
+  if (/PHONE_TAKEN|staff_members_business_phone_key/.test(msg)) return sw ? 'Namba hiyo tayari ni ya mfanyakazi mwingine hapa.' : 'Another staff member here already uses that number.';
+  if (/PHONE_INVALID/.test(msg)) return sw ? 'Weka namba kamili ya simu (tarakimu 10, mf. 0754 123 456).' : 'Enter a full phone number (10 digits, e.g. 0754 123 456).';
+  return msg;
 }
