@@ -33,6 +33,41 @@ export const CHUNKS = {
 
 export type ChunkName = keyof typeof CHUNKS;
 
+/*
+  A page's code missing after a deploy.
+
+  Every release renames every screen's file. A phone that opened the app before
+  the release still holds the old index, and when it asks for a screen it has
+  not fetched yet, that file is gone — the import fails, React has nothing to
+  render, and the page was white until the person backed out far enough or
+  killed the app. The cure is the new release: reload once, onto the same page.
+*/
+const STALE = /dynamically imported module|Importing a module script failed|error loading dynamically imported module|MIME type|ChunkLoadError|Loading chunk/i;
+const RELOAD_KEY = 'bermi:chunk-reload';
+
+export function isStaleChunk(e: unknown) {
+  return STALE.test(e instanceof Error ? e.message : String(e));
+}
+
+/** Reload onto the current URL, at most once a minute so a real outage cannot loop. */
+export function reloadForNewVersion(): boolean {
+  try {
+    const last = Number(sessionStorage.getItem(RELOAD_KEY) || 0);
+    if (Date.now() - last < 60_000) return false;
+    sessionStorage.setItem(RELOAD_KEY, String(Date.now()));
+  } catch { /* storage blocked: still worth one reload */ }
+  window.location.reload();
+  return true;
+}
+
+/** The loader React.lazy renders with: a stale file reloads into the new release instead of failing. */
+export function loadScreen<N extends ChunkName>(name: N): ReturnType<(typeof CHUNKS)[N]> {
+  return CHUNKS[name]().catch((e: unknown) => {
+    if (isStaleChunk(e) && reloadForNewVersion()) return new Promise(() => {}); // the reload takes over
+    throw e;
+  }) as ReturnType<(typeof CHUNKS)[N]>;
+}
+
 const started = new Set<ChunkName>();
 
 /** Start fetching a screen's code now. Safe to call repeatedly. */

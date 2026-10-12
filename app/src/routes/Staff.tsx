@@ -71,8 +71,8 @@ export function Staff() {
         </div>
         <div style={{ fontSize: 12.5, color: 'var(--ink2)', lineHeight: 1.5, fontWeight: 600 }}>
           {sw
-            ? 'Wafanyakazi wanatumia simu au tablet ya biashara. Gusa "Mmiliki" juu kisha "Badili kwenda hali ya wafanyakazi" — kila mmoja ataingia kwa PIN yake, na hawataona faida wala bei.'
-            : 'Staff use the business’s phone or tablet. Tap “Owner” at the top, then “Switch to staff mode” — each person signs in with their own PIN, and they never see profit or change prices.'}
+            ? 'Njia mbili: kwenye simu yao wenyewe — skrini ya kuingia → "Mfanyakazi" → namba ya simu na PIN. Au kwenye simu ya biashara — gusa "Mmiliki" juu kisha "Badili kwenda hali ya wafanyakazi". Hawaoni faida wala hawabadilishi bei.'
+            : 'Two ways in: on their own phone — login screen → “Staff” → phone number and PIN. Or on the business’s phone — tap “Owner” at the top, then “Switch to staff mode”. Either way they never see profit or change prices.'}
         </div>
       </div>
 
@@ -113,9 +113,19 @@ export function Staff() {
                   <div style={{ fontSize: 14, fontWeight: 700 }}>{m.name}</div>
                   <div style={{ fontSize: 11.5, color: 'var(--ink3)', fontWeight: 600 }}>{[salon ? roleLabel(m.salon_role) : m.title, m.phone].filter(Boolean).join(' · ') || '—'}</div>
                   <div style={{ marginTop: 3, fontSize: 10.5, fontWeight: 800, textTransform: 'uppercase', letterSpacing: 0.3, color: withPin.has(m.id) ? 'var(--ok)' : 'var(--warn)' }}>
-                    {withPin.has(m.id) ? (sw ? 'Anaweza kuingia' : 'Can sign in') : (sw ? 'Hana PIN — hawezi kuingia' : 'No PIN — cannot sign in')}
+                    {!withPin.has(m.id) ? (sw ? 'Hana PIN — hawezi kuingia' : 'No PIN — cannot sign in')
+                      : hasPhone(m.phone) ? (sw ? 'Anaingia kwenye simu yake pia' : 'Can sign in on their own phone')
+                      : (sw ? 'Simu ya biashara tu — weka namba yake' : 'Shared phone only — add their number')}
                   </div>
                 </div>
+                {withPin.has(m.id) && hasPhone(m.phone) && (
+                  <a className="icon-btn tap" style={{ width: 32, height: 32 }} target="_blank" rel="noreferrer" aria-label={sw ? 'Tuma maelekezo' : 'Send sign-in steps'}
+                    href={`https://wa.me/${intl(m.phone!)}?text=${encodeURIComponent(sw
+                      ? `Habari ${m.name.split(' ')[0]}! Ingia ${activeBusiness?.name} kwenye Bermi One: fungua ${window.location.origin}, gusa "Mfanyakazi", weka namba hii ya simu na PIN yako.`
+                      : `Hi ${m.name.split(' ')[0]}! To sign in to ${activeBusiness?.name} on Bermi One: open ${window.location.origin}, tap "Staff", then enter this phone number and your PIN.`)}`}>
+                    <Icon name="chat" size={14} />
+                  </a>
+                )}
                 <button className="chip tap" style={{ padding: '6px 10px', fontSize: 11.5 }} onClick={() => setPinFor({ id: m.id, name: m.name })}>
                   {withPin.has(m.id) ? (sw ? 'Badili PIN' : 'Change PIN') : (sw ? 'Weka PIN' : 'Set PIN')}
                 </button>
@@ -223,4 +233,13 @@ export function Staff() {
       )}
     </div>
   );
+}
+
+function hasPhone(p: string | null | undefined) {
+  return (p || '').replace(/\D/g, '').length >= 9;
+}
+
+function intl(p: string) {
+  const d = p.replace(/\D/g, '');
+  return d.startsWith('0') ? '255' + d.slice(1) : d;
 }

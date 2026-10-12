@@ -19,7 +19,7 @@ import { RolePanel } from './StaffAccess';
  */
 export function Sidebar() {
   const { owner, L, lang, theme } = useSettings();
-  const { activeBusiness, activeStaff, setTheme, plan, onTrial, trialDays } = useData();
+  const { activeBusiness, activeStaff, setTheme, plan, onTrial, trialDays, staffAccount } = useData();
   const nav = useNavigate();
   const sw = lang === 'sw';
   const [switching, setSwitching] = useState(false);
@@ -107,7 +107,7 @@ export function Sidebar() {
 
   return (
     <aside className="sidebar">
-      <button className="side-biz" onClick={() => setSwitching(true)} title={sw ? 'Badili biashara' : 'Switch business'}>
+      <button className="side-biz" onClick={() => !staffAccount && setSwitching(true)} title={sw ? 'Badili biashara' : 'Switch business'}>
         {meta ? (
           <span className="side-biz-mark"><Icon name={meta.icon} size={17} /></span>
         ) : (

@@ -75,6 +75,11 @@ interface DataCtx {
   unlockOwner: (secret: string) => Promise<PinResult>;
   ownerPinSet: boolean;
   setOwnerPin: (pin: string) => Promise<string | null>;
+  /**
+   * Signed in as a staff account (phone + PIN on their own phone), not as an
+   * owner. Fixed to one business and one person: no owner mode, no switching.
+   */
+  staffAccount: boolean;
   /** Who is working in staff mode on this device, for this business. */
   activeStaff: { id: string; name: string } | null;
   signInStaff: (memberId: string, pin: string) => Promise<PinResult>;
@@ -138,6 +143,8 @@ const Ctx = createContext<DataCtx | null>(null);
 export function DataProvider({ children }: { children: ReactNode }) {
   const { session: authSession } = useAuth();
   const uid = authSession?.user?.id ?? null;
+  const staffAccount = authSession?.user?.app_metadata?.kind === 'staff';
+  const staffMemberId = staffAccount ? String(authSession?.user?.user_metadata?.staff_member_id || '') : '';
 
   const [ready, setReady] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -236,16 +243,21 @@ export function DataProvider({ children }: { children: ReactNode }) {
       try {
         const { data: prof, error: profError } = await supabase.from('profiles').select('*').eq('id', uid).maybeSingle();
         if (profError) throw new Error(profError.message);
-        const { data: biz, error: bizError } = await supabase.from('businesses').select('*').eq('owner_id', uid).order('sort_order');
+        // A staff account sees the one business it works in; an owner, every business they own.
+        const { data: biz, error: bizError } = staffAccount
+          ? await supabase.from('businesses').select('*').eq('id', (prof as Profile | null)?.active_business_id || '00000000-0000-0000-0000-000000000000')
+          : await supabase.from('businesses').select('*').eq('owner_id', uid).order('sort_order');
         if (bizError) throw new Error(bizError.message);
         if (cancelled) return;
         // This device's own choice first; the old account-wide flag only as a
         // starting point, so a tablet already in staff mode stays there.
         let deviceRole: Role | null = null;
         try { deviceRole = localStorage.getItem(`bermi:role:${uid}`) as Role | null; } catch { /* private mode */ }
-        setRoleState(deviceRole === 'owner' || deviceRole === 'staff' ? deviceRole : ((prof as Profile | null)?.role || 'owner'));
-        const { data: pinSet } = await supabase.rpc('owner_pin_set');
-        setOwnerPinSet(!!pinSet);
+        setRoleState(staffAccount ? 'staff' : deviceRole === 'owner' || deviceRole === 'staff' ? deviceRole : ((prof as Profile | null)?.role || 'owner'));
+        if (!staffAccount) {
+          const { data: pinSet } = await supabase.rpc('owner_pin_set');
+          setOwnerPinSet(!!pinSet);
+        }
         setProfile(prof as Profile);
         setBusinesses(biz || []);
         const active = (biz || []).find((b) => b.id === (prof as Profile | null)?.active_business_id) || (biz || [])[0];
@@ -259,7 +271,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
     return () => {
       cancelled = true;
     };
-  }, [uid, loadBusinessData, attempt]);
+  }, [uid, staffAccount, loadBusinessData, attempt]);
 
   const reload = useCallback(() => setAttempt((n) => n + 1), []);
 
@@ -275,14 +287,21 @@ export function DataProvider({ children }: { children: ReactNode }) {
   const setLang = useCallback((l: Lang) => void patchProfile({ lang: l }), [patchProfile]);
   const setTheme = useCallback((t: Theme) => void patchProfile({ theme: t }), [patchProfile]);
   const setRole = useCallback((r: Role) => {
+    if (staffAccount && r === 'owner') return;
     setRoleState(r);
     try { if (uid) localStorage.setItem(`bermi:role:${uid}`, r); } catch { /* per-device only */ }
-  }, [uid]);
+  }, [uid, staffAccount]);
 
   const staffKey = activeBusiness ? `bermi:staff:${activeBusiness.id}` : null;
 
   // Who is signed in on this device follows the business: each bar has its own.
   useEffect(() => {
+    // A staff account is that one person, always.
+    if (staffAccount) {
+      const m = staffMembers.find((x) => x.id === staffMemberId);
+      setActiveStaff(staffMemberId ? { id: staffMemberId, name: m?.name || profile?.full_name || 'Staff' } : null);
+      return;
+    }
     if (!staffKey) { setActiveStaff(null); return; }
     try {
       const raw = localStorage.getItem(staffKey);
@@ -290,7 +309,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
       // A member removed since they signed in is signed out with them.
       setActiveStaff(saved && staffMembers.some((m) => m.id === saved.id) ? saved : null);
     } catch { setActiveStaff(null); }
-  }, [staffKey, staffMembers]);
+  }, [staffKey, staffMembers, staffAccount, staffMemberId, profile?.full_name]);
 
   const signOutStaff = useCallback(() => {
     setActiveStaff(null);
@@ -1077,6 +1096,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
     ownerPinSet,
     setOwnerPin,
     activeStaff,
+    staffAccount,
     signInStaff,
     signOutStaff,
     setStaffPin,

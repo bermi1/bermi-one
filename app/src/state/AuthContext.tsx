@@ -1,6 +1,7 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
 import type { Session } from '@supabase/supabase-js';
 import { supabase } from '../lib/supabase';
+import { invokeFunction } from '../lib/functions';
 import { isNative } from '../lib/native';
 import { COMPANY } from '../lib/company';
 
@@ -13,10 +14,17 @@ interface AuthCtx {
   beginRecovery: () => void;
   signIn: (email: string, password: string) => Promise<string | null>;
   signUp: (email: string, password: string) => Promise<string | null>;
+  /** Staff on their own phone: phone and PIN. May come back asking which business, when one phone is on two teams. */
+  signInStaff: (phone: string, pin: string, memberId?: string) => Promise<StaffSignInResult>;
   signOut: () => Promise<void>;
   sendReset: (email: string) => Promise<string | null>;
   setPassword: (password: string) => Promise<string | null>;
 }
+
+export type StaffSignInResult =
+  | { ok: true }
+  | { ok: false; error: string; code?: string }
+  | { ok: false; choose: { member_id: string; business: string; name: string }[] };
 
 const Ctx = createContext<AuthCtx | null>(null);
 
@@ -53,6 +61,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     });
     return () => sub.subscription.unsubscribe();
   }, []);
+
+  async function signInStaff(phone: string, pin: string, memberId?: string): Promise<StaffSignInResult> {
+    let out: { token_hash?: string; code?: string; choices?: { member_id: string; business: string; name: string }[] };
+    try {
+      out = await invokeFunction('staff-login', { phone, pin, ...(memberId ? { member_id: memberId } : {}) });
+    } catch (e) {
+      return { ok: false, error: e instanceof Error ? e.message : String(e) };
+    }
+    if (out.code === 'CHOOSE' && out.choices) return { ok: false, choose: out.choices };
+    if (!out.token_hash) return { ok: false, error: 'Could not sign in. Try again.' };
+    const { error } = await supabase.auth.verifyOtp({ token_hash: out.token_hash, type: 'magiclink' });
+    return error ? { ok: false, error: error.message } : { ok: true };
+  }
 
   async function signIn(email: string, password: string) {
     const { error } = await supabase.auth.signInWithPassword({ email, password });
@@ -91,7 +112,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }
 
   return (
-    <Ctx.Provider value={{ session, loading, recovering, beginRecovery: () => setRecovering(true), signIn, signUp, signOut, sendReset, setPassword }}>
+    <Ctx.Provider value={{ session, loading, recovering, beginRecovery: () => setRecovering(true), signIn, signUp, signInStaff, signOut, sendReset, setPassword }}>
       {children}
     </Ctx.Provider>
   );

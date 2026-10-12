@@ -15,9 +15,19 @@
 import { createClient } from 'jsr:@supabase/supabase-js@2';
 
 const WORKER_KEY = Deno.env.get('NOTIFY_WORKER_KEY') ?? '';
-const TEXTIFY_KEY = Deno.env.get('TEXTIFY_API_KEY') ?? '';
-const TEXTIFY_URL = Deno.env.get('TEXTIFY_URL') ?? 'https://api.textify.africa/v1/send';
-const TEXTIFY_SENDER = Deno.env.get('TEXTIFY_SENDER_ID') ?? 'BERMI';
+// The SMS provider: the function environment first, then Vault (set from the
+// HQ console, like Payme's credentials). Read per run, so a key saved in HQ
+// starts working within a minute without a redeploy.
+let TEXTIFY_KEY = '';
+let TEXTIFY_URL = '';
+let TEXTIFY_SENDER = '';
+async function loadSmsConfig() {
+  const { data } = await admin.rpc('sms_config');
+  const v = (data ?? {}) as { api_key?: string | null; url?: string | null; sender?: string | null };
+  TEXTIFY_KEY = Deno.env.get('TEXTIFY_API_KEY') || v.api_key || '';
+  TEXTIFY_URL = Deno.env.get('TEXTIFY_URL') || v.url || 'https://api.textify.africa/v1/send';
+  TEXTIFY_SENDER = Deno.env.get('TEXTIFY_SENDER_ID') || v.sender || 'BERMI';
+}
 const RESEND_KEY = Deno.env.get('RESEND_API_KEY') ?? '';
 const MAIL_FROM = Deno.env.get('MAIL_FROM') ?? 'Bermi One <noreply@bermi.one>';
 
@@ -110,6 +120,10 @@ Deno.serve(async (req) => {
 
   const key = req.headers.get('X-Worker-Key') ?? new URL(req.url).searchParams.get('key') ?? '';
   if (!(await allowed(key))) return new Response('Forbidden', { status: 403 });
+
+  await loadSmsConfig();
+  // What can go out right now, for the app to show ("SMS is not set up yet") instead of silence.
+  await admin.from('platform_config').upsert({ key: 'notify_status', value: { sms: !!TEXTIFY_KEY, email: !!RESEND_KEY, checked_at: new Date().toISOString() } });
 
   // Queue whatever periodic reports are due before draining. One schedule runs
   // the whole thing: the database decides what is due (and stamps it so a

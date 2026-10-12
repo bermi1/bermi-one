@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Icon } from '../lib/icons';
 import { useSettings } from '../lib/useSettings';
 import { useData } from '../state/DataContext';
+import { useAuth } from '../state/AuthContext';
 import { tintVars } from '../lib/types';
 import { PinPad, pinMessage } from './PinPad';
 
@@ -213,8 +214,24 @@ export function StaffSignIn() {
 export function RolePanel({ onClose }: { onClose: () => void }) {
   const { lang, owner } = useSettings();
   const sw = lang === 'sw';
-  const { lockToStaff, ownerPinSet, setOwnerPin, activeStaff, signOutStaff } = useData();
+  const { lockToStaff, ownerPinSet, setOwnerPin, activeStaff, signOutStaff, staffAccount, activeBusiness } = useData();
+  const { signOut } = useAuth();
   const [step, setStep] = useState<'menu' | 'setpin' | 'unlock'>('menu');
+
+  // Their own phone, their own account: the only way out is signing out.
+  if (staffAccount) {
+    return (
+      <div className="role-panel">
+        <div className="role-who">
+          <Icon name="user" size={16} />
+          <span>{sw ? 'Umeingia kama' : 'Signed in as'} <strong>{activeStaff?.name}</strong>{activeBusiness ? ` · ${activeBusiness.name}` : ''}</span>
+        </div>
+        <button className="btn-primary tap" style={{ width: '100%', border: 'none' }} onClick={() => { onClose(); void signOut(); }}>
+          {sw ? 'Maliza zamu na utoke' : 'End shift and sign out'}
+        </button>
+      </div>
+    );
+  }
 
   if (owner) {
     if (step === 'setpin' || !ownerPinSet) {

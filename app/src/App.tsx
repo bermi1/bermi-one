@@ -19,7 +19,8 @@ import { checkPlatformAdmin } from './lib/platform';
 import { BOOT_CEILING_MS } from './lib/boot';
 import { Icon } from './lib/icons';
 import { StaffSignIn } from './components/StaffAccess';
-import { CHUNKS, preloadAll } from './lib/routeChunks';
+import { loadScreen, preloadAll } from './lib/routeChunks';
+import { ScreenBoundary } from './components/ScreenBoundary';
 import { clockSkewMs, jwtTrouble, loadErrorKind } from './lib/supabase';
 
 /*
@@ -31,28 +32,28 @@ import { clockSkewMs, jwtTrouble, loadErrorKind } from './lib/supabase';
   phone on a Tanzanian mobile network that difference is the difference between
   the app opening and the app appearing to be broken.
 */
-const Onboarding = lazy(() => CHUNKS.onboarding().then((m) => ({ default: m.Onboarding })));
-const Approval = lazy(() => CHUNKS.approval().then((m) => ({ default: m.Approval })));
-const Money = lazy(() => CHUNKS.money().then((m) => ({ default: m.Money })));
-const Reports = lazy(() => CHUNKS.reports().then((m) => ({ default: m.Reports })));
-const AI = lazy(() => CHUNKS.ai().then((m) => ({ default: m.AI })));
-const Manage = lazy(() => CHUNKS.manage().then((m) => ({ default: m.Manage })));
-const BusinessProfile = lazy(() => CHUNKS.business().then((m) => ({ default: m.BusinessProfile })));
-const Staff = lazy(() => CHUNKS.staff().then((m) => ({ default: m.Staff })));
-const Hq = lazy(() => CHUNKS.hq().then((m) => ({ default: m.Hq })));
-const Suspended = lazy(() => CHUNKS.suspended().then((m) => ({ default: m.Suspended })));
-const Pricing = lazy(() => CHUNKS.pricing().then((m) => ({ default: m.Pricing })));
-const Help = lazy(() => CHUNKS.help().then((m) => ({ default: m.Help })));
-const Legal = lazy(() => CHUNKS.legal().then((m) => ({ default: m.Legal })));
-const SetPassword = lazy(() => CHUNKS.setPassword().then((m) => ({ default: m.SetPassword })));
-const Book = lazy(() => CHUNKS.book().then((m) => ({ default: m.Book })));
-const Ticket = lazy(() => CHUNKS.ticket().then((m) => ({ default: m.Ticket })));
-const SalonToday = lazy(() => CHUNKS.salonToday().then((m) => ({ default: m.SalonToday })));
-const Bookings = lazy(() => CHUNKS.bookings().then((m) => ({ default: m.Bookings })));
-const Clients = lazy(() => CHUNKS.clients().then((m) => ({ default: m.Clients })));
-const Services = lazy(() => CHUNKS.services().then((m) => ({ default: m.Services })));
-const Payouts = lazy(() => CHUNKS.payouts().then((m) => ({ default: m.Payouts })));
-const SalonReports = lazy(() => CHUNKS.salonReports().then((m) => ({ default: m.SalonReports })));
+const Onboarding = lazy(() => loadScreen('onboarding').then((m) => ({ default: m.Onboarding })));
+const Approval = lazy(() => loadScreen('approval').then((m) => ({ default: m.Approval })));
+const Money = lazy(() => loadScreen('money').then((m) => ({ default: m.Money })));
+const Reports = lazy(() => loadScreen('reports').then((m) => ({ default: m.Reports })));
+const AI = lazy(() => loadScreen('ai').then((m) => ({ default: m.AI })));
+const Manage = lazy(() => loadScreen('manage').then((m) => ({ default: m.Manage })));
+const BusinessProfile = lazy(() => loadScreen('business').then((m) => ({ default: m.BusinessProfile })));
+const Staff = lazy(() => loadScreen('staff').then((m) => ({ default: m.Staff })));
+const Hq = lazy(() => loadScreen('hq').then((m) => ({ default: m.Hq })));
+const Suspended = lazy(() => loadScreen('suspended').then((m) => ({ default: m.Suspended })));
+const Pricing = lazy(() => loadScreen('pricing').then((m) => ({ default: m.Pricing })));
+const Help = lazy(() => loadScreen('help').then((m) => ({ default: m.Help })));
+const Legal = lazy(() => loadScreen('legal').then((m) => ({ default: m.Legal })));
+const SetPassword = lazy(() => loadScreen('setPassword').then((m) => ({ default: m.SetPassword })));
+const Book = lazy(() => loadScreen('book').then((m) => ({ default: m.Book })));
+const Ticket = lazy(() => loadScreen('ticket').then((m) => ({ default: m.Ticket })));
+const SalonToday = lazy(() => loadScreen('salonToday').then((m) => ({ default: m.SalonToday })));
+const Bookings = lazy(() => loadScreen('bookings').then((m) => ({ default: m.Bookings })));
+const Clients = lazy(() => loadScreen('clients').then((m) => ({ default: m.Clients })));
+const Services = lazy(() => loadScreen('services').then((m) => ({ default: m.Services })));
+const Payouts = lazy(() => loadScreen('payouts').then((m) => ({ default: m.Payouts })));
+const SalonReports = lazy(() => loadScreen('salonReports').then((m) => ({ default: m.SalonReports })));
 
 /**
  * What fills the gap while a screen is fetched.
@@ -290,6 +291,7 @@ function AppRoutes() {
       <ThemeRoot />
       <Sidebar />
       <div className="app-main">
+        <ScreenBoundary resetKey={location.pathname} sw={profile?.lang === 'sw'}>
         <Suspense fallback={<Pending />}>
         <div key={location.pathname} className="page-in page-wrap">
         <Routes>
@@ -321,6 +323,7 @@ function AppRoutes() {
         </Routes>
         </div>
         </Suspense>
+        </ScreenBoundary>
       </div>
       <BottomNav />
       <InstallPrompt />

@@ -4,7 +4,16 @@ import { useAuth } from '../state/AuthContext';
 import { T } from '../lib/i18n';
 import { Icon } from '../lib/icons';
 
-type Mode = 'login' | 'signup';
+const STAFF_ERR_SW: Record<string, string> = {
+  NOT_FOUND: 'Hakuna mfanyakazi mwenye namba hiyo na PIN. Mwombe mmiliki aweke namba yako kwenye Simamia → Wafanyakazi na akuwekee PIN.',
+  WRONG: 'PIN si sahihi.',
+  LOCKED: 'Umekosea PIN mara nyingi. Jaribu baadaye au mwombe mmiliki abadilishe PIN yako.',
+  SUSPENDED: 'Biashara hii imesitishwa. Mwombe mmiliki alipie Bermi One.',
+  PHONE_REQUIRED: 'Weka namba yako ya simu.',
+  PIN_REQUIRED: 'Weka PIN yako.',
+};
+
+type Mode = 'login' | 'signup' | 'staff';
 
 /** 0–4, from length and variety. A nudge, not a gate — the server sets the rule. */
 function strengthOf(pw: string): number {
@@ -67,7 +76,13 @@ const COPY = {
     show: 'Show password', hide: 'Hide password',
     strength: ['Too short', 'Weak', 'Fair', 'Good', 'Strong'],
     trust: 'Encrypted end to end · Your data stays yours',
-    staffHint: 'Staff? Sign in on your business’s phone or tablet and pick your name.',
+    staffHint: 'Staff? Sign in with your phone number and PIN →',
+    staffTab: 'Staff',
+    staffTitle: 'Staff sign-in',
+    staffSub: 'Use the phone number your manager saved for you and your PIN.',
+    staffPhone: 'Your phone number',
+    staffGo: 'Start my shift',
+    staffWhich: 'You work at more than one place. Which one?',
   },
   sw: {
     heroPrefix: 'Endesha ',
@@ -87,12 +102,18 @@ const COPY = {
     show: 'Onyesha nenosiri', hide: 'Ficha nenosiri',
     strength: ['Fupi mno', 'Dhaifu', 'Wastani', 'Nzuri', 'Imara'],
     trust: 'Imesimbwa kikamilifu · Data yako ni yako',
-    staffHint: 'Mfanyakazi? Ingia kwenye simu au tablet ya biashara kisha chagua jina lako.',
+    staffHint: 'Mfanyakazi? Ingia kwa namba ya simu na PIN yako →',
+    staffTab: 'Mfanyakazi',
+    staffTitle: 'Kuingia kwa mfanyakazi',
+    staffSub: 'Tumia namba ya simu aliyohifadhi meneja wako na PIN yako.',
+    staffPhone: 'Namba yako ya simu',
+    staffGo: 'Anza zamu yangu',
+    staffWhich: 'Unafanya kazi sehemu zaidi ya moja. Ipi?',
   },
 };
 
 export function AuthScreen() {
-  const { signIn, signUp, sendReset } = useAuth();
+  const { signIn, signUp, sendReset, signInStaff } = useAuth();
   const [lang, setLang] = useState<'en' | 'sw'>(() => {
     try { return (localStorage.getItem('bermi:lang') as 'en' | 'sw') || 'en'; } catch { return 'en'; }
   });
@@ -102,6 +123,9 @@ export function AuthScreen() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [reveal, setReveal] = useState(false);
+  const [phone, setPhone] = useState(() => { try { return localStorage.getItem('bermi:staff-phone') || ''; } catch { return ''; } });
+  const [pin, setPin] = useState('');
+  const [choices, setChoices] = useState<{ member_id: string; business: string; name: string }[] | null>(null);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
   const [busy, setBusy] = useState(false);
@@ -119,8 +143,24 @@ export function AuthScreen() {
     setNotice('');
   }
 
+  async function staffSubmit(memberId?: string) {
+    setBusy(true);
+    setError('');
+    const r = await signInStaff(phone.trim(), pin, memberId);
+    setBusy(false);
+    if (r.ok) {
+      try { localStorage.setItem('bermi:staff-phone', phone.trim()); } catch { /* convenience only */ }
+      return;
+    }
+    if ('choose' in r) { setChoices(r.choose); return; }
+    setPin('');
+    setError(lang === 'sw' ? STAFF_ERR_SW[r.code || ''] || r.error : r.error);
+    setShake((n) => n + 1);
+  }
+
   async function submit(e: React.FormEvent) {
     e.preventDefault();
+    if (mode === 'staff') { setChoices(null); await staffSubmit(); return; }
     setBusy(true);
     setError('');
     setNotice('');
@@ -211,17 +251,43 @@ export function AuthScreen() {
 
           {/* Keyed on mode so the heading re-enters on every switch. */}
           <div key={mode} className="auth-heading">
-            <h2>{mode === 'login' ? L.welcomeBack : L.createAccount}</h2>
-            <p>{mode === 'login' ? C.loginSub : C.signupSub}</p>
+            <h2>{mode === 'login' ? L.welcomeBack : mode === 'staff' ? C.staffTitle : L.createAccount}</h2>
+            <p>{mode === 'login' ? C.loginSub : mode === 'staff' ? C.staffSub : C.signupSub}</p>
           </div>
 
           <div className="auth-tabs" role="tablist" data-mode={mode}>
             <span className="auth-tabs-pill" />
             <button type="button" role="tab" aria-selected={mode === 'login'} onClick={() => switchMode('login')}>{L.login}</button>
             <button type="button" role="tab" aria-selected={mode === 'signup'} onClick={() => switchMode('signup')}>{L.signup}</button>
+            <button type="button" role="tab" aria-selected={mode === 'staff'} onClick={() => switchMode('staff')}>{C.staffTab}</button>
           </div>
 
           <form onSubmit={submit} className="auth-form" key={`f-${shake}`} data-shake={shake > 0 || undefined}>
+            {mode === 'staff' ? (
+              <>
+                <label className="auth-field">
+                  <Icon name="phone" size={17} className="auth-field-icon" />
+                  <input type="tel" required autoComplete="tel" inputMode="tel" placeholder=" " value={phone} onChange={(e) => setPhone(e.target.value)} />
+                  <span className="auth-float">{C.staffPhone}</span>
+                </label>
+                <label className="auth-field">
+                  <Icon name="lock" size={17} className="auth-field-icon" />
+                  <input type="password" required inputMode="numeric" pattern="[0-9]*" minLength={4} maxLength={8} autoComplete="one-time-code" placeholder=" "
+                    value={pin} onChange={(e) => setPin(e.target.value.replace(/\D/g, '').slice(0, 8))} />
+                  <span className="auth-float">PIN</span>
+                </label>
+                {choices && (
+                  <div className="auth-choices" role="group" aria-label={C.staffWhich}>
+                    <div style={{ fontSize: 12.5, fontWeight: 800, color: 'var(--ink2)' }}>{C.staffWhich}</div>
+                    {choices.map((c) => (
+                      <button key={c.member_id} type="button" className="btn-ghost tap" disabled={busy} onClick={() => void staffSubmit(c.member_id)}>
+                        {c.business} · {c.name}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </>
+            ) : (<>
             <label className="auth-field">
               <Icon name="mail" size={17} className="auth-field-icon" />
               <input
@@ -268,6 +334,7 @@ export function AuthScreen() {
                 <span style={{ color: strengthTone }}>{C.strength[strength]}</span>
               </div>
             )}
+            </>)}
 
             {error && (
               <div className="auth-msg auth-msg-bad" role="alert">
@@ -285,7 +352,7 @@ export function AuthScreen() {
             <button className="auth-submit" type="submit" disabled={busy}>
               {busy ? <span className="auth-spinner" aria-label={L.loading} /> : (
                 <>
-                  <span>{mode === 'login' ? L.login : L.signup}</span>
+                  <span>{mode === 'signup' ? L.signup : mode === 'staff' ? C.staffGo : L.login}</span>
                   <Icon name="right" size={17} />
                 </>
               )}
@@ -298,10 +365,12 @@ export function AuthScreen() {
             )}
           </form>
 
-          <div className="auth-staff">
-            <Icon name="users" size={15} />
-            <span>{C.staffHint}</span>
-          </div>
+          {mode !== 'staff' && (
+            <button type="button" className="auth-staff tap" onClick={() => switchMode('staff')}>
+              <Icon name="users" size={15} />
+              <span>{C.staffHint}</span>
+            </button>
+          )}
 
           <div className="auth-foot">
             <div className="auth-trust"><Icon name="shield" size={13} /> {C.trust}</div>

@@ -26,7 +26,12 @@ export type ObjectTypeName =
   | 'SalonService'
   | 'SalonClient'
   | 'SalonVisit'
-  | 'SalonAppointment';
+  | 'SalonAppointment'
+  | 'ShopProduct'
+  | 'ShopOrder'
+  | 'ShopPromotion'
+  | 'ShopGiftCard'
+  | 'ShopCampaign';
 
 export interface ObjectTypeDef {
   label: string;
@@ -126,6 +131,41 @@ export const OBJECT_TYPES: Record<ObjectTypeName, ObjectTypeDef> = {
     properties: ['channel', 'kind', 'recipient', 'subject', 'status', 'attempts', 'scheduled_for', 'sent_at'],
     links: { Business: 'belongs to' },
   },
+  ShopProduct: {
+    label: 'Shop product',
+    labelSw: 'Bidhaa ya duka',
+    description: 'Something a shop sells, at the counter and online, with its stock on hand.',
+    properties: ['name', 'category', 'price', 'compare_at_price', 'cost', 'sku', 'barcode', 'stock', 'low_stock', 'online', 'featured'],
+    links: { Business: 'belongs to' },
+  },
+  ShopOrder: {
+    label: 'Shop order',
+    labelSw: 'Oda ya duka',
+    description: 'A sale: rung up at the counter, or placed on the online store and fulfilled.',
+    properties: ['number', 'channel', 'customer_name', 'items', 'discount', 'total', 'status', 'payment_method', 'payment_status'],
+    links: { Business: 'belongs to' },
+  },
+  ShopPromotion: {
+    label: 'Promotion',
+    labelSw: 'Ofa',
+    description: 'A promo code or an automatic offer, with how often it was used and what it drove.',
+    properties: ['name', 'code', 'kind', 'value', 'min_spend', 'uses', 'revenue', 'active'],
+    links: { Business: 'belongs to' },
+  },
+  ShopGiftCard: {
+    label: 'Gift card',
+    labelSw: 'Kadi ya zawadi',
+    description: 'Stored value a customer spends later: sold for money, or given away.',
+    properties: ['code', 'initial', 'balance', 'sold', 'expires_at'],
+    links: { Business: 'belongs to' },
+  },
+  ShopCampaign: {
+    label: 'Campaign',
+    labelSw: 'Kampeni',
+    description: 'A bulk SMS to a group of customers, paid for in SMS credits.',
+    properties: ['name', 'audience', 'recipients', 'credits_used'],
+    links: { Business: 'belongs to' },
+  },
   SalonService: {
     label: 'Service',
     labelSw: 'Huduma',
@@ -175,7 +215,15 @@ export type ActionTypeName =
   | 'service.update'
   | 'visit.record'
   | 'appointment.create'
-  | 'appointment.status';
+  | 'appointment.status'
+  | 'product.save'
+  | 'stock.adjust'
+  | 'sale.pos'
+  | 'order.status'
+  | 'promo.save'
+  | 'gift.issue'
+  | 'campaign.send'
+  | 'payout.request';
 
 /*
   There is no delete verb, and that is deliberate.
@@ -213,4 +261,12 @@ export const ACTION_TYPES: Record<ActionTypeName, ActionTypeDef> = {
   'visit.record': { labelSw: 'Rekodi ziara', label: 'Record visit', objectType: 'SalonVisit' },
   'appointment.create': { labelSw: 'Weka miadi', label: 'Book appointment', objectType: 'SalonAppointment' },
   'appointment.status': { labelSw: 'Badilisha hali ya miadi', label: 'Update appointment', objectType: 'SalonAppointment' },
+  'product.save': { labelSw: 'Hifadhi bidhaa', label: 'Save product', objectType: 'ShopProduct' },
+  'stock.adjust': { labelSw: 'Rekebisha stoo', label: 'Adjust stock', objectType: 'ShopProduct' },
+  'sale.pos': { labelSw: 'Uza kaunta', label: 'Counter sale', objectType: 'ShopOrder' },
+  'order.status': { labelSw: 'Badilisha hali ya oda', label: 'Update order', objectType: 'ShopOrder' },
+  'promo.save': { labelSw: 'Hifadhi ofa', label: 'Save promotion', objectType: 'ShopPromotion' },
+  'gift.issue': { labelSw: 'Toa kadi ya zawadi', label: 'Issue gift card', objectType: 'ShopGiftCard' },
+  'campaign.send': { labelSw: 'Tuma kampeni', label: 'Send campaign', objectType: 'ShopCampaign' },
+  'payout.request': { labelSw: 'Omba malipo', label: 'Request payout', objectType: 'Business' },
 };

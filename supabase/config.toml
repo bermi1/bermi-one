@@ -21,3 +21,8 @@ verify_jwt = false
 # Shop customers have no session: an order's secret token is the authority for
 # paying it, and SMS purchases check the owner's JWT inside the function.
 verify_jwt = false
+
+[functions.staff-login]
+# The person signing in has no session yet. Phone and PIN are checked inside,
+# with a lockout that grows on repeated failure.
+verify_jwt = false

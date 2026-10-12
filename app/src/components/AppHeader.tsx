@@ -11,7 +11,7 @@ import { InstallPill } from './InstallPill';
 
 export function AppHeader() {
   const { L, lang, theme, owner } = useSettings();
-  const { activeBusiness, setTheme, activeStaff } = useData();
+  const { activeBusiness, setTheme, activeStaff, staffAccount } = useData();
   const [switching, setSwitching] = useState(false);
   const [roleOpen, setRoleOpen] = useState(false);
   const barRef = useRef<HTMLDivElement>(null);
@@ -21,7 +21,7 @@ export function AppHeader() {
   return (
     <>
       <div ref={barRef} className="top-bar" data-scrolled={scrolled || undefined}>
-        <div className="row tap" style={{ gap: 10, minWidth: 0 }} onClick={() => setSwitching(true)}>
+        <div className="row tap" style={{ gap: 10, minWidth: 0 }} onClick={() => (staffAccount ? setRoleOpen(true) : setSwitching(true))}>
           {/* The business's own type icon once there is a business; the Bermi
               mark before that, so the app is never wearing a placeholder. */}
           {meta ? (
@@ -37,7 +37,7 @@ export function AppHeader() {
             </div>
             <div style={{ fontSize: 11.5, color: 'var(--ink3)', fontWeight: 700, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{activeBusiness ? typeName(activeBusiness.type, lang) : L.tagline}</div>
           </div>
-          <Icon name="down" size={14} style={{ color: 'var(--ink3)', flexShrink: 0 }} />
+          {!staffAccount && <Icon name="down" size={14} style={{ color: 'var(--ink3)', flexShrink: 0 }} />}
         </div>
         <div className="row" style={{ gap: 6, flexShrink: 0 }}>
           <InstallPill />

@@ -68,7 +68,11 @@ self.addEventListener('fetch', (event) => {
     caches.match(request).then((hit) => {
       if (hit) return hit;
       return fetch(request).then((res) => {
-        if (res.ok && (url.pathname.startsWith('/assets/') || url.pathname.startsWith('/icons/'))) {
+        // Never keep an HTML page under a script's name: a host that answers a
+        // missing file with index.html would otherwise pin that page in place of
+        // the code, and the screen would stay white until the cache was cleared.
+        const isHtml = (res.headers.get('content-type') || '').includes('text/html');
+        if (res.ok && !isHtml && (url.pathname.startsWith('/assets/') || url.pathname.startsWith('/icons/'))) {
           const copy = res.clone();
           void caches.open(VERSION).then((c) => c.put(request, copy));
         }

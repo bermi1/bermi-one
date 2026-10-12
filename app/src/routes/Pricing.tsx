@@ -11,6 +11,7 @@ import { PERIODS, checkPayment, isValidPhone, latestPayment, periodUsd, startPay
 import { useAuth } from '../state/AuthContext';
 import { COUNTRIES } from '../lib/countries';
 import { isNative } from '../lib/native';
+import { TestSms } from '../components/TestSms';
 
 /**
  * Plans, and the way to actually buy one.
@@ -209,9 +210,7 @@ export function Pricing() {
         <div style={{ marginTop: 12, fontSize: 11.5, color: 'var(--ink3)', textAlign: 'center', lineHeight: 1.5 }}>{note}</div>
       )}
 
-      {activeBusiness && currentPlan.limits.smsAlerts && (
-        <AutomationPanel />
-      )}
+      {activeBusiness && currentPlan.limits.smsAlerts && AutomationPanel()}
 
       <div className="card" style={{ marginTop: 16, padding: 16 }}>
         <div style={{ fontSize: 13, fontWeight: 800, marginBottom: 8 }}>
@@ -291,6 +290,7 @@ export function Pricing() {
           onBlur={(e) => { const v = e.target.value.trim(); if (v !== (activeBusiness.alerts_phone || '')) void updateBusiness({ alerts_phone: v || null }); }}
           style={{ width: '100%', marginTop: 12 }}
         />
+        <TestSms businessId={activeBusiness.id} phone={activeBusiness.alerts_phone} sw={lang === 'sw'} />
         <input
           className="field"
           inputMode="email"

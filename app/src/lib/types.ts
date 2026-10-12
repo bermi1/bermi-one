@@ -62,6 +62,30 @@ export interface BusinessSettings {
   staff_discount?: boolean;
   tz?: string;
   public_phone?: string;
+  /** Shop module: the online store, delivery, manual payment and loyalty. */
+  shop?: ShopSettings;
+}
+
+export interface DeliveryArea { name: string; fee: number }
+
+export interface ShopSettings {
+  tagline?: string;
+  about?: string;
+  logo?: string;
+  banner?: string;
+  color?: string;
+  phone?: string;
+  whatsapp?: string;
+  instagram?: string;
+  pickup?: boolean;
+  delivery?: boolean;
+  cod?: boolean;
+  payme?: boolean;
+  till?: string;
+  till_name?: string;
+  delivery_areas?: DeliveryArea[];
+  loyalty?: { earn_per_1000?: number; point_value?: number };
+  payout_phone?: string;
 }
 
 export interface Product {
@@ -193,10 +217,12 @@ export const BUSINESS_TYPES = [
     desc: 'Nightly stock count, cash and profit', descSw: 'Hesabu ya stoo kila usiku, fedha na faida' },
   { id: 'barber', name: 'Barbershop & salon', nameSw: 'Kinyozi na saluni', icon: 'scissors', live: true,
     desc: 'Services, barbers, clients and payouts', descSw: 'Huduma, vinyozi, wateja na malipo' },
+  // Shop module: built in parts, switched on when its screens ship.
+  { id: 'retail', name: 'Shop & online store', nameSw: 'Duka na duka la mtandaoni', icon: 'store', live: false,
+    desc: 'POS, stock, online store, offers and gift cards', descSw: 'POS, stoo, duka la mtandaoni, ofa na kadi za zawadi' },
   { id: 'rest', name: 'Restaurant', nameSw: 'Mgahawa', icon: 'fork', live: false, desc: '', descSw: '' },
   { id: 'pharm', name: 'Pharmacy', nameSw: 'Famasia', icon: 'pill', live: false, desc: '', descSw: '' },
   { id: 'groc', name: 'Grocery', nameSw: 'Duka la vyakula', icon: 'cart', live: false, desc: '', descSw: '' },
-  { id: 'retail', name: 'Retail shop', nameSw: 'Duka', icon: 'store', live: false, desc: '', descSw: '' },
   { id: 'whole', name: 'Wholesale', nameSw: 'Jumla', icon: 'truck', live: false, desc: '', descSw: '' },
   { id: 'serv', name: 'Services', nameSw: 'Huduma', icon: 'tool', live: false, desc: '', descSw: '' },
   { id: 'hotel', name: 'Hotel', nameSw: 'Hoteli', icon: 'bed', live: false, desc: '', descSw: '' },
