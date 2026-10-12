@@ -21,6 +21,7 @@ import { Icon } from './lib/icons';
 import { StaffSignIn } from './components/StaffAccess';
 import { loadScreen, preloadAll } from './lib/routeChunks';
 import { ScreenBoundary } from './components/ScreenBoundary';
+import { ScrollManager } from './components/ScrollManager';
 import { clockSkewMs, jwtTrouble, loadErrorKind } from './lib/supabase';
 
 /*
@@ -289,6 +290,7 @@ function AppRoutes() {
   return (
     <div className="app-shell">
       <ThemeRoot />
+      <ScrollManager />
       <Sidebar />
       <div className="app-main">
         <ScreenBoundary resetKey={location.pathname} sw={profile?.lang === 'sw'}>
