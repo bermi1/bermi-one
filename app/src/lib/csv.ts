@@ -248,3 +248,28 @@ export function buildRows(rows: string[][], columnMap: FieldKey[]): { rows: Pars
 
   return { rows: out, errors };
 }
+
+/** Spreadsheet files Bermi reads besides plain CSV/TSV text. */
+export function isExcelFile(file: File) {
+  return /\.(xlsx|xlsm)$/i.test(file.name)
+    || file.type === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+}
+
+/**
+ * An Excel workbook's first sheet, as CSV text — so it goes through exactly
+ * the same column guessing and matching as a pasted or uploaded CSV. The
+ * reader is fetched only when someone actually picks an Excel file.
+ */
+export async function excelToCsv(file: File): Promise<string> {
+  const { readSheet } = await import('read-excel-file/browser');
+  const rows = await readSheet(file);
+  const cell = (v: unknown) => {
+    if (v === null || v === undefined) return '';
+    const s = v instanceof Date ? v.toISOString().slice(0, 10) : String(v);
+    return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+  };
+  return rows
+    .map((r) => r.map(cell).join(','))
+    .filter((line) => line.replace(/,/g, '').trim() !== '')
+    .join('\n');
+}

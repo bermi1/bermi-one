@@ -8,7 +8,7 @@ import { useData } from '../state/DataContext';
 import { useToast } from '../state/ToastContext';
 import { currentQty, groupByCategory, stockValueOf } from '../lib/calc';
 import { tintVars, type Product } from '../lib/types';
-import { parseTable, buildRows, FIELD_LABELS, type FieldKey, type ParsedTable } from '../lib/csv';
+import { parseTable, buildRows, FIELD_LABELS, excelToCsv, isExcelFile, type FieldKey, type ParsedTable } from '../lib/csv';
 import { SessionHistory } from '../components/SessionHistory';
 import { ReceiveStock } from '../components/ReceiveStock';
 
@@ -147,14 +147,25 @@ export function Stock() {
     setBulkOpen(true);
   }
 
-  function onFilePicked(e: React.ChangeEvent<HTMLInputElement>) {
+  async function onFilePicked(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
+    e.target.value = '';
     if (!file) return;
     setBulkFileName(file.name);
-    const reader = new FileReader();
-    reader.onload = () => applyBulkText(String(reader.result || ''));
-    reader.readAsText(file);
-    e.target.value = '';
+    // Old-format Excel (.xls) cannot be read in the browser; say how to fix it.
+    if (/\.xls$/i.test(file.name)) {
+      flash(lang === 'sw' ? 'Hifadhi faili kama .xlsx au .csv kisha upakie tena' : 'Save the file as .xlsx or .csv, then upload it again');
+      return;
+    }
+    if (isExcelFile(file)) {
+      try {
+        applyBulkText(await excelToCsv(file));
+      } catch {
+        flash(lang === 'sw' ? 'Faili hili la Excel halikusomeka' : 'That Excel file could not be read');
+      }
+      return;
+    }
+    applyBulkText(await file.text());
   }
 
   /**
@@ -548,7 +559,7 @@ export function Stock() {
       </div>
       </>
       )}
-      <input ref={fileInputRef} type="file" accept=".csv,.txt" style={{ display: 'none' }} onChange={onFilePicked} />
+      <input ref={fileInputRef} type="file" accept=".csv,.txt,.tsv,.xlsx,.xlsm,.xls,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" style={{ display: 'none' }} onChange={onFilePicked} />
 
       <Sheet open={!!confirmDelete} onClose={() => setConfirmDelete(null)} title={L.deleteProduct} sub={confirmDelete?.name}>
         {confirmDelete && (
