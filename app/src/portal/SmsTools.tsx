@@ -57,7 +57,7 @@ export function SmsTools() {
       <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
         <span className="hq-dot" style={{ background: on ? 'var(--ok)' : 'var(--bad)' }} />
         <div style={{ flex: 1 }}>
-          <div style={{ fontWeight: 800 }}>{sw ? 'SMS (Textify)' : 'SMS (Textify)'}</div>
+          <div style={{ fontWeight: 800 }}>SMS (BRIQ)</div>
           <div style={{ fontSize: 12.5, color: 'var(--ink2)' }}>
             {!o ? '…' : on ? (sw ? 'Imewashwa — ujumbe unatumwa.' : 'On — messages are going out.')
               : (sw ? 'Imezimwa — hakuna ufunguo wa SMS. Ujumbe unasubiri kwenye foleni.' : 'Off — no SMS key. Messages wait in the queue until one is saved.')}
@@ -77,9 +77,9 @@ export function SmsTools() {
       )}
 
       <div style={{ display: 'grid', gap: 8, marginTop: 12 }}>
-        <input className="hq-input" type="password" autoComplete="off" placeholder={o?.key_saved ? (sw ? 'Ufunguo umehifadhiwa — weka mpya kubadilisha' : 'Key saved — paste a new one to replace it') : (sw ? 'Ufunguo wa API wa Textify' : 'Textify API key')} value={key} onChange={(e) => setKey(e.target.value)} />
-        <input className="hq-input" placeholder={o?.url || 'https://api.textify.africa/v1/send'} value={url} onChange={(e) => setUrl(e.target.value)} />
-        <input className="hq-input" maxLength={11} placeholder={`${sw ? 'Jina la mtumaji' : 'Sender name'} (${o?.sender || 'BERMI'})`} value={sender} onChange={(e) => setSender(e.target.value)} />
+        <input className="hq-input" type="password" autoComplete="off" placeholder={o?.key_saved ? (sw ? 'Ufunguo umehifadhiwa — weka mpya kubadilisha' : 'Key saved — paste a new one to replace it') : (sw ? 'Ufunguo wa API wa BRIQ' : 'BRIQ API key')} value={key} onChange={(e) => setKey(e.target.value)} />
+        <input className="hq-input" placeholder={o?.url || 'https://karibu.briq.tz/v1/message/send-instant'} value={url} onChange={(e) => setUrl(e.target.value)} />
+        <input className="hq-input" maxLength={11} placeholder={`${sw ? 'Jina la mtumaji' : 'Sender name'} (${o?.sender || 'Bermi Techs'})`} value={sender} onChange={(e) => setSender(e.target.value)} />
         <button className="hq-nav-item" style={{ justifyContent: 'center', background: 'var(--brand)', color: 'var(--brandInk)', fontWeight: 800 }} disabled={busy || (!key.trim() && !url.trim() && !sender.trim())} onClick={() => void save()}>
           <Icon name="check" size={14} /> {busy ? '…' : (sw ? 'Hifadhi' : 'Save')}
         </button>

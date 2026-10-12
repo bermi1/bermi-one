@@ -1,7 +1,7 @@
 // The notification worker.
 //
 // Drains the `notifications` outbox and sends what is queued: SMS through
-// Textify, email through Resend. It is a worker rather than an inline send for
+// BRIQ (karibu.briq.tz), email through Resend. It is a worker rather than an inline send for
 // one reason that matters — a bar's closing must never fail because an SMS
 // gateway is slow, and a message that fails must stay visible and retryable
 // instead of disappearing into a log line.
@@ -15,18 +15,18 @@
 import { createClient } from 'jsr:@supabase/supabase-js@2';
 
 const WORKER_KEY = Deno.env.get('NOTIFY_WORKER_KEY') ?? '';
-// The SMS provider: the function environment first, then Vault (set from the
-// HQ console, like Payme's credentials). Read per run, so a key saved in HQ
-// starts working within a minute without a redeploy.
-let TEXTIFY_KEY = '';
-let TEXTIFY_URL = '';
-let TEXTIFY_SENDER = '';
+// The SMS provider (BRIQ): the function environment first, then Vault (set
+// from the HQ console). Read per run, so a key saved in HQ starts working
+// within a minute without a redeploy.
+let SMS_KEY = '';
+let SMS_URL = '';
+let SMS_SENDER = '';
 async function loadSmsConfig() {
   const { data } = await admin.rpc('sms_config');
   const v = (data ?? {}) as { api_key?: string | null; url?: string | null; sender?: string | null };
-  TEXTIFY_KEY = Deno.env.get('TEXTIFY_API_KEY') || v.api_key || '';
-  TEXTIFY_URL = Deno.env.get('TEXTIFY_URL') || v.url || 'https://api.textify.africa/v1/send';
-  TEXTIFY_SENDER = Deno.env.get('TEXTIFY_SENDER_ID') || v.sender || 'BERMI';
+  SMS_KEY = Deno.env.get('SMS_API_KEY') || v.api_key || '';
+  SMS_URL = Deno.env.get('SMS_URL') || v.url || 'https://karibu.briq.tz/v1/message/send-instant';
+  SMS_SENDER = Deno.env.get('SMS_SENDER_ID') || v.sender || 'BRIQ';
 }
 const RESEND_KEY = Deno.env.get('RESEND_API_KEY') ?? '';
 const MAIL_FROM = Deno.env.get('MAIL_FROM') ?? 'Bermi One <noreply@bermi.one>';
@@ -49,32 +49,31 @@ function msisdn(input: string): string {
   return digits;
 }
 
+/*
+  BRIQ: POST /v1/message/send-instant with X-API-Key; body { content,
+  recipients: ["2557…"], sender_id }. It answers { success, data, errors:
+  [{ code, message }] } — a 200 is only a send when success is true, and a
+  refusal names its reason, which is kept on the row for the owner to see.
+*/
 async function sendSms(to: string, body: string): Promise<{ ok: boolean; id?: string; message?: string }> {
-  if (!TEXTIFY_KEY) return { ok: false, message: 'TEXTIFY_API_KEY is not set' };
+  if (!SMS_KEY) return { ok: false, message: 'SMS API key is not set' };
 
-  const res = await fetch(TEXTIFY_URL, {
+  const res = await fetch(SMS_URL, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${TEXTIFY_KEY}`,
-    },
-    body: JSON.stringify({
-      sender_id: TEXTIFY_SENDER,
-      to: msisdn(to),
-      message: body,
-    }),
+    headers: { 'Content-Type': 'application/json', 'X-API-Key': SMS_KEY },
+    body: JSON.stringify({ content: body, recipients: [msisdn(to)], sender_id: SMS_SENDER }),
   });
 
   const text = await res.text();
-  let parsed: Record<string, unknown> = {};
+  let parsed: { success?: boolean; data?: Record<string, unknown> | null; errors?: { code?: string; message?: string }[]; detail?: string; message?: string } = {};
   try { parsed = text ? JSON.parse(text) : {}; } catch { /* keep the raw text below */ }
 
-  if (!res.ok) return { ok: false, message: `${res.status} ${text.slice(0, 200)}` };
-  return {
-    ok: true,
-    id: String(parsed.id ?? parsed.message_id ?? parsed.reference ?? ''),
-    message: String(parsed.status ?? parsed.message ?? 'sent'),
-  };
+  if (!res.ok || parsed.success === false) {
+    const why = parsed.errors?.map((e) => e.message || e.code).filter(Boolean).join('; ') || parsed.detail || parsed.message || text.slice(0, 200);
+    return { ok: false, message: `${res.status} ${why}`.slice(0, 300) };
+  }
+  const d = (parsed.data ?? {}) as Record<string, unknown>;
+  return { ok: true, id: String(d.id ?? d.message_id ?? d.reference ?? ''), message: String(d.status ?? 'sent') };
 }
 
 async function sendEmail(to: string, subject: string, body: string): Promise<{ ok: boolean; id?: string; message?: string }> {
@@ -123,7 +122,7 @@ Deno.serve(async (req) => {
 
   await loadSmsConfig();
   // What can go out right now, for the app to show ("SMS is not set up yet") instead of silence.
-  await admin.from('platform_config').upsert({ key: 'notify_status', value: { sms: !!TEXTIFY_KEY, email: !!RESEND_KEY, checked_at: new Date().toISOString() } });
+  await admin.from('platform_config').upsert({ key: 'notify_status', value: { sms: !!SMS_KEY, email: !!RESEND_KEY, checked_at: new Date().toISOString() } });
 
   // Queue whatever periodic reports are due before draining. One schedule runs
   // the whole thing: the database decides what is due (and stamps it so a
@@ -142,7 +141,7 @@ Deno.serve(async (req) => {
     .eq('status', 'queued')
     // Only channels this worker can deliver. A campaign queued before the SMS
     // key is set waits for it, rather than burning its retries and failing.
-    .in('channel', [...(TEXTIFY_KEY ? ['sms'] : []), ...(RESEND_KEY ? ['email'] : [])])
+    .in('channel', [...(SMS_KEY ? ['sms'] : []), ...(RESEND_KEY ? ['email'] : [])])
     .lte('scheduled_for', new Date().toISOString())
     .order('created_at', { ascending: true })
     .limit(BATCH);
@@ -172,7 +171,7 @@ Deno.serve(async (req) => {
       await admin.from('notifications').update({
         status: 'sent',
         attempts,
-        provider: n.channel === 'sms' ? 'textify' : 'resend',
+        provider: n.channel === 'sms' ? 'briq' : 'resend',
         provider_id: result.id ?? null,
         provider_message: result.message ?? null,
         sent_at: new Date().toISOString(),
@@ -186,7 +185,7 @@ Deno.serve(async (req) => {
       await admin.from('notifications').update({
         status: giveUp ? 'failed' : 'queued',
         attempts,
-        provider: n.channel === 'sms' ? 'textify' : 'resend',
+        provider: n.channel === 'sms' ? 'briq' : 'resend',
         provider_message: result.message ?? 'send failed',
         scheduled_for: giveUp
           ? n.scheduled_for
