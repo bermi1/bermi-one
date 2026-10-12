@@ -194,7 +194,7 @@ export function Reports() {
                 {[
                   { label: L.totalSales, value: fmt0(totals.sales), color: 'var(--ok)' },
                   { label: L.totalProfit, value: fmt0(totals.profit), color: 'var(--warn)' },
-                  { label: L.cashPlusMobile, value: fmt0(totals.cash + totals.mobile), color: 'var(--brand)' },
+                  { label: L.cashPlusMobile, value: fmt0(totals.cash + totals.mobile + totals.bankIn), color: 'var(--brand)' },
                   { label: L.amountBanked, value: fmt0(totals.banked), color: 'var(--vio)' },
                 ].map((k) => (
                   <div key={k.label} className="card" style={{ padding: 14 }}>
@@ -249,13 +249,16 @@ export function Reports() {
                 <div style={{ fontSize: 12, fontWeight: 800, marginBottom: 10, textTransform: 'uppercase', letterSpacing: 0.4, color: 'var(--ink2)' }}>{L.incomeStatement}</div>
                 {[
                   { k: L.totalSales, v: fmt0(totals.sales) },
+                  { k: L.totalProfit, v: fmt0(totals.profit), c: 'var(--ok)' },
+                  { k: L.cashPlusMobile, v: fmt0(totals.cash + totals.mobile + totals.bankIn) },
                   { k: L.sessionExpenses, v: fmt0(totals.sessionExpenses) },
                   { k: L.purchases, v: fmt0(totals.sessionPurchases) },
                   { k: L.otherExpenses, v: fmt0(totals.otherExpenses) },
                   ...(totals.staffDebts > 0 ? [{ k: L.staffDebtOutstanding, v: fmt(totals.staffDebts), c: 'var(--warn)' }] : []),
                   { k: L.losses, v: fmt0(totals.losses), c: totals.losses > 0 ? 'var(--bad)' : undefined },
-                  { k: L.totalProfit, v: fmt0(totals.profit), c: 'var(--ok)', big: true },
-                  ...(Math.round(totals.balance) !== 0 ? [{ k: L.balanceDifference, v: fmt(totals.balance), c: 'var(--bad)' }] : []),
+                  ...(Math.round(totals.balance) !== 0
+                    ? [{ k: L.balanceDifference, v: `${totals.balance > 0 ? L.shortWord : L.overWord} ${fmt(Math.abs(totals.balance))}`, c: totals.balance > 0 ? 'var(--bad)' : 'var(--warn)', big: true }]
+                    : [{ k: L.balanceDifference, v: L.balancedWord, c: 'var(--ok)', big: true }]),
                 ].map((r, i) => (
                   <div key={r.k} style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0', fontSize: r.big ? 15 : 13.5, borderTop: i > 0 ? '1px solid var(--line)' : 'none' }}>
                     <span style={{ color: 'var(--ink2)', fontWeight: r.big ? 800 : 600 }}>{r.k}</span>

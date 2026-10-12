@@ -9,9 +9,9 @@ import type { Lang } from './types';
 const T = {
   en: {
     title: 'Financial report', period: 'Period', summary: 'Executive summary',
-    sales: 'Total sales', profit: 'Total profit', cashMobile: 'Cash & mobile', sessionExp: 'Session expenses',
+    sales: 'Total sales', profit: 'Total profit', cashMobile: 'Collected (cash, mobile, bank)', bankIn: 'Bank', short: 'Short', over: 'Over', sessionExp: 'Session expenses',
     purchases: 'Purchases', otherExp: 'Other expenses', staffDebts: 'Staff debts', losses: 'Losses',
-    banked: 'Amount banked', balance: 'Balance difference',
+    banked: 'Amount banked', balance: 'Short / over',
     daily: 'Daily breakdown', date: 'Date', cash: 'Cash', mobile: 'Mobile', sExp: 'S.Exp', sPur: 'S.Purch',
     oExp: 'O.Exp', sDebt: 'S.Debt', total: 'TOTAL',
     lossesTable: 'Losses & damages', topExpenses: 'Top expenses', description: 'Description', amount: 'Amount',
@@ -20,7 +20,7 @@ const T = {
   },
   sw: {
     title: 'Ripoti ya fedha', period: 'Kipindi', summary: 'Muhtasari',
-    sales: 'Jumla ya mauzo', profit: 'Jumla ya faida', cashMobile: 'Taslimu na simu', sessionExp: 'Matumizi ya siku',
+    sales: 'Jumla ya mauzo', profit: 'Jumla ya faida', cashMobile: 'Zilizokusanywa (taslimu, simu, benki)', bankIn: 'Benki', short: 'Pungufu', over: 'Ziada', sessionExp: 'Matumizi ya siku',
     purchases: 'Manunuzi', otherExp: 'Matumizi mengine', staffDebts: 'Madeni ya wafanyakazi', losses: 'Hasara',
     banked: 'Zilizopelekwa benki', balance: 'Tofauti',
     daily: 'Uchambuzi wa kila siku', date: 'Tarehe', cash: 'Taslimu', mobile: 'Simu', sExp: 'Mat.', sPur: 'Man.',
@@ -41,18 +41,20 @@ export function buildComprehensiveReportHtml(data: ReportData, lang: Lang): stri
   const { totals, days } = data;
   const showDebts = totals.staffDebts > 0;
   const showBalance = Math.round(totals.balance) !== 0;
+  // Positive balance: sales the money does not cover (short). Negative: more money than sales (over).
+  const shortOver = (n: number) => (Math.round(n) === 0 ? '—' : `${n > 0 ? L.short : L.over} ${money(Math.abs(n))}`);
 
   const summaryCells: [string, string, string?][] = [
     [L.sales, money0(totals.sales)],
     [L.profit, money0(totals.profit), 'ok'],
-    [L.cashMobile, money0(totals.cash + totals.mobile)],
+    [L.cashMobile, money0(totals.cash + totals.mobile + totals.bankIn)],
     [L.sessionExp, money0(totals.sessionExpenses)],
     [L.purchases, money0(totals.sessionPurchases)],
     [L.otherExp, money0(totals.otherExpenses)],
     ...(showDebts ? ([[L.staffDebts, money0(totals.staffDebts), 'warn']] as [string, string, string?][]) : []),
     [L.losses, money0(totals.losses), totals.losses > 0 ? 'bad' : undefined],
     [L.banked, money0(totals.banked), 'brand'],
-    ...(showBalance ? ([[L.balance, money0(totals.balance), 'bad']] as [string, string, string?][]) : []),
+    ...(showBalance ? ([[L.balance, shortOver(totals.balance), 'bad']] as [string, string, string?][]) : []),
   ];
 
   const dayRows = days
@@ -62,13 +64,14 @@ export function buildComprehensiveReportHtml(data: ReportData, lang: Lang): stri
       <td class="n ok">${money0(d.profit)}</td>
       <td class="n">${money0(d.cash)}</td>
       <td class="n">${money0(d.mobile)}</td>
+      <td class="n">${money0(d.bankIn)}</td>
       <td class="n">${money0(d.sessionExpenses)}</td>
       <td class="n">${money0(d.sessionPurchases)}</td>
       <td class="n">${money0(d.otherExpenses)}</td>
       ${showDebts ? `<td class="n">${money0(d.staffDebts)}</td>` : ''}
       <td class="n">${money0(d.losses)}</td>
       <td class="n brand">${money0(d.banked)}</td>
-      ${showBalance ? `<td class="n ${Math.round(d.balance) === 0 ? 'ok' : 'bad'}">${money0(d.balance)}</td>` : ''}
+      ${showBalance ? `<td class="n ${Math.round(d.balance) === 0 ? 'ok' : 'bad'}">${shortOver(d.balance)}</td>` : ''}
     </tr>`)
     .join('');
 
@@ -78,13 +81,14 @@ export function buildComprehensiveReportHtml(data: ReportData, lang: Lang): stri
     <td class="n">${money0(totals.profit)}</td>
     <td class="n">${money0(totals.cash)}</td>
     <td class="n">${money0(totals.mobile)}</td>
+    <td class="n">${money0(totals.bankIn)}</td>
     <td class="n">${money0(totals.sessionExpenses)}</td>
     <td class="n">${money0(totals.sessionPurchases)}</td>
     <td class="n">${money0(totals.otherExpenses)}</td>
     ${showDebts ? `<td class="n">${money0(totals.staffDebts)}</td>` : ''}
     <td class="n">${money0(totals.losses)}</td>
     <td class="n">${money0(totals.banked)}</td>
-    ${showBalance ? `<td class="n">${money0(totals.balance)}</td>` : ''}
+    ${showBalance ? `<td class="n">${shortOver(totals.balance)}</td>` : ''}
   </tr>`;
 
   const breakdownTable = (title: string, rows: { label: string; amount: number }[]) =>
@@ -133,7 +137,7 @@ export function buildComprehensiveReportHtml(data: ReportData, lang: Lang): stri
   <table>
     <thead>
       <tr>
-        <th>${L.date}</th><th class="n">${L.sales}</th><th class="n">${L.profit}</th><th class="n">${L.cash}</th><th class="n">${L.mobile}</th>
+        <th>${L.date}</th><th class="n">${L.sales}</th><th class="n">${L.profit}</th><th class="n">${L.cash}</th><th class="n">${L.mobile}</th><th class="n">${L.bankIn}</th>
         <th class="n">${L.sExp}</th><th class="n">${L.sPur}</th><th class="n">${L.oExp}</th>${showDebts ? `<th class="n">${L.sDebt}</th>` : ''}
         <th class="n">${L.losses}</th><th class="n">${L.banked}</th>${showBalance ? `<th class="n">${L.balance}</th>` : ''}
       </tr>
@@ -162,6 +166,7 @@ export function buildWhatsappSummary(data: ReportData, lang: Lang, money: (n: nu
   const { totals } = data;
   const h = highlightsOf(data);
   const names = data.businesses.map((b) => b.name).join(', ');
+  const shortOver = (n: number) => `${n > 0 ? L.short : L.over} ${money(Math.abs(n))}`;
   const out: string[] = [];
 
   out.push(`*${names}*`);
@@ -172,13 +177,14 @@ export function buildWhatsappSummary(data: ReportData, lang: Lang, money: (n: nu
   out.push(`${L.profit}: ${money(totals.profit)}`);
   out.push(`${L.cash}: ${money(totals.cash)}`);
   out.push(`${L.mobile}: ${money(totals.mobile)}`);
+  if (totals.bankIn) out.push(`${L.bankIn}: ${money(totals.bankIn)}`);
   out.push(`${L.sessionExp}: ${money(totals.sessionExpenses)}`);
   out.push(`${L.purchases}: ${money(totals.sessionPurchases)}`);
   out.push(`${L.otherExp}: ${money(totals.otherExpenses)}`);
   if (totals.staffDebts > 0) out.push(`${L.staffDebts}: ${money(totals.staffDebts)}`);
   out.push(`${L.losses}: ${money(totals.losses)}`);
   out.push(`${L.banked}: ${money(totals.banked)}`);
-  if (Math.round(totals.balance) !== 0) out.push(`${L.balance}: ${money(totals.balance)}`);
+  if (Math.round(totals.balance) !== 0) out.push(`${L.balance}: ${shortOver(totals.balance)}`);
 
   out.push('');
   out.push(`*${L.highlights}*`);

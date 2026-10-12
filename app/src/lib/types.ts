@@ -141,6 +141,8 @@ export interface LedgerEntry {
   amount: number;
   account: AccountId;
   who_name: string | null;
+  /** Set when the line was copied in from a verified closing. */
+  session_id?: string | null;
   created_at: string;
 }
 

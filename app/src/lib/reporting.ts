@@ -12,6 +12,8 @@ export interface DayRow {
   profit: number;
   cash: number;
   mobile: number;
+  /** Money received straight into the bank at the closing. */
+  bankIn: number;
   banked: number;
   sessionExpenses: number;
   sessionPurchases: number;
@@ -27,6 +29,8 @@ export interface ReportTotals {
   profit: number;
   cash: number;
   mobile: number;
+  /** Money received straight into the bank at the closing. */
+  bankIn: number;
   banked: number;
   sessionExpenses: number;
   sessionPurchases: number;
@@ -52,7 +56,7 @@ export interface ReportData {
 }
 
 const ZERO: ReportTotals = {
-  sales: 0, profit: 0, cash: 0, mobile: 0, banked: 0,
+  sales: 0, profit: 0, cash: 0, mobile: 0, bankIn: 0, banked: 0,
   sessionExpenses: 0, sessionPurchases: 0, otherExpenses: 0, staffDebts: 0, losses: 0, balance: 0,
 };
 
@@ -104,9 +108,12 @@ export function buildReport(input: {
   const byDate = new Map<string, DayRow>();
   const lossTally = new Map<string, number>();
   const expenseTally = new Map<string, number>();
+  // Everything paid out inside a closing (expenses, losses, staff debt), kept
+  // apart from cash-book entries so short / over matches the closing itself.
+  const closingOut = new Map<string, number>();
 
   const blank = (date: string): DayRow => ({
-    date, sales: 0, profit: 0, cash: 0, mobile: 0, banked: 0,
+    date, sales: 0, profit: 0, cash: 0, mobile: 0, bankIn: 0, banked: 0,
     sessionExpenses: 0, sessionPurchases: 0, otherExpenses: 0, staffDebts: 0, losses: 0, balance: 0,
   });
   const row = (date: string): DayRow => {
@@ -128,8 +135,10 @@ export function buildReport(input: {
     r.profit += profit;
     r.cash += Number(s.cash || 0);
     r.mobile += Number(s.mobile || 0);
+    r.bankIn += Number(s.bank_in || 0);
     r.banked += Number(s.amount_to_bank || 0);
     for (const item of s.closing_items || []) {
+      closingOut.set(s.session_date, (closingOut.get(s.session_date) || 0) + Number(item.amount || 0));
       if (item.kind === 'expense') {
         r.sessionExpenses += item.amount;
         const key = item.note?.trim() || 'Expense';
@@ -144,8 +153,12 @@ export function buildReport(input: {
     }
   }
 
-  // Money recorded outside the closing flow, on the same days.
+  // Money recorded outside the closing flow, on the same days. A line carrying
+  // a session_id is the cash-book copy of a closing's own expense or loss,
+  // made when the closing was verified — already counted above from the
+  // closing itself, so counting it again would take it off twice.
   for (const e of ledger) {
+    if (e.session_id) continue;
     const date = e.created_at.slice(0, 10);
     if (date < from || date > to) continue;
     if (e.kind === 'purchase') {
@@ -168,14 +181,15 @@ export function buildReport(input: {
   const days = Array.from(byDate.values()).sort((a, b) => a.date.localeCompare(b.date));
   for (const d of days) {
     /*
-      Balance is what the day's sales did NOT turn into something accounted for.
-      Amount banked is deliberately absent: it is cash that was already counted
-      under `cash`, moved to the bank afterwards. Subtracting both charges the
-      same shillings twice and shows a healthy day as short by exactly whatever
-      was deposited. It stays in the report as its own column, because knowing
-      how much reached the bank matters — it is just not a second outflow.
+      Short / over, exactly as the closing itself works it out: what the stock
+      says was sold, against the money that came in (cash, mobile, bank) and
+      what was paid out of it that night (expenses, losses, staff debt).
+
+      Purchases and expenses entered separately in the cash book are listed in
+      the report but not taken off here — they were not paid out of that
+      night's takings. Amount to bank is cash already counted under cash.
     */
-    d.balance = d.sales - (d.cash + d.mobile + d.sessionExpenses + d.sessionPurchases + d.otherExpenses + d.staffDebts + d.losses);
+    d.balance = d.sales - (d.cash + d.mobile + d.bankIn + (closingOut.get(d.date) || 0));
   }
 
   const totals = days.reduce<ReportTotals>((acc, d) => ({
@@ -183,6 +197,7 @@ export function buildReport(input: {
     profit: acc.profit + d.profit,
     cash: acc.cash + d.cash,
     mobile: acc.mobile + d.mobile,
+    bankIn: acc.bankIn + d.bankIn,
     banked: acc.banked + d.banked,
     sessionExpenses: acc.sessionExpenses + d.sessionExpenses,
     sessionPurchases: acc.sessionPurchases + d.sessionPurchases,

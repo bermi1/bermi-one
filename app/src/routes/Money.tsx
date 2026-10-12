@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { ScreenHeader } from '../components/ScreenHeader';
 import { Sheet } from '../components/Sheet';
+import { ClosingSummary } from '../components/ClosingSummary';
 import { Icon } from '../lib/icons';
 import { useSettings } from '../lib/useSettings';
 import { useData } from '../state/DataContext';
@@ -149,6 +150,8 @@ export function Money() {
           );
         })}
       </div>
+
+      {owner && activeBusiness?.type !== 'barber' && <ClosingSummary businessIds={picked} />}
 
       {owner && (
         <div className="card" style={{ padding: 16, marginBottom: 18 }}>
