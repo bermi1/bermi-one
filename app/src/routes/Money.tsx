@@ -16,7 +16,7 @@ interface Line {
 }
 
 export function Money() {
-  const { L, fmt, fmt0, short, owner, lang } = useSettings();
+  const { L, fmt, fmt0, short, owner, lang, country } = useSettings();
   const { accounts, ledger, businesses, activeBusiness, addLedgerLines, deleteLedgerEntry, fetchBooks, plan } = useData();
   const { flash } = useToast();
 
@@ -34,20 +34,28 @@ export function Money() {
 
 
   const isCombined = picked.length > 1;
+  // The books on screen are the active business's own only when it is the one
+  // picked; any other pick — one business or several — is read for exactly
+  // that pick, so the cards never show one business under another's name.
+  const ownBook = picked.length === 1 && picked[0] === activeId;
+  const pickKey = picked.join(',');
 
   useEffect(() => {
-    if (!isCombined) { setCombined(null); return; }
+    setCombined(null);
+    if (ownBook || picked.length === 0) return;
     let live = true;
     void fetchBooks(picked).then((b) => { if (live) setCombined(b); });
     return () => { live = false; };
-  }, [isCombined, picked, fetchBooks]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ownBook, pickKey, fetchBooks]);
+  const booksLoading = !ownBook && !combined;
 
   function togglePicked(id: string) {
     setPicked((prev) => (prev.includes(id) ? (prev.length === 1 ? prev : prev.filter((x) => x !== id)) : [...prev, id]));
   }
 
-  const bookLedger = isCombined ? combined?.ledger || [] : ledger;
-  const balances: Record<AccountId, number> = isCombined
+  const bookLedger = ownBook ? ledger : combined?.ledger || [];
+  const balances: Record<AccountId, number> = !ownBook
     ? (combined?.accounts || []).reduce(
         (acc, a) => ({ cash: acc.cash + a.cash, mobile: acc.mobile + a.mobile, bank: acc.bank + a.bank }),
         { cash: 0, mobile: 0, bank: 0 },
@@ -141,12 +149,23 @@ export function Money() {
           const tv = tintVars(i);
           const accIcon: Record<AccountId, string> = { cash: 'cash', mobile: 'phone', bank: 'bank' };
           return (
-            <div key={id} className="card" style={{ padding: 14 }}>
-              <div style={{ width: 28, height: 28, borderRadius: 9, background: tv.soft, color: tv.ink, display: 'grid', placeItems: 'center', marginBottom: 8 }}>
-                <Icon name={accIcon[id]} size={13} />
+            <div key={id} className="card" style={{ padding: '12px 10px', minWidth: 0 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}>
+                <div style={{ width: 22, height: 22, borderRadius: 7, background: tv.soft, color: tv.ink, display: 'grid', placeItems: 'center', flexShrink: 0 }}>
+                  <Icon name={accIcon[id]} size={11} />
+                </div>
+                <div style={{ fontSize: 10.5, color: 'var(--ink3)', fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{accountLabel[id]}</div>
               </div>
-              <div style={{ fontSize: 11, color: 'var(--ink3)', fontWeight: 700 }}>{accountLabel[id]}</div>
-              <div style={{ marginTop: 3, fontSize: 14, fontWeight: 800 }}>{balances[id] ? short(balances[id]) : '—'}</div>
+              {/* Currency and the full figure on one line, small enough to fit a phone's third of the width. */}
+              <div style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', fontVariantNumeric: 'tabular-nums' }}>
+                {booksLoading ? <span style={{ fontSize: 12, color: 'var(--ink3)' }}>…</span>
+                  : balances[id] ? (
+                    <>
+                      <span style={{ fontSize: 9.5, fontWeight: 700, color: 'var(--ink3)' }}>{country.sym} </span>
+                      <span style={{ fontSize: 12.5, fontWeight: 800, letterSpacing: -0.2 }}>{Math.round(balances[id] * country.rate).toLocaleString('en-US')}</span>
+                    </>
+                  ) : <span style={{ fontSize: 12.5, fontWeight: 800 }}>—</span>}
+              </div>
             </div>
           );
         })}
@@ -157,8 +176,8 @@ export function Money() {
       {owner && (
         <div className="card" style={{ padding: 16, marginBottom: 18 }}>
           <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 10 }}>
-            <div style={{ fontSize: 13, fontWeight: 800 }}>{isCombined ? L.combinedBooks : L.cashBook}</div>
-            <div style={{ fontSize: 12, color: 'var(--ink3)', fontWeight: 700 }}>{L.totalHeld} {fmt0(held)}</div>
+            <div style={{ fontSize: 13, fontWeight: 800 }}>{isCombined ? L.combinedBooks : ownBook ? L.cashBook : `${L.cashBook} · ${bizName.get(picked[0]) || ''}`}</div>
+            <div style={{ fontSize: 12, color: 'var(--ink3)', fontWeight: 700 }}>{L.totalHeld} {booksLoading ? '…' : fmt0(held)}</div>
           </div>
           <div style={{ fontSize: 11.5, color: 'var(--ink3)', fontWeight: 600, lineHeight: 1.45, marginTop: -4, marginBottom: 8 }}>
             {lang === 'sw'
@@ -181,7 +200,7 @@ export function Money() {
               <span style={{ fontWeight: r.sub ? 700 : 800, color: r.color || (r.sub ? 'var(--ink2)' : 'var(--ink)') }}>{r.value}</span>
             </div>
           ))}
-          {isCombined && activeBusiness && (
+          {!ownBook && activeBusiness && (
             <div style={{ marginTop: 10, paddingTop: 10, borderTop: '1px solid var(--line)', fontSize: 11.5, color: 'var(--ink3)', fontWeight: 600 }}>
               {L.recordsInto} {activeBusiness.name}.
             </div>
@@ -210,13 +229,13 @@ export function Money() {
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ fontSize: 13, fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{e.label}</div>
                 <div style={{ fontSize: 11, color: 'var(--ink3)', fontWeight: 600 }}>
-                  {new Date(e.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} · {accountLabel[e.account]}{isCombined ? ` · ${bizName.get(e.business_id) || ''}` : ''}{e.who_name ? ` · ${e.who_name}` : ''}
+                  {new Date(e.created_at).toLocaleDateString(lang === 'sw' ? 'sw-TZ' : 'en-GB', { day: 'numeric', month: 'short' })} · {accountLabel[e.account]}{!ownBook ? ` · ${bizName.get(e.business_id) || ''}` : ''}{e.who_name ? ` · ${e.who_name}` : ''}
                 </div>
               </div>
               <div style={{ fontSize: 13, fontWeight: 800, color: e.amount > 0 ? 'var(--ok)' : e.amount < 0 ? 'var(--ink)' : 'var(--ink3)' }}>
                 {e.amount === 0 ? '—' : (e.amount > 0 ? '+' : '−') + short(e.amount)}
               </div>
-              {!isCombined && (
+              {ownBook && (
                 <button
                   className="icon-btn tap"
                   style={{ width: 28, height: 28, flexShrink: 0, color: 'var(--ink3)' }}
