@@ -50,6 +50,7 @@ export function ClosingSummary({ businessIds }: { businessIds: string[] }) {
     { k: sw ? 'Taslimu' : 'Cash', v: fmt0(x.cash), sub: true },
     { k: sw ? 'Simu' : 'Mobile', v: fmt0(x.mobile), sub: true },
     { k: sw ? 'Benki' : 'Bank', v: fmt0(x.bankIn), sub: true },
+    { k: sw ? 'Kiasi cha kupeleka benki' : 'Amount to bank', v: fmt0(x.banked), sub: true },
     { k: sw ? 'Matumizi, hasara na madeni (kwenye kufunga)' : 'Expenses, losses and staff debt (in the closing)', v: fmt0(out), sub: true },
     {
       k: sw ? 'Pungufu / ziada' : 'Short / over',

@@ -12,7 +12,7 @@ const T = {
     title: 'Daily closing report', item: 'Item', opening: 'Opening', added: 'Added', total: 'Total',
     closing: 'Closing', sold: 'Sold', price: 'Price', amount: 'Sales', profit: 'Profit',
     subtotal: 'Subtotal', grand: 'Total', summary: 'Summary', expectedSales: 'Expected sales',
-    grossProfit: 'Gross profit', cash: 'Cash', mobile: 'Mobile money', bank: 'Bank', received: 'Received',
+    grossProfit: 'Gross profit', cash: 'Cash', mobile: 'Mobile money', bank: 'Bank', toBank: 'Amount to bank', received: 'Received',
     difference: 'Difference',
     deductions: 'Expenses, losses & staff debt', expense: 'Expense', loss: 'Loss / breakage', debt: 'Staff debt',
     reason: 'Reason given', ownerComments: 'Owner comments',
@@ -26,7 +26,7 @@ const T = {
     title: 'Ripoti ya kufunga siku', item: 'Bidhaa', opening: 'Mwanzo', added: 'Imeongezwa', total: 'Jumla',
     closing: 'Zilizobaki', sold: 'Zimeuzwa', price: 'Bei', amount: 'Mauzo', profit: 'Faida',
     subtotal: 'Jumla ndogo', grand: 'Jumla', summary: 'Muhtasari', expectedSales: 'Mauzo yanayotarajiwa',
-    grossProfit: 'Faida ghafi', cash: 'Taslimu', mobile: 'Simu', bank: 'Benki', received: 'Zilizopokelewa',
+    grossProfit: 'Faida ghafi', cash: 'Taslimu', mobile: 'Simu', bank: 'Benki', toBank: 'Kiasi cha kupeleka benki', received: 'Zilizopokelewa',
     difference: 'Tofauti',
     deductions: 'Matumizi, hasara na madeni', expense: 'Matumizi', loss: 'Hasara', debt: 'Deni la mfanyakazi',
     reason: 'Sababu', ownerComments: 'Maoni ya mmiliki',
@@ -75,7 +75,7 @@ export function buildSessionReportHtml(opts: SessionReportOptions): string {
   const gross = counted.reduce((s, l) => s + soldOfLine(l, counts) * l.profit, 0);
   const unitsSold = counted.reduce((s, l) => s + soldOfLine(l, counts), 0);
   const deductions = closingItemsTotal(session);
-  const received = Number(session.cash || 0) + Number(session.mobile || 0) + Number(session.bank_in || 0) + deductions;
+  const received = Number(session.cash || 0) + Number(session.mobile || 0) + Number(session.bank_in || 0) + Number(session.amount_to_bank || 0) + deductions;
   const diff = expected - received;
 
   const status = {
@@ -137,6 +137,7 @@ export function buildSessionReportHtml(opts: SessionReportOptions): string {
     [L.cash, money0(session.cash || 0)],
     [L.mobile, money0(session.mobile || 0)],
     [L.bank, money0(session.bank_in || 0)],
+    [L.toBank, money0(Number(session.amount_to_bank || 0))],
     [L.deductions, money0(deductions)],
     [L.itemsCounted, num0(counted.length)],
     [L.unitsSold, num0(unitsSold)],

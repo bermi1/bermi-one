@@ -3,8 +3,8 @@ import { useNavigate } from 'react-router-dom';
 import { AppHeader } from '../components/AppHeader';
 import { Icon } from '../lib/icons';
 import { useSettings } from '../lib/useSettings';
-import { useData } from '../state/DataContext';
-import { currentQty, expectedSales, isCounted, profitOf, stockValueOf } from '../lib/calc';
+import { closingDayLabel, useData } from '../state/DataContext';
+import { businessDayIso, currentQty, stockValueOf } from '../lib/calc';
 import { tintVars } from '../lib/types';
 
 function dayKey(d: Date) {
@@ -14,25 +14,25 @@ function dayKey(d: Date) {
 export function Home() {
   const nav = useNavigate();
   const { L, fmt, fmt0, short, lang } = useSettings();
-  const { products, session, ledger, displayName, trialDays, onTrial } = useData();
+  const { products, session, recentClosings, displayName, trialDays, onTrial } = useData();
 
   const counts = session?.counts || {};
-  const counted = isCounted(counts);
-  const expected = expectedSales(products, counts);
-  const grossProfit = profitOf(products, counts);
 
+  /*
+    Money on the dashboard comes from verified closings only, filed under the
+    day the stock was for — never from a count still in progress, and never
+    from the day somebody happened to verify it.
+  */
+  const today = businessDayIso();
   const todayKey = dayKey(new Date());
-  const todayEntries = useMemo(() => ledger.filter((e) => e.created_at.slice(0, 10) === todayKey), [ledger, todayKey]);
-  const opexToday = useMemo(() => todayEntries.filter((e) => e.kind === 'expense').reduce((s, e) => s + Math.abs(e.amount), 0), [todayEntries]);
-  const ledgerSalesToday = useMemo(() => todayEntries.filter((e) => e.kind === 'sale').reduce((s, e) => s + e.amount, 0), [todayEntries]);
-
-  /**
-   * Today reads from the count in progress while there is one, and otherwise
-   * from what actually reached the ledger. Both are real figures: nothing here
-   * estimates a margin, so clearing the sessions clears these numbers too.
-   */
-  const revenue = counted ? expected : ledgerSalesToday;
-  const profit = (counted ? grossProfit : 0) - opexToday;
+  const latest = recentClosings[0] || null;
+  const revenue = Number(latest?.total_calculated_sales || 0);
+  const profit = Number(latest?.total_calculated_profit || 0);
+  const heroDay = !latest ? '' : latest.session_date === today ? (lang === 'sw' ? 'Leo' : 'Today') : closingDayLabel(latest.session_date);
+  const salesLabel = latest ? `${L.sales} · ${heroDay}` : L.salesToday;
+  const profitLabel = latest ? `${L.profit} · ${heroDay}` : L.profit;
+  const latestExpenses = (latest?.closing_items || []).filter((i) => i.kind === 'expense').reduce((n, i) => n + Number(i.amount || 0), 0);
+  const waiting = session?.status === 'submitted' ? session.session_date : null;
 
   const stockValue = stockValueOf(products, counts);
   const lowItems = useMemo(() => products.filter((p) => currentQty(p, counts) < p.low), [products, counts]);
@@ -45,20 +45,18 @@ export function Home() {
       d.setDate(d.getDate() - i);
       days.push({ key: dayKey(d), label: labels[d.getDay()], total: 0 });
     }
-    for (const e of ledger) {
-      if (e.kind !== 'sale') continue;
-      const k = e.created_at.slice(0, 10);
-      const row = days.find((d) => d.key === k);
-      if (row) row.total += e.amount;
+    for (const c of recentClosings) {
+      const row = days.find((d) => d.key === c.session_date);
+      if (row) row.total += Number(c.total_calculated_sales || 0);
     }
     const mx = Math.max(1, ...days.map((d) => d.total));
     return days.map((d) => ({ ...d, h: Math.max(4, Math.round((d.total / mx) * 56)) }));
-  }, [ledger, lang]);
+  }, [recentClosings, lang]);
 
   let alertText = '';
   let alertGo = '/close';
   if (!session || session.status === 'open') {
-    alertText = counted
+    alertText = Object.keys(counts).length > 0
       ? lang === 'sw' ? 'Bidhaa zimehesabiwa lakini hazijafungwa.' : 'Stock counted but the day is not closed.'
       : lang === 'sw' ? 'Bidhaa za leo hazijahesabiwa.' : "Today's stock hasn't been counted.";
     alertGo = '/close';
@@ -90,14 +88,21 @@ export function Home() {
         <div style={{ position: 'absolute', width: 180, height: 180, borderRadius: '50%', background: 'rgba(255,255,255,.1)', top: -60, right: -50 }} />
         <div style={{ display: 'flex', gap: 24, position: 'relative' }}>
           <div style={{ flex: 1 }}>
-            <div style={{ fontSize: 11.5, fontWeight: 700, color: 'rgba(255,255,255,.75)' }}>{L.salesToday}</div>
-            <div style={{ marginTop: 4, fontSize: 24, fontWeight: 800, color: '#fff', letterSpacing: -0.6 }}>{fmt0(revenue)}</div>
+            <div style={{ fontSize: 11.5, fontWeight: 700, color: 'rgba(255,255,255,.75)' }}>{salesLabel}</div>
+            <div style={{ marginTop: 4, fontSize: 24, fontWeight: 800, color: '#fff', letterSpacing: -0.6 }}>{revenue ? fmt(revenue) : '—'}</div>
           </div>
           <div style={{ flex: 1 }}>
-            <div style={{ fontSize: 11.5, fontWeight: 700, color: 'rgba(255,255,255,.75)' }}>{L.profit}</div>
+            <div style={{ fontSize: 11.5, fontWeight: 700, color: 'rgba(255,255,255,.75)' }}>{profitLabel}</div>
             <div style={{ marginTop: 4, fontSize: 24, fontWeight: 800, color: '#fff', letterSpacing: -0.6 }}>{profit ? fmt(profit) : '—'}</div>
           </div>
         </div>
+        {(waiting || !latest) && (
+          <div style={{ position: 'relative', marginTop: 12, fontSize: 11.5, fontWeight: 700, color: 'rgba(255,255,255,.85)' }}>
+            {waiting
+              ? (lang === 'sw' ? `${closingDayLabel(waiting)} inasubiri uhakiki — haijajumuishwa bado.` : `${closingDayLabel(waiting)} is waiting for you to verify — not included yet.`)
+              : (lang === 'sw' ? 'Mauzo yanaonekana hapa kufunga kukishahakikiwa.' : 'Sales show here once a closing is verified.')}
+          </div>
+        )}
       </div>
 
       {onTrial && trialDays <= 7 && (
@@ -172,8 +177,8 @@ export function Home() {
         </div>
         <div className="card tap" onClick={() => nav('/money')} style={{ padding: 16 }}>
           <div style={{ fontSize: 11.5, color: 'var(--ink3)', fontWeight: 700 }}>{L.expenses}</div>
-          <div style={{ marginTop: 5, fontSize: 18, fontWeight: 800 }}>{fmt0(opexToday)}</div>
-          <div style={{ marginTop: 6, fontSize: 11.5, fontWeight: 700, color: 'var(--ink3)' }}>{L.today}</div>
+          <div style={{ marginTop: 5, fontSize: 18, fontWeight: 800 }}>{fmt0(latestExpenses)}</div>
+          <div style={{ marginTop: 6, fontSize: 11.5, fontWeight: 700, color: 'var(--ink3)' }}>{latest ? heroDay : '—'}</div>
         </div>
       </div>
 

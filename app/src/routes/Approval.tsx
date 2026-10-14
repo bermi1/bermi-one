@@ -25,7 +25,7 @@ export function Approval() {
   }
 
   const counts = session?.counts || {};
-  const sessionMoney = { cash: session?.cash || 0, mobile: session?.mobile || 0, bank_in: session?.bank_in || 0, closing_items: session?.closing_items || [] };
+  const sessionMoney = { cash: session?.cash || 0, mobile: session?.mobile || 0, bank_in: session?.bank_in || 0, amount_to_bank: session?.amount_to_bank || 0, closing_items: session?.closing_items || [] };
   const expected = expectedSales(products, counts);
   const gross = profitOf(products, counts);
   const diff = diffOf(products, counts, sessionMoney);
@@ -57,6 +57,7 @@ export function Approval() {
     { label: L.cash, value: fmt(session.cash) },
     { label: L.mobileMoney, value: fmt(session.mobile) },
     { label: L.bank, value: fmt(session.bank_in) },
+    { label: L.amountToBank, value: fmt(session.amount_to_bank || 0) },
     ...(itemsByKind.expense > 0 ? [{ label: L.rExpense, value: fmt(itemsByKind.expense) }] : []),
     ...(itemsByKind.loss > 0 ? [{ label: L.rLoss, value: fmt(itemsByKind.loss) }] : []),
     ...(itemsByKind.debt > 0 ? [{ label: L.rDebt, value: fmt(itemsByKind.debt) }] : []),

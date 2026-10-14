@@ -52,6 +52,8 @@ interface DataCtx {
   accounts: Accounts | null;
   ledger: LedgerEntry[];
   session: StockSession | null;
+  /** The last verified closings, newest first — what the dashboard reads money from. */
+  recentClosings: StockSession[];
   actionLog: ActionLogEntry[];
   staffMembers: StaffMember[];
   /** The account's plan, what it allows, and how long any trial has left. */
@@ -112,6 +114,8 @@ interface DataCtx {
   sessionDate: string;
   /** Switch the Close screen to another day, opening or creating that closing. */
   openSessionForDate: (dateIso: string) => Promise<string | null>;
+  /** null when a new closing may start on this day; otherwise ALREADY_CLOSED:<day> or VERIFY_FIRST:<day>. */
+  canStartDay: (dateIso: string) => Promise<string | null>;
   addClosingItem: (kind: ClosingItemKind, amount: number, note: string) => Promise<void>;
   removeClosingItem: (id: string) => Promise<void>;
   submitSession: (reason: string | null, note: string) => Promise<void>;
@@ -123,7 +127,7 @@ interface DataCtx {
   deleteLedgerEntry: (id: string) => Promise<void>;
   fetchReportSource: (businessIds: string[], from: string, to: string) => Promise<{ sessions: StockSession[]; ledger: LedgerEntry[] }>;
 
-  addLedgerLines: (lines: NewEntryLine[], sessionId?: string) => Promise<void>;
+  addLedgerLines: (lines: NewEntryLine[], sessionId?: string, at?: string) => Promise<void>;
   /** Re-read balances and the latest cash book lines after a write made elsewhere (e.g. a salon visit RPC). */
   refreshMoney: () => Promise<void>;
   fetchPortfolioSummary: (days: number) => Promise<BusinessSummary[]>;
@@ -139,6 +143,12 @@ interface DataCtx {
 export type PinResult = 'ok' | 'wrong' | 'locked' | 'no_pin' | 'error';
 
 const Ctx = createContext<DataCtx | null>(null);
+
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+/** "11 Oct" from 2026-10-11, without a time zone shifting it a day. */
+export function closingDayLabel(iso: string): string {
+  return `${Number(iso.slice(8, 10))} ${MONTHS[Number(iso.slice(5, 7)) - 1] || ''}`;
+}
 
 export function DataProvider({ children }: { children: ReactNode }) {
   const { session: authSession } = useAuth();
@@ -156,6 +166,9 @@ export function DataProvider({ children }: { children: ReactNode }) {
   const [accounts, setAccounts] = useState<Accounts | null>(null);
   const [ledger, setLedger] = useState<LedgerEntry[]>([]);
   const [session, setSession] = useState<StockSession | null>(null);
+  const [recentClosings, setRecentClosings] = useState<StockSession[]>([]);
+  // Which business the latest load is for: an answer for any other is dropped.
+  const loadingFor = useRef<string | null>(null);
   const [sessionDate, setSessionDate] = useState<string>(businessDayIso());
   const [actionLog, setActionLog] = useState<ActionLogEntry[]>([]);
   const [subscription, setSubscription] = useState<Subscription | null>(null);
@@ -178,6 +191,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
   );
 
   const loadBusinessData = useCallback(async (businessId: string) => {
+    loadingFor.current = businessId;
     /*
       Which day the Close screen opens on.
 
@@ -203,6 +217,12 @@ export function DataProvider({ children }: { children: ReactNode }) {
       fetchRecentActions(businessId),
       supabase.from('staff_members').select('*').eq('business_id', businessId).order('sort_order'),
     ]);
+    const { data: closings } = await supabase
+      .from('stock_sessions').select('*').eq('business_id', businessId).eq('status', 'verified')
+      .order('session_date', { ascending: false }).limit(14);
+    // Switched again while this was loading: these figures belong to a business no longer on screen.
+    if (loadingFor.current !== businessId) return;
+    setRecentClosings((closings || []) as StockSession[]);
     const open = ((pending || []) as StockSession[])[0] || null;
     setProducts(prods || []);
     setAccounts(acc || { business_id: businessId, cash: 0, mobile: 0, bank: 0 });
@@ -458,6 +478,14 @@ export function DataProvider({ children }: { children: ReactNode }) {
 
   const switchBusiness = useCallback(
     async (id: string) => {
+      // Nothing from the business being left may stay on screen under the new one's name.
+      loadingFor.current = id;
+      setProducts([]);
+      setLedger([]);
+      setAccounts(null);
+      setSession(null);
+      setRecentClosings([]);
+      setStaffMembers([]);
       await patchProfile({ active_business_id: id });
       await loadBusinessData(id);
     },
@@ -606,19 +634,44 @@ export function DataProvider({ children }: { children: ReactNode }) {
     [activeBusiness, products.length, record, profile],
   );
 
+  /**
+   * May a new closing be started for this day?
+   *
+   * The opening of a day is the closing of the last verified day, so days are
+   * closed strictly in order: nothing on or before the last verified day can be
+   * opened again, and a later day waits until every earlier one is verified —
+   * otherwise it would count against an opening nobody has confirmed yet.
+   */
+  const canStartDay = useCallback(async (dateIso: string): Promise<string | null> => {
+    if (!activeBusiness) return 'No business';
+    const [{ data: last }, { data: earlier }] = await Promise.all([
+      supabase.from('stock_sessions').select('session_date').eq('business_id', activeBusiness.id).eq('status', 'verified')
+        .order('session_date', { ascending: false }).limit(1),
+      supabase.from('stock_sessions').select('session_date').eq('business_id', activeBusiness.id).neq('status', 'verified')
+        .lt('session_date', dateIso).order('session_date', { ascending: true }).limit(1),
+    ]);
+    const lastDay = (last || [])[0]?.session_date as string | undefined;
+    if (lastDay && dateIso <= lastDay) return `ALREADY_CLOSED:${lastDay}`;
+    const waiting = (earlier || [])[0]?.session_date as string | undefined;
+    if (waiting) return `VERIFY_FIRST:${waiting}`;
+    return null;
+  }, [activeBusiness]);
+
   const ensureSession = useCallback(async (): Promise<StockSession | null> => {
     if (session) return session;
     if (!activeBusiness) return null;
+    if (await canStartDay(sessionDate)) return null;
     // sessionDate, not today: the counter may have picked an earlier day, and a
     // row created under the wrong date files a whole night's trade elsewhere.
     const { data } = await supabase
       .from('stock_sessions')
-      .insert({ business_id: activeBusiness.id, session_date: sessionDate, status: 'open', counts: {}, closing_items: [], lines: [], amount_to_bank: 0 })
+      // The shelf this day opens on, frozen now: the last verified closing, rolled forward.
+      .insert({ business_id: activeBusiness.id, session_date: sessionDate, status: 'open', counts: {}, closing_items: [], lines: products.map(snapshotLine), amount_to_bank: 0 })
       .select()
       .single();
     if (data) setSession(data as StockSession);
     return data as StockSession | null;
-  }, [session, activeBusiness, sessionDate]);
+  }, [session, activeBusiness, sessionDate, canStartDay, products]);
 
   /**
    * Point the Close screen at a particular day.
@@ -646,9 +699,12 @@ export function DataProvider({ children }: { children: ReactNode }) {
         return null;
       }
 
+      const refused = await canStartDay(dateIso);
+      if (refused) return refused;
+
       const { data, error } = await supabase
         .from('stock_sessions')
-        .insert({ business_id: activeBusiness.id, session_date: dateIso, status: 'open', counts: {}, closing_items: [], lines: [], amount_to_bank: 0 })
+        .insert({ business_id: activeBusiness.id, session_date: dateIso, status: 'open', counts: {}, closing_items: [], lines: products.map(snapshotLine), amount_to_bank: 0 })
         .select()
         .single();
       if (error) return error.message;
@@ -656,11 +712,14 @@ export function DataProvider({ children }: { children: ReactNode }) {
       setSessionDate(dateIso);
       return null;
     },
-    [activeBusiness],
+    [activeBusiness, canStartDay, products],
   );
 
   const setClosingCount = useCallback(
     async (productId: string, qty: number | null) => {
+      // A count above what was on the shelf (opening + added) is not a count.
+      const p = products.find((x) => x.id === productId);
+      if (qty !== null && p && qty > roundQty(p.opening + p.added)) return;
       const s = (await ensureSession()) || session;
       if (!s) return;
       const counts = { ...s.counts };
@@ -669,7 +728,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
       setSession({ ...s, counts });
       await supabase.from('stock_sessions').update({ counts }).eq('id', s.id);
     },
-    [ensureSession, session],
+    [ensureSession, session, products],
   );
 
   const setSessionMoney = useCallback<DataCtx['setSessionMoney']>(
@@ -706,13 +765,13 @@ export function DataProvider({ children }: { children: ReactNode }) {
   );
 
   const addLedgerLines = useCallback(
-    async (lines: NewEntryLine[], sessionId?: string) => {
+    async (lines: NewEntryLine[], sessionId?: string, at?: string) => {
       if (!activeBusiness || lines.length === 0) return;
       // session_id ties a line back to the closing that produced it, so deleting
       // that closing can take its money with it instead of leaving orphans.
-      const rows = lines.map((l) => ({ business_id: activeBusiness.id, kind: l.kind, label: l.label, amount: l.amount, account: l.account, who_name: actorRef.current, session_id: sessionId ?? null }));
+      const rows = lines.map((l) => ({ business_id: activeBusiness.id, kind: l.kind, label: l.label, amount: l.amount, account: l.account, who_name: actorRef.current, session_id: sessionId ?? null, ...(at ? { created_at: at } : {}) }));
       const { data } = await supabase.from('ledger_entries').insert(rows).select();
-      if (data) setLedger((l) => [...(data as LedgerEntry[]), ...l]);
+      if (data) setLedger((l) => [...(data as LedgerEntry[]), ...l].sort((a, b) => b.created_at.localeCompare(a.created_at)));
 
       const delta = { cash: 0, mobile: 0, bank: 0 };
       for (const l of lines) delta[l.account] += l.amount;
@@ -797,34 +856,46 @@ export function DataProvider({ children }: { children: ReactNode }) {
     setSession({ ...session, ...patch });
     await supabase.from('stock_sessions').update(patch).eq('id', session.id);
 
+    /*
+      The money this closing brought in, written into the cash book under the
+      closing's own day — not the day somebody got round to verifying it. A
+      Friday closing verified on Sunday is Friday's money.
+    */
+    const day = closingDayLabel(session.session_date);
+    const at = `${session.session_date}T12:00:00+03:00`;
     const closingItemLabel: Record<ClosingItemKind, string> = { expense: 'Expense', loss: 'Loss / breakage', debt: 'Staff debt' };
     const lines: NewEntryLine[] = [];
-    if (session.cash > 0) lines.push({ kind: 'sale', label: 'Closing sales — cash', amount: session.cash, account: 'cash' });
-    if (session.mobile > 0) lines.push({ kind: 'sale', label: 'Closing sales — mobile', amount: session.mobile, account: 'mobile' });
-    if (session.bank_in > 0) lines.push({ kind: 'sale', label: 'Closing sales — bank', amount: session.bank_in, account: 'bank' });
+    if (session.cash > 0) lines.push({ kind: 'sale', label: `Closing ${day} — cash`, amount: session.cash, account: 'cash' });
+    if (session.mobile > 0) lines.push({ kind: 'sale', label: `Closing ${day} — mobile`, amount: session.mobile, account: 'mobile' });
+    if (session.bank_in > 0) lines.push({ kind: 'sale', label: `Closing ${day} — bank`, amount: session.bank_in, account: 'bank' });
+    if (Number(session.amount_to_bank || 0) > 0) lines.push({ kind: 'sale', label: `Closing ${day} — amount to bank`, amount: Number(session.amount_to_bank), account: 'bank' });
     for (const item of session.closing_items || []) {
       if (item.amount <= 0) continue;
-      lines.push({ kind: item.kind, label: item.note || closingItemLabel[item.kind], amount: -item.amount, account: 'cash' });
+      lines.push({ kind: item.kind, label: `${item.note || closingItemLabel[item.kind]} (closing ${day})`, amount: -item.amount, account: 'cash' });
     }
-    if (lines.length) await addLedgerLines(lines, session.id);
+    if (lines.length) await addLedgerLines(lines, session.id, at);
 
-    // Roll the counted closing forward: what was left on the shelf tonight is
-    // what the business opens with tomorrow, and the day's additions are now
-    // baked into that figure. Without this the opening never moves and every
-    // later day's "sold" is computed off a stale baseline.
-    // Anything received while this closing was frozen for review is real stock
-    // on the shelf that nobody counted, so it becomes the new day's addition.
-    const counted = products.filter((p) => session.counts[p.id] !== undefined);
-    if (counted.length) {
-      const rolled = counted.map((p) => ({ id: p.id, opening: Number(session.counts[p.id]), added: p.incoming || 0 }));
-      setProducts((ps) => ps.map((p) => {
-        const r = rolled.find((x) => x.id === p.id);
-        return r ? { ...p, opening: r.opening, added: r.added, incoming: 0 } : p;
-      }));
-      for (const r of rolled) {
-        await supabase.from('products').update({ opening: r.opening, added: r.added, incoming: 0 }).eq('id', r.id);
-      }
+    /*
+      Roll every product forward, so the next day opens exactly where this
+      verified closing ended. A counted item opens on its count. An item nobody
+      counted sold nothing as far as anyone recorded, so everything that was
+      available — opening plus what was added — carries over. Stock received
+      while this day waited for review becomes the next day's addition.
+    */
+    const rolled = products.map((p) => {
+      const counted = session.counts[p.id] !== undefined && session.counts[p.id] !== null;
+      return { id: p.id, opening: roundQty(counted ? Number(session.counts[p.id]) : p.opening + p.added), added: roundQty(p.incoming || 0) };
+    });
+    setProducts((ps) => ps.map((p) => {
+      const r = rolled.find((x) => x.id === p.id);
+      return r ? { ...p, opening: r.opening, added: r.added, incoming: 0 } : p;
+    }));
+    for (const r of rolled) {
+      await supabase.from('products').update({ opening: r.opening, added: r.added, incoming: 0 }).eq('id', r.id);
     }
+    const counted = products.filter((p) => session.counts[p.id] !== undefined);
+    setRecentClosings((c) => [{ ...session, ...patch }, ...c.filter((x) => x.id !== session.id)]
+      .sort((a, b) => b.session_date.localeCompare(a.session_date)).slice(0, 14));
 
     await record({
       businessId: activeBusiness.id, actionType: 'session.approve', objectId: session.id,
@@ -1081,6 +1152,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
     accounts,
     ledger,
     session,
+    recentClosings,
+    canStartDay,
     actionLog,
     staffMembers,
     subscription,

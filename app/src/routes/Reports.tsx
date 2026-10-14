@@ -6,7 +6,7 @@ import { useData } from '../state/DataContext';
 import { useToast } from '../state/ToastContext';
 import { soldOf } from '../lib/calc';
 import { tintVars } from '../lib/types';
-import { buildReport, highlightsOf, presetRange, type PresetId, type ReportData } from '../lib/reporting';
+import { buildReport, collectedOf, highlightsOf, presetRange, type PresetId, type ReportData } from '../lib/reporting';
 import { buildWhatsappSummary, openComprehensiveReport, openWhatsapp } from '../lib/reportDocs';
 
 const PRESETS: PresetId[] = ['today', 'yesterday', 'last7', 'last30', 'thisMonth'];
@@ -18,6 +18,10 @@ export function Reports() {
 
   const [mode, setMode] = useState<'business' | 'products'>('business');
   const [picked, setPicked] = useState<string[]>(() => (activeBusiness ? [activeBusiness.id] : []));
+  // Switching business starts over on the business switched to — the one
+  // left behind is never carried along. Combining stays an explicit choice.
+  const activeId = activeBusiness?.id;
+  useEffect(() => { if (activeId) setPicked([activeId]); }, [activeId]);
   const [preset, setPreset] = useState<PresetId>('last7');
   const [customFrom, setCustomFrom] = useState('');
   const [customTo, setCustomTo] = useState('');
@@ -194,8 +198,8 @@ export function Reports() {
                 {[
                   { label: L.totalSales, value: fmt0(totals.sales), color: 'var(--ok)' },
                   { label: L.totalProfit, value: fmt0(totals.profit), color: 'var(--warn)' },
-                  { label: L.cashPlusMobile, value: fmt0(totals.cash + totals.mobile + totals.bankIn), color: 'var(--brand)' },
-                  { label: L.amountBanked, value: fmt0(totals.banked), color: 'var(--vio)' },
+                  { label: L.cashPlusMobile, value: fmt0(collectedOf(totals)), color: 'var(--brand)' },
+                  { label: L.amountToBank, value: fmt0(totals.banked), color: 'var(--vio)' },
                 ].map((k) => (
                   <div key={k.label} className="card" style={{ padding: 14 }}>
                     <div style={{ fontSize: 10.5, color: 'var(--ink3)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.3 }}>{k.label}</div>
@@ -229,14 +233,14 @@ export function Reports() {
                       <div style={{ width: '100%', display: 'flex', gap: 2, alignItems: 'flex-end', height: 80 }}>
                         <div title={`${L.sales} ${fmt(d.sales)}`} style={{ flex: 1, height: `${Math.max(2, (d.sales / maxBar) * 100)}%`, background: 'var(--ok)', borderRadius: '3px 3px 0 0' }} />
                         <div title={`${L.profit} ${fmt(d.profit)}`} style={{ flex: 1, height: `${Math.max(2, (d.profit / maxBar) * 100)}%`, background: 'var(--warn)', borderRadius: '3px 3px 0 0' }} />
-                        <div title={`${L.amountBanked} ${fmt(d.banked)}`} style={{ flex: 1, height: `${Math.max(2, (d.banked / maxBar) * 100)}%`, background: 'var(--vio)', borderRadius: '3px 3px 0 0' }} />
+                        <div title={`${L.amountToBank} ${fmt(d.banked)}`} style={{ flex: 1, height: `${Math.max(2, (d.banked / maxBar) * 100)}%`, background: 'var(--vio)', borderRadius: '3px 3px 0 0' }} />
                       </div>
                       <div style={{ fontSize: 8.5, color: 'var(--ink3)', fontWeight: 600 }}>{d.date.slice(8)}/{d.date.slice(5, 7)}</div>
                     </div>
                   ))}
                 </div>
                 <div style={{ display: 'flex', gap: 12, marginTop: 10, fontSize: 10.5, color: 'var(--ink3)', fontWeight: 700 }}>
-                  {[[L.sales, 'var(--ok)'], [L.profit, 'var(--warn)'], [L.amountBanked, 'var(--vio)']].map(([label, c]) => (
+                  {[[L.sales, 'var(--ok)'], [L.profit, 'var(--warn)'], [L.amountToBank, 'var(--vio)']].map(([label, c]) => (
                     <span key={label} style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
                       <span style={{ width: 8, height: 8, borderRadius: 2, background: c }} />
                       {label}
@@ -250,15 +254,16 @@ export function Reports() {
                 {[
                   { k: L.totalSales, v: fmt0(totals.sales) },
                   { k: L.totalProfit, v: fmt0(totals.profit), c: 'var(--ok)' },
-                  { k: L.cashPlusMobile, v: fmt0(totals.cash + totals.mobile + totals.bankIn) },
+                  { k: L.cashReceived, v: fmt0(totals.cash) },
+                  { k: L.mobileReceived, v: fmt0(totals.mobile) },
+                  { k: L.bank, v: fmt0(totals.bankIn) },
+                  { k: L.amountToBank, v: fmt0(totals.banked) },
                   { k: L.sessionExpenses, v: fmt0(totals.sessionExpenses) },
-                  { k: L.purchases, v: fmt0(totals.sessionPurchases) },
-                  { k: L.otherExpenses, v: fmt0(totals.otherExpenses) },
                   ...(totals.staffDebts > 0 ? [{ k: L.staffDebtOutstanding, v: fmt(totals.staffDebts), c: 'var(--warn)' }] : []),
                   { k: L.losses, v: fmt0(totals.losses), c: totals.losses > 0 ? 'var(--bad)' : undefined },
-                  ...(Math.round(totals.balance) !== 0
-                    ? [{ k: L.balanceDifference, v: `${totals.balance > 0 ? L.shortWord : L.overWord} ${fmt(Math.abs(totals.balance))}`, c: totals.balance > 0 ? 'var(--bad)' : 'var(--warn)', big: true }]
-                    : [{ k: L.balanceDifference, v: L.balancedWord, c: 'var(--ok)', big: true }]),
+                  Math.round(totals.balance) !== 0
+                    ? { k: L.balanceDifference, v: `${totals.balance > 0 ? L.shortWord : L.overWord} ${fmt(Math.abs(totals.balance))}`, c: totals.balance > 0 ? 'var(--bad)' : 'var(--warn)', big: true }
+                    : { k: L.balanceDifference, v: L.balancedWord, c: 'var(--ok)', big: true },
                 ].map((r, i) => (
                   <div key={r.k} style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0', fontSize: r.big ? 15 : 13.5, borderTop: i > 0 ? '1px solid var(--line)' : 'none' }}>
                     <span style={{ color: 'var(--ink2)', fontWeight: r.big ? 800 : 600 }}>{r.k}</span>

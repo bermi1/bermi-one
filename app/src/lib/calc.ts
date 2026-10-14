@@ -125,11 +125,18 @@ export function closingItemsTotal(session: Pick<StockSession, 'closing_items'>):
   return (session.closing_items || []).reduce((s, it) => s + Number(it.amount || 0), 0);
 }
 
-export function moneyReceived(session: Pick<StockSession, 'cash' | 'mobile' | 'bank_in' | 'closing_items'>): number {
-  return Number(session.cash || 0) + Number(session.mobile || 0) + Number(session.bank_in || 0) + closingItemsTotal(session);
+type ClosingMoney = Pick<StockSession, 'cash' | 'mobile' | 'bank_in' | 'closing_items'> & { amount_to_bank?: number | null };
+
+/**
+ * Everything the closing accounts for: cash, mobile, bank, amount to bank —
+ * each entered as its own figure and treated the same way — plus what was
+ * paid out that night (expenses, losses, staff debt).
+ */
+export function moneyReceived(session: ClosingMoney): number {
+  return Number(session.cash || 0) + Number(session.mobile || 0) + Number(session.bank_in || 0) + Number(session.amount_to_bank || 0) + closingItemsTotal(session);
 }
 
-export function diffOf(products: Product[], counts: Record<string, number>, session: Pick<StockSession, 'cash' | 'mobile' | 'bank_in' | 'closing_items'>): number {
+export function diffOf(products: Product[], counts: Record<string, number>, session: ClosingMoney): number {
   return expectedSales(products, counts) - moneyReceived(session);
 }
 

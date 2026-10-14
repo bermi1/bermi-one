@@ -26,11 +26,12 @@ export function Money() {
    * business you are actually standing in — an entry has to belong somewhere.
    */
   const [picked, setPicked] = useState<string[]>(() => (activeBusiness ? [activeBusiness.id] : []));
+  // Switching business starts over on the business switched to — the one
+  // left behind is never carried along. Combining stays an explicit choice.
+  const activeId = activeBusiness?.id;
+  useEffect(() => { if (activeId) setPicked([activeId]); }, [activeId]);
   const [combined, setCombined] = useState<{ accounts: Accounts[]; ledger: LedgerEntry[] } | null>(null);
 
-  useEffect(() => {
-    if (activeBusiness && picked.length === 0) setPicked([activeBusiness.id]);
-  }, [activeBusiness, picked.length]);
 
   const isCombined = picked.length > 1;
 
@@ -158,6 +159,11 @@ export function Money() {
           <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 10 }}>
             <div style={{ fontSize: 13, fontWeight: 800 }}>{isCombined ? L.combinedBooks : L.cashBook}</div>
             <div style={{ fontSize: 12, color: 'var(--ink3)', fontWeight: 700 }}>{L.totalHeld} {fmt0(held)}</div>
+          </div>
+          <div style={{ fontSize: 11.5, color: 'var(--ink3)', fontWeight: 600, lineHeight: 1.45, marginTop: -4, marginBottom: 8 }}>
+            {lang === 'sw'
+              ? 'Pesa iliyopo: kile ambacho kufunga kulikohakikiwa kuliweka kwenye taslimu, simu na benki, ukiondoa kilicholipwa.'
+              : 'Money held: what verified closings put into cash, mobile and bank, less what was paid out.'}
           </div>
           {[
             { label: L.moneyIn, value: fmt0(book.inflow), color: book.inflow ? 'var(--ok)' : undefined },

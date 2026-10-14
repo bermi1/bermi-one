@@ -265,6 +265,7 @@ export function SessionHistory() {
                 { k: L.cash, v: fmt(viewing.cash || 0) },
                 { k: L.mobileMoney, v: fmt(viewing.mobile || 0) },
                 { k: L.bank, v: fmt(viewing.bank_in || 0) },
+                { k: L.amountToBank, v: fmt(viewing.amount_to_bank || 0) },
                 { k: L.expensesLossesDebt, v: fmt(closingItemsTotal(viewing)) },
               ].map((r) => (
                 <div key={r.k} style={{ display: 'flex', justifyContent: 'space-between', padding: '5px 0', fontSize: 13 }}>

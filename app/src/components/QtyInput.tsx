@@ -8,7 +8,13 @@ const parse = (t: string) => (t === '' || t === '.' ? null : Number(t));
  * being typed ("2." on the way to "2.5") instead of snapping it to a number
  * after every key, and hands the number up as soon as there is one.
  */
-export function QtyInput({ value, onValue, ...rest }: { value: number | null | undefined; onValue: (n: number | null) => void } & Omit<InputHTMLAttributes<HTMLInputElement>, 'value' | 'onChange'>) {
+export function QtyInput({ value, onValue, limit, onOverLimit, ...rest }: {
+  value: number | null | undefined;
+  onValue: (n: number | null) => void;
+  /** Most it may hold; a number above it is refused, not saved. */
+  limit?: number;
+  onOverLimit?: (limit: number) => void;
+} & Omit<InputHTMLAttributes<HTMLInputElement>, 'value' | 'onChange'>) {
   const [text, setText] = useState(value == null ? '' : String(value));
   useEffect(() => {
     setText((t) => (parse(t) === (value ?? null) ? t : value == null ? '' : String(value)));
@@ -20,6 +26,8 @@ export function QtyInput({ value, onValue, ...rest }: { value: number | null | u
       value={text}
       onChange={(e) => {
         const t = cleanQty(e.target.value);
+        const n = parse(t);
+        if (limit !== undefined && n !== null && n > limit) { onOverLimit?.(limit); return; }
         setText(t);
         onValue(parse(t));
       }}

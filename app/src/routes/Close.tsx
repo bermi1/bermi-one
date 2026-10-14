@@ -22,7 +22,7 @@ export function Close() {
   const {
     products, session, activeBusiness, setClosingCount, setSessionMoney,
     addClosingItem, removeClosingItem, reopenSession,
-    sessionDate, openSessionForDate, fetchSessions,
+    sessionDate, openSessionForDate, fetchSessions, canStartDay,
   } = useData();
   const { flash } = useToast();
 
@@ -32,7 +32,10 @@ export function Close() {
 
   // Verified is terminal — nobody edits it. Submitted and rejected days are
   // read-only until the owner explicitly reopens them.
-  const editing = status === 'open';
+  // A day with no closing yet may still be refused: days close in order, each
+  // opening on the last verified one.
+  const [blocked, setBlocked] = useState<string | null>(null);
+  const editing = status === 'open' && !blocked;
   const canReopen = owner && (status === 'submitted' || status === 'rejected');
 
   /**
@@ -70,11 +73,31 @@ export function Close() {
 
   useEffect(() => { void checkEarlier(); }, [checkEarlier]);
 
+  useEffect(() => {
+    let live = true;
+    if (session) { setBlocked(null); return; }
+    void canStartDay(closingDay).then((r) => { if (live) setBlocked(r); });
+    return () => { live = false; };
+  }, [session, closingDay, canStartDay]);
+
+  /** Why a day cannot be started, in words. */
+  function refusal(code: string): string {
+    const [kind, day] = code.split(':');
+    const d = day ? dayName(day) : '';
+    if (kind === 'VERIFY_FIRST') return lang === 'sw'
+      ? `Hakiki kufunga kwa ${d} kwanza. Siku mpya inaanza na bidhaa zilizohakikiwa za siku iliyopita.`
+      : `Verify ${d} first. A new day opens on the last verified closing.`;
+    if (kind === 'ALREADY_CLOSED') return lang === 'sw'
+      ? `Siku hii imeshafungwa. Kufunga kwa mwisho kulikohakikiwa ni ${d}.`
+      : `That day is already closed. The last verified closing is ${d}.`;
+    return code;
+  }
+
   async function pickDay(iso: string) {
     if (!iso) return;
     const problem = await openSessionForDate(iso);
     if (problem === 'FUTURE_DAY') { flash(L.futureDay); return; }
-    if (problem) { flash(problem); return; }
+    if (problem) { flash(refusal(problem)); return; }
     setDayOpen(false);
   }
 
@@ -136,7 +159,12 @@ export function Close() {
           )}
         </div>
 
-        {earlier && (
+        {blocked && (
+          <div className="card" role="status" style={{ marginBottom: 12, padding: 14, background: 'var(--warnSoft)', fontSize: 13, fontWeight: 700, lineHeight: 1.45 }}>
+            {refusal(blocked)}
+          </div>
+        )}
+        {earlier && !blocked && (
           <div
             className="card tap"
             onClick={() => void pickDay(earlier)}
@@ -259,6 +287,7 @@ export function Close() {
             ...(owner ? [{ k: L.grossProfit, v: fmt0(session?.total_calculated_profit || grossProfit), c: 'var(--ok)' }] : []),
             { k: L.cashReceived, v: fmt0(session?.cash || 0) },
             { k: L.mobileReceived, v: fmt0(session?.mobile || 0) },
+            { k: L.bank, v: fmt0(session?.bank_in || 0) },
             { k: L.amountToBank, v: fmt0(session?.amount_to_bank || 0) },
             { k: L.expensesLossesDebt, v: fmt0(session ? closingItemsTotal(session) : 0) },
           ].map((r) => (
@@ -367,6 +396,9 @@ export function Close() {
                         placeholder="—"
                         value={closingVal}
                         onValue={(n) => void setClosingCount(p.id, n)}
+                        // Nothing can be left on the shelf that was not there: opening plus what was added.
+                        limit={avail}
+                        onOverLimit={(max) => flash(lang === 'sw' ? `${p.name}: haiwezi kuzidi ${max} zilizopo` : `${p.name}: can't be more than the ${max} available`)}
                         style={{ width: 58, textAlign: 'center', padding: '8px 0', borderRadius: 10, border: `1px solid ${isCounted ? 'var(--brand)' : 'var(--line)'}`, background: 'var(--card2)', fontSize: 14, fontWeight: 700 }}
                       />
                     </div>

@@ -1,8 +1,9 @@
-// Report aggregation. Verified closings are the source of truth for what a
-// day actually was — the ledger is downstream of them — so every figure here
-// is built from verified sessions plus the expenses and debts recorded
-// against the same dates, then combined across whichever businesses are
-// selected.
+// Report aggregation. A report is the verified closings and nothing else:
+// sales and profit exactly as each closing froze them, the money it recorded
+// (cash, mobile, bank, amount to bank) and what was paid out inside it
+// (expenses, losses, staff debt). Cash-book entries made outside a closing are
+// not part of it, and a day with no verified closing has no row at all — so
+// there is nothing to carry over from a day that was never closed.
 
 import type { Business, LedgerEntry, StockSession } from './types';
 
@@ -14,31 +15,16 @@ export interface DayRow {
   mobile: number;
   /** Money received straight into the bank at the closing. */
   bankIn: number;
+  /** "Amount to bank" entered at the closing. */
   banked: number;
   sessionExpenses: number;
-  sessionPurchases: number;
-  otherExpenses: number;
   staffDebts: number;
   losses: number;
-  /** What is left unexplained once every recorded outflow is accounted for. */
+  /** Sales the closing's money does not cover: positive is short, negative is over. */
   balance: number;
 }
 
-export interface ReportTotals {
-  sales: number;
-  profit: number;
-  cash: number;
-  mobile: number;
-  /** Money received straight into the bank at the closing. */
-  bankIn: number;
-  banked: number;
-  sessionExpenses: number;
-  sessionPurchases: number;
-  otherExpenses: number;
-  staffDebts: number;
-  losses: number;
-  balance: number;
-}
+export type ReportTotals = Omit<DayRow, 'date'>;
 
 export interface NamedAmount {
   label: string;
@@ -57,7 +43,7 @@ export interface ReportData {
 
 const ZERO: ReportTotals = {
   sales: 0, profit: 0, cash: 0, mobile: 0, bankIn: 0, banked: 0,
-  sessionExpenses: 0, sessionPurchases: 0, otherExpenses: 0, staffDebts: 0, losses: 0, balance: 0,
+  sessionExpenses: 0, staffDebts: 0, losses: 0, balance: 0,
 };
 
 export type PresetId = 'today' | 'yesterday' | 'last7' | 'last30' | 'thisMonth' | 'custom';
@@ -92,120 +78,67 @@ export function presetRange(preset: PresetId): { from: string; to: string } {
   }
 }
 
-/** Sales/profit for a session, preferring the totals frozen when it was submitted. */
-function sessionTotals(s: StockSession): { sales: number; profit: number } {
-  return { sales: Number(s.total_calculated_sales || 0), profit: Number(s.total_calculated_profit || 0) };
+/** Money a closing recorded — every figure entered as its own line, treated the same way. */
+export function collectedOf(t: Pick<ReportTotals, 'cash' | 'mobile' | 'bankIn' | 'banked'>): number {
+  return t.cash + t.mobile + t.bankIn + t.banked;
 }
 
 export function buildReport(input: {
   businesses: Business[];
   sessions: StockSession[];
-  ledger: LedgerEntry[];
+  /** Accepted for older callers; a report is built from closings only. */
+  ledger?: LedgerEntry[];
   from: string;
   to: string;
 }): ReportData {
-  const { businesses, sessions, ledger, from, to } = input;
+  const { businesses, sessions, from, to } = input;
   const byDate = new Map<string, DayRow>();
   const lossTally = new Map<string, number>();
   const expenseTally = new Map<string, number>();
-  // Everything paid out inside a closing (expenses, losses, staff debt), kept
-  // apart from cash-book entries so short / over matches the closing itself.
-  const closingOut = new Map<string, number>();
 
-  const blank = (date: string): DayRow => ({
-    date, sales: 0, profit: 0, cash: 0, mobile: 0, bankIn: 0, banked: 0,
-    sessionExpenses: 0, sessionPurchases: 0, otherExpenses: 0, staffDebts: 0, losses: 0, balance: 0,
-  });
   const row = (date: string): DayRow => {
-    const hit = byDate.get(date);
-    if (hit) return hit;
-    const made = blank(date);
-    byDate.set(date, made);
-    return made;
+    let r = byDate.get(date);
+    if (!r) { r = { date, ...ZERO }; byDate.set(date, r); }
+    return r;
   };
 
-  // Only verified days count towards a report — a draft or a day still waiting
-  // on the owner is not yet a fact about the business.
+  // Only verified days count — a draft or a day still waiting on the owner is
+  // not yet a fact about the business. Each is filed under its own day.
   for (const s of sessions) {
     if (s.status !== 'verified') continue;
     if (s.session_date < from || s.session_date > to) continue;
     const r = row(s.session_date);
-    const { sales, profit } = sessionTotals(s);
-    r.sales += sales;
-    r.profit += profit;
+    r.sales += Number(s.total_calculated_sales || 0);
+    r.profit += Number(s.total_calculated_profit || 0);
     r.cash += Number(s.cash || 0);
     r.mobile += Number(s.mobile || 0);
     r.bankIn += Number(s.bank_in || 0);
     r.banked += Number(s.amount_to_bank || 0);
     for (const item of s.closing_items || []) {
-      closingOut.set(s.session_date, (closingOut.get(s.session_date) || 0) + Number(item.amount || 0));
+      const amount = Number(item.amount || 0);
       if (item.kind === 'expense') {
-        r.sessionExpenses += item.amount;
+        r.sessionExpenses += amount;
         const key = item.note?.trim() || 'Expense';
-        expenseTally.set(key, (expenseTally.get(key) || 0) + item.amount);
+        expenseTally.set(key, (expenseTally.get(key) || 0) + amount);
       } else if (item.kind === 'loss') {
-        r.losses += item.amount;
+        r.losses += amount;
         const key = item.note?.trim() || 'Loss';
-        lossTally.set(key, (lossTally.get(key) || 0) + item.amount);
+        lossTally.set(key, (lossTally.get(key) || 0) + amount);
       } else {
-        r.staffDebts += item.amount;
+        r.staffDebts += amount;
       }
     }
   }
 
-  // Money recorded outside the closing flow, on the same days. A line carrying
-  // a session_id is the cash-book copy of a closing's own expense or loss,
-  // made when the closing was verified — already counted above from the
-  // closing itself, so counting it again would take it off twice.
-  for (const e of ledger) {
-    if (e.session_id) continue;
-    const date = e.created_at.slice(0, 10);
-    if (date < from || date > to) continue;
-    if (e.kind === 'purchase') {
-      row(date).sessionPurchases += Math.abs(e.amount);
-    } else if (e.kind === 'expense') {
-      const r = row(date);
-      r.otherExpenses += Math.abs(e.amount);
-      const key = e.label?.trim() || 'Expense';
-      expenseTally.set(key, (expenseTally.get(key) || 0) + Math.abs(e.amount));
-    } else if (e.kind === 'loss') {
-      const r = row(date);
-      r.losses += Math.abs(e.amount);
-      const key = e.label?.trim() || 'Loss';
-      lossTally.set(key, (lossTally.get(key) || 0) + Math.abs(e.amount));
-    } else if (e.kind === 'debt') {
-      row(date).staffDebts += Math.abs(e.amount);
-    }
-  }
-
   const days = Array.from(byDate.values()).sort((a, b) => a.date.localeCompare(b.date));
-  for (const d of days) {
-    /*
-      Short / over, exactly as the closing itself works it out: what the stock
-      says was sold, against the money that came in (cash, mobile, bank) and
-      what was paid out of it that night (expenses, losses, staff debt).
+  // Short / over, exactly as the closing itself works it out.
+  for (const d of days) d.balance = d.sales - (collectedOf(d) + d.sessionExpenses + d.losses + d.staffDebts);
 
-      Purchases and expenses entered separately in the cash book are listed in
-      the report but not taken off here — they were not paid out of that
-      night's takings. Amount to bank is cash already counted under cash.
-    */
-    d.balance = d.sales - (d.cash + d.mobile + d.bankIn + (closingOut.get(d.date) || 0));
-  }
-
-  const totals = days.reduce<ReportTotals>((acc, d) => ({
-    sales: acc.sales + d.sales,
-    profit: acc.profit + d.profit,
-    cash: acc.cash + d.cash,
-    mobile: acc.mobile + d.mobile,
-    bankIn: acc.bankIn + d.bankIn,
-    banked: acc.banked + d.banked,
-    sessionExpenses: acc.sessionExpenses + d.sessionExpenses,
-    sessionPurchases: acc.sessionPurchases + d.sessionPurchases,
-    otherExpenses: acc.otherExpenses + d.otherExpenses,
-    staffDebts: acc.staffDebts + d.staffDebts,
-    losses: acc.losses + d.losses,
-    balance: acc.balance + d.balance,
-  }), { ...ZERO });
+  const totals = days.reduce<ReportTotals>((acc, d) => {
+    const next = { ...acc };
+    for (const k of Object.keys(ZERO) as (keyof ReportTotals)[]) next[k] = acc[k] + d[k];
+    return next;
+  }, { ...ZERO });
 
   const rank = (m: Map<string, number>): NamedAmount[] =>
     Array.from(m, ([label, amount]) => ({ label, amount })).sort((a, b) => b.amount - a.amount);
