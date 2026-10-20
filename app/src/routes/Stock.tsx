@@ -12,6 +12,7 @@ import { tintVars, type Product } from '../lib/types';
 import { parseTable, buildRows, FIELD_LABELS, excelToCsv, isExcelFile, type FieldKey, type ParsedTable } from '../lib/csv';
 import { SessionHistory } from '../components/SessionHistory';
 import { ReceiveStock } from '../components/ReceiveStock';
+import { TransferStock } from '../components/TransferStock';
 
 /** The canonical bar stock template — the same columns the business exports. */
 function toCsv(products: Product[]): string {
@@ -25,12 +26,13 @@ function toCsv(products: Product[]): string {
 
 export function Stock() {
   const { L, fmt, fmt0, short, lang, owner } = useSettings();
-  const { products, session, activeBusiness, reorderProducts, addProduct, addProductsBulk, updateProductFields, deleteProduct } = useData();
+  const { products, session, activeBusiness, businesses, reorderProducts, addProduct, addProductsBulk, updateProductFields, deleteProduct } = useData();
   const { flash } = useToast();
   const counts = session?.counts || {};
 
   const [tab, setTab] = useState<'items' | 'sessions'>('items');
   const [receiveOpen, setReceiveOpen] = useState(false);
+  const [transferOpen, setTransferOpen] = useState(false);
   const [query, setQuery] = useState('');
   const [cat, setCat] = useState('All');
   const [editId, setEditId] = useState<string | null>(null);
@@ -88,6 +90,7 @@ export function Stock() {
    * they argue about.
    */
   const heldForNext = session?.status === 'submitted';
+  const canTransfer = businesses.some((b) => b.id !== activeBusiness?.id && b.type !== 'barber');
   const stockDestinationNote = heldForNext
     ? L.goesToNextClosing
     : session?.status === 'verified'
@@ -286,6 +289,12 @@ export function Stock() {
             <span style={{ display: 'block', marginTop: 2, fontSize: 11.5, fontWeight: 600, opacity: 0.8 }}>{stockDestinationNote}</span>
           </span>
           <Icon name="right" size={16} style={{ opacity: 0.7 }} />
+        </button>
+      )}
+      {/* Only when the account has another business that holds stock. */}
+      {!reorderMode && !editAllMode && canTransfer && (
+        <button className="btn-ghost tap" style={{ width: '100%', marginTop: -4, marginBottom: 12, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }} onClick={() => setTransferOpen(true)}>
+          <Icon name="out" size={16} /> {lang === 'sw' ? 'Hamisha kwenda biashara nyingine' : 'Transfer to another business'}
         </button>
       )}
     </>
@@ -545,7 +554,7 @@ export function Stock() {
                         <div style={{ textAlign: 'right' }}>
                           <div style={{ fontSize: 14, fontWeight: 800, color: qty < p.low ? 'var(--warn)' : 'var(--ink)' }}>{qty || '—'}</div>
                           <div style={{ fontSize: 10.5, color: 'var(--ink3)', fontWeight: 600 }}>
-                            {p.unit}{p.added > 0 ? ` · +${roundQty(p.added)}` : ''}
+                            {p.unit}{p.added > 0 ? ` · +${roundQty(p.added)}` : p.added < 0 ? ` · −${roundQty(-p.added)} ${lang === 'sw' ? 'zimetolewa' : 'sent out'}` : ''}
                           </div>
                         </div>
                       </div>
@@ -599,6 +608,7 @@ export function Stock() {
         )}
       </Sheet>
 
+      <TransferStock open={transferOpen} onClose={() => setTransferOpen(false)} />
       <ReceiveStock open={receiveOpen} onClose={() => setReceiveOpen(false)} note={stockDestinationNote} heldForNext={heldForNext} />
 
       <Sheet open={addOpen} onClose={() => setAddOpen(false)} title={lang === 'sw' ? 'Bidhaa mpya' : 'New product'}>

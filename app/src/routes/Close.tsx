@@ -388,6 +388,7 @@ export function Close() {
                         <div style={{ fontSize: 11, color: 'var(--ink3)', fontWeight: 600 }}>
                           {L.opening} {p.opening}
                           {p.added > 0 && <span style={{ color: 'var(--ok)' }}> + {p.added} {L.added.toLowerCase()}</span>}
+                          {p.added < 0 && <span style={{ color: 'var(--warn)' }}> − {roundQty(-p.added)} {lang === 'sw' ? 'zimetolewa' : 'sent out'}</span>}
                           {' = '}<span style={{ color: 'var(--ink2)', fontWeight: 700 }}>{avail} {p.unit}</span>
                           {' · '}{fmt(p.price)}/{p.unit}
                         </div>

@@ -142,6 +142,8 @@ interface DataCtx {
   /** Owner edits a team member: name, phone, title, and in a barbershop, what they do. */
   updateStaffMember: (id: string, patch: Partial<Pick<StaffMember, 'name' | 'phone' | 'title' | 'salon_role'>>) => Promise<string | null>;
   removeStaffMember: (id: string) => Promise<void>;
+  /** Send stock to another business in the same account. Returns null, or an error code: NOT_ENOUGH:<name>:<qty>, NOT_SAME_ACCOUNT, NOT_ALLOWED… */
+  transferStock: (toBusinessId: string, items: { product_id: string; qty: number }[], note?: string) => Promise<string | null>;
 }
 
 export type PinResult = 'ok' | 'wrong' | 'locked' | 'no_pin' | 'error';
@@ -1160,6 +1162,24 @@ export function DataProvider({ children }: { children: ReactNode }) {
     if (led) setLedger(led as LedgerEntry[]);
   }, [activeBusiness]);
 
+  const transferStock = useCallback<DataCtx['transferStock']>(async (toBusinessId, items, note) => {
+    if (!activeBusiness) return 'No business';
+    const { error } = await supabase.rpc('transfer_stock', {
+      p_from: activeBusiness.id, p_to: toBusinessId, p_items: items, p_note: note || null, p_by: actorRef.current || profile?.full_name || null,
+    });
+    if (error) return error.message;
+    // The shelf changed underneath: read this business's stock and cash book again.
+    const { data: prods } = await supabase.from('products').select('*').eq('business_id', activeBusiness.id).order('sort_order');
+    if (prods) setProducts(prods as Product[]);
+    await refreshMoney();
+    await record({
+      businessId: activeBusiness.id, actionType: 'stock.transfer',
+      summary: `Sent ${items.length} product${items.length === 1 ? '' : 's'} to ${businesses.find((b) => b.id === toBusinessId)?.name || 'another business'}`,
+      payload: { to: toBusinessId, items, note: note || null }, actorName: actorRef.current,
+    });
+    return null;
+  }, [activeBusiness, profile, refreshMoney, record, businesses]);
+
   const value: DataCtx = {
     ready,
     loadError,
@@ -1172,6 +1192,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
     ledger,
     session,
     recentClosings,
+    transferStock,
     accountSettings,
     updateAccountSettings,
     canStartDay,
