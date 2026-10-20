@@ -27,7 +27,7 @@ export function Pricing() {
   const nav = useNavigate();
   const { L, lang } = useSettings();
   const { flash } = useToast();
-  const { businesses, activeBusiness, plan: currentPlan, subscription, trialDays, onTrial, updateBusiness, refreshSubscription } = useData();
+  const { businesses, activeBusiness, plan: currentPlan, subscription, trialDays, onTrial, refreshSubscription, accountSettings, updateAccountSettings } = useData();
   const sw = lang === 'sw';
 
   const [country, setCountry] = useState(activeBusiness?.country_code || 'TZ');
@@ -112,6 +112,12 @@ export function Pricing() {
               : (sw ? 'Hakuna kipindi kilichowekwa' : 'No period set yet')}
         </div>
 
+        {/* One account, one bill: every business below is covered by this one payment. */}
+        {businesses.length > 1 && (
+          <div style={{ marginTop: 10, fontSize: 12, fontWeight: 700, opacity: onTrial ? 0.92 : 1, color: onTrial ? undefined : 'var(--ink2)' }}>
+            {sw ? `Bili moja kwa akaunti yako — inafunika biashara zote ${businesses.length}:` : `One bill for your account — it covers all ${businesses.length} businesses:`}
+          </div>
+        )}
         {/* What the plan covers, in the client's own terms: their businesses. */}
         {businesses.length > 0 && (
           <div style={{ display: 'flex', gap: 7, flexWrap: 'wrap', marginTop: 13 }}>
@@ -247,7 +253,8 @@ export function Pricing() {
   );
 
   function AutomationPanel() {
-    if (!activeBusiness) return null;
+    if (!activeBusiness || !accountSettings) return null;
+    const acct = accountSettings;
     return (
       <div className="card" style={{ marginTop: 14, padding: 18 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 9 }}>
@@ -255,20 +262,23 @@ export function Pricing() {
           <div style={{ fontSize: 15.5, fontWeight: 800 }}>{L.automation}</div>
         </div>
         <div style={{ marginTop: 4, fontSize: 12.5, color: 'var(--ink2)', lineHeight: 1.45 }}>{L.automationSub}</div>
+        <div style={{ marginTop: 8, fontSize: 12, fontWeight: 700, color: 'var(--brand)', lineHeight: 1.45 }}>
+          {sw ? `Inatumika kwa biashara zako zote (${businesses.length}) — namba moja, barua pepe moja.` : `Applies to all your businesses (${businesses.length}) — one number, one email.`}
+        </div>
 
         {([
-          ['sms_alerts', L.autoSms, L.autoSmsSub, !!activeBusiness.sms_alerts],
-          ['auto_report_weekly', L.autoWeekly, L.autoWeeklySub, !!activeBusiness.auto_report_weekly],
-          ['auto_report_monthly', L.autoMonthly, L.autoMonthlySub, !!activeBusiness.auto_report_monthly],
+          ['sms_alerts', L.autoSms, L.autoSmsSub, !!acct.sms_alerts],
+          ['auto_report_weekly', L.autoWeekly, L.autoWeeklySub, !!acct.auto_report_weekly],
+          ['auto_report_monthly', L.autoMonthly, L.autoMonthlySub, !!acct.auto_report_monthly],
         ] as const).map(([field, label, sub, on]) => (
           <div
             key={field}
             className="tap"
             onClick={() => {
-              const needsPhone = field === 'sms_alerts' && !activeBusiness.alerts_phone?.trim();
-              const needsEmail = field !== 'sms_alerts' && !activeBusiness.alerts_email?.trim();
+              const needsPhone = field === 'sms_alerts' && !acct.alerts_phone?.trim();
+              const needsEmail = field !== 'sms_alerts' && !acct.alerts_email?.trim();
               if (!on && (needsPhone || needsEmail)) { flash(needsPhone ? L.alertsNeedPhone : L.alertsNeedEmail); return; }
-              void updateBusiness({ [field]: !on });
+              void updateAccountSettings({ [field]: !on });
             }}
             style={{ marginTop: 10, padding: 13, borderRadius: 14, background: on ? 'var(--okSoft)' : 'var(--card2)', display: 'flex', alignItems: 'center', gap: 12 }}
           >
@@ -286,17 +296,17 @@ export function Pricing() {
           className="field"
           inputMode="tel"
           placeholder={L.alertsPhone}
-          defaultValue={activeBusiness.alerts_phone || ''}
-          onBlur={(e) => { const v = e.target.value.trim(); if (v !== (activeBusiness.alerts_phone || '')) void updateBusiness({ alerts_phone: v || null }); }}
+          defaultValue={acct.alerts_phone || ''}
+          onBlur={(e) => { const v = e.target.value.trim(); if (v !== (acct.alerts_phone || '')) void updateAccountSettings({ alerts_phone: v || null }); }}
           style={{ width: '100%', marginTop: 12 }}
         />
-        <TestSms businessId={activeBusiness.id} phone={activeBusiness.alerts_phone} sw={lang === 'sw'} />
+        <TestSms businessId={activeBusiness.id} phone={acct.alerts_phone} sw={lang === 'sw'} />
         <input
           className="field"
           inputMode="email"
           placeholder={L.alertsEmail}
-          defaultValue={activeBusiness.alerts_email || ''}
-          onBlur={(e) => { const v = e.target.value.trim(); if (v !== (activeBusiness.alerts_email || '')) void updateBusiness({ alerts_email: v || null }); }}
+          defaultValue={acct.alerts_email || ''}
+          onBlur={(e) => { const v = e.target.value.trim(); if (v !== (acct.alerts_email || '')) void updateAccountSettings({ alerts_email: v || null }); }}
           style={{ width: '100%', marginTop: 8 }}
         />
       </div>

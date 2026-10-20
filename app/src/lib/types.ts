@@ -133,6 +133,16 @@ export interface Accounts {
   bank: number;
 }
 
+/** Alerts and automation for the whole account — every business it owns follows these. */
+export interface AccountSettings {
+  owner_id: string;
+  alerts_phone: string | null;
+  alerts_email: string | null;
+  sms_alerts: boolean;
+  auto_report_weekly: boolean;
+  auto_report_monthly: boolean;
+}
+
 export interface LedgerEntry {
   id: string;
   business_id: string;

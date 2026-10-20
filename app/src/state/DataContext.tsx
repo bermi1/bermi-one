@@ -7,6 +7,7 @@ import { fetchMySubscription, trialDaysLeft, type Subscription } from '../lib/pl
 import { planByCode, type Plan } from '../lib/plans';
 import {
   type AccountId,
+  type AccountSettings,
   type Accounts,
   type Business,
   type ClosingItem,
@@ -52,6 +53,9 @@ interface DataCtx {
   accounts: Accounts | null;
   ledger: LedgerEntry[];
   session: StockSession | null;
+  /** One set of alerts for the account: one number, one email, one set of switches. */
+  accountSettings: AccountSettings | null;
+  updateAccountSettings: (patch: Partial<Omit<AccountSettings, 'owner_id'>>) => Promise<string | null>;
   /** The last verified closings, newest first — what the dashboard reads money from. */
   recentClosings: StockSession[];
   actionLog: ActionLogEntry[];
@@ -167,6 +171,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
   const [ledger, setLedger] = useState<LedgerEntry[]>([]);
   const [session, setSession] = useState<StockSession | null>(null);
   const [recentClosings, setRecentClosings] = useState<StockSession[]>([]);
+  const [accountSettings, setAccountSettings] = useState<AccountSettings | null>(null);
   // Which business the latest load is for: an answer for any other is dropped.
   const loadingFor = useRef<string | null>(null);
   const [sessionDate, setSessionDate] = useState<string>(businessDayIso());
@@ -280,6 +285,10 @@ export function DataProvider({ children }: { children: ReactNode }) {
         }
         setProfile(prof as Profile);
         setBusinesses(biz || []);
+        if (!staffAccount) {
+          const { data: acct } = await supabase.from('account_settings').select('*').eq('owner_id', uid).maybeSingle();
+          setAccountSettings((acct as AccountSettings | null) || { owner_id: uid, alerts_phone: null, alerts_email: null, sms_alerts: false, auto_report_weekly: false, auto_report_monthly: false });
+        }
         const active = (biz || []).find((b) => b.id === (prof as Profile | null)?.active_business_id) || (biz || [])[0];
         if (active) await loadBusinessData(active.id);
       } catch (e) {
@@ -294,6 +303,16 @@ export function DataProvider({ children }: { children: ReactNode }) {
   }, [uid, staffAccount, loadBusinessData, attempt]);
 
   const reload = useCallback(() => setAttempt((n) => n + 1), []);
+
+  /** Saved once for the account; the database copies it onto every business it owns. */
+  const updateAccountSettings = useCallback<DataCtx['updateAccountSettings']>(async (patch) => {
+    if (!uid || staffAccount) return 'NOT_ALLOWED';
+    const next = { ...(accountSettings || { owner_id: uid, alerts_phone: null, alerts_email: null, sms_alerts: false, auto_report_weekly: false, auto_report_monthly: false }), ...patch, owner_id: uid };
+    setAccountSettings(next);
+    setBusinesses((bs) => bs.map((b) => ({ ...b, ...patch })));
+    const { error } = await supabase.from('account_settings').upsert(next, { onConflict: 'owner_id' });
+    return error ? error.message : null;
+  }, [uid, staffAccount, accountSettings]);
 
   const patchProfile = useCallback(
     async (patch: Partial<Profile>) => {
@@ -1153,6 +1172,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
     ledger,
     session,
     recentClosings,
+    accountSettings,
+    updateAccountSettings,
     canStartDay,
     actionLog,
     staffMembers,
