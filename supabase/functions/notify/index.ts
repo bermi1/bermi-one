@@ -28,8 +28,16 @@ async function loadSmsConfig() {
   SMS_URL = Deno.env.get('SMS_URL') || v.url || 'https://karibu.briq.tz/v1/message/send-instant';
   SMS_SENDER = Deno.env.get('SMS_SENDER_ID') || v.sender || 'BRIQ';
 }
-const RESEND_KEY = Deno.env.get('RESEND_API_KEY') ?? '';
-const MAIL_FROM = Deno.env.get('MAIL_FROM') ?? 'Bermi One <noreply@bermi.one>';
+// Email (Resend): the key and From address are saved from the HQ console into
+// Vault and read on every run, like the SMS key; env vars still win if set.
+let RESEND_KEY = '';
+let MAIL_FROM = 'Bermi One <noreply@bermi.one>';
+async function loadEmailConfig() {
+  const { data } = await admin.rpc('email_config');
+  const v = (data ?? {}) as { api_key?: string | null; from?: string | null };
+  RESEND_KEY = Deno.env.get('RESEND_API_KEY') || v.api_key || '';
+  MAIL_FROM = Deno.env.get('MAIL_FROM') || v.from || 'Bermi One <noreply@bermi.one>';
+}
 
 /** Give up after this many tries rather than hammering a gateway forever. */
 const MAX_ATTEMPTS = 4;
@@ -120,7 +128,7 @@ Deno.serve(async (req) => {
   const key = req.headers.get('X-Worker-Key') ?? new URL(req.url).searchParams.get('key') ?? '';
   if (!(await allowed(key))) return new Response('Forbidden', { status: 403 });
 
-  await loadSmsConfig();
+  await Promise.all([loadSmsConfig(), loadEmailConfig()]);
   // What can go out right now, for the app to show ("SMS is not set up yet") instead of silence.
   await admin.from('platform_config').upsert({ key: 'notify_status', value: { sms: !!SMS_KEY, email: !!RESEND_KEY, checked_at: new Date().toISOString() } });
 

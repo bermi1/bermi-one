@@ -300,6 +300,9 @@ export function Pricing() {
           onBlur={(e) => { const v = e.target.value.trim(); if (v !== (acct.alerts_phone || '')) void updateAccountSettings({ alerts_phone: v || null }); }}
           style={{ width: '100%', marginTop: 12 }}
         />
+        <div style={{ marginTop: 8, fontSize: 11.5, color: 'var(--ink3)', fontWeight: 600, lineHeight: 1.45 }}>
+          {sw ? 'Muhtasari wa wiki (mauzo, faida, pesa, madeni ya wafanyakazi na nani anadaiwa) unatumwa kwa SMS na barua pepe kufunga kwa Jumapili kukishahakikiwa.' : "A weekly summary (sales, profit, money, staff debt and who owes what) goes out by SMS and email once Sunday's closing is verified."}
+        </div>
         <TestSms businessId={activeBusiness.id} phone={acct.alerts_phone} sw={lang === 'sw'} />
         <input
           className="field"
