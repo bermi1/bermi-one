@@ -37,13 +37,15 @@ export interface LatestPayment {
   billing_period: string | null;
   created_at: string;
   updated_at: string | null;
+  receipt_token?: string | null;
+  receipt_no?: string | null;
 }
 
 /** The account's most recent subscription payment, whatever became of it. */
 export async function latestPayment(ownerId: string): Promise<LatestPayment | null> {
   const { data } = await supabase
     .from('payments')
-    .select('reference, status, amount, label, billing_period, created_at, updated_at')
+    .select('reference, status, amount, label, billing_period, created_at, updated_at, receipt_token, receipt_no')
     .eq('paid_by', ownerId)
     .eq('purpose', 'subscription')
     .order('created_at', { ascending: false })

@@ -49,6 +49,7 @@ const Legal = lazy(() => loadScreen('legal').then((m) => ({ default: m.Legal }))
 const SetPassword = lazy(() => loadScreen('setPassword').then((m) => ({ default: m.SetPassword })));
 const Book = lazy(() => loadScreen('book').then((m) => ({ default: m.Book })));
 const Ticket = lazy(() => loadScreen('ticket').then((m) => ({ default: m.Ticket })));
+const Receipt = lazy(() => loadScreen('receipt').then((m) => ({ default: m.Receipt })));
 const SalonToday = lazy(() => loadScreen('salonToday').then((m) => ({ default: m.SalonToday })));
 const Bookings = lazy(() => loadScreen('bookings').then((m) => ({ default: m.Bookings })));
 const Clients = lazy(() => loadScreen('clients').then((m) => ({ default: m.Clients })));
@@ -227,9 +228,10 @@ function AppRoutes() {
   }
 
   // A barbershop's public booking page: for its clients, who have no account.
-  if (location.pathname.startsWith('/book/') || location.pathname.startsWith('/q/')) {
+  // A subscription receipt from the payment SMS: opened by the client, often signed out.
+  if (location.pathname.startsWith('/book/') || location.pathname.startsWith('/q/') || location.pathname.startsWith('/r/')) {
     handOverFromSplash();
-    return <Suspense fallback={<Pending />}><Routes><Route path="/book/:slug" element={<Book />} /><Route path="/q/:token" element={<Ticket />} /></Routes></Suspense>;
+    return <Suspense fallback={<Pending />}><Routes><Route path="/book/:slug" element={<Book />} /><Route path="/q/:token" element={<Ticket />} /><Route path="/r/:token" element={<Receipt />} /></Routes></Suspense>;
   }
 
   /*

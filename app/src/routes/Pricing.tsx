@@ -674,6 +674,11 @@ function LatestStrip({ p, country, sw }: { p: LatestPayment; country: string; sw
         <div className="pay-strip-sub">{amount} · {time} · <span style={{ userSelect: 'all' }}>{p.reference}</span></div>
       </div>
       {p.status === 'PENDING' && <span className="pay-strip-dot" />}
+      {p.status === 'COMPLETED' && p.receipt_token && (
+        <a href={`/r/${p.receipt_token}`} target="_blank" rel="noreferrer" style={{ fontSize: 12, fontWeight: 800, color: 'inherit', textDecoration: 'underline', whiteSpace: 'nowrap' }}>
+          {sw ? 'Risiti' : 'Receipt'}
+        </a>
+      )}
     </div>
   );
 }
