@@ -327,11 +327,21 @@ async function handle(req: Request): Promise<Response> {
   const stamp = new Date().toISOString().replace(/[-:TZ.]/g, '').slice(0, 14);
   const reference = `BSUB_${stamp}_${crypto.randomUUID().slice(0, 8).toUpperCase()}`;
 
+  // The real payer, not the gateway's "Guest Customer" / customer@example.com
+  // placeholder: mobile-money operators match the prompt to a named account,
+  // and placeholder buyers are one thing less to go wrong at their end.
+  const { data: prof } = await admin.from('profiles').select('full_name').eq('id', uid).maybeSingle();
+  const buyerName = String(prof?.full_name || '').trim() || 'Bermi One customer';
+  const buyerEmail = user.email && !user.email.endsWith('@staff.bermi.one') ? user.email : 'billing@bermi.one';
+
   const payload: Record<string, unknown> = {
     action: 'collection',
     amount,
     msisdn: phone,
     reference,
+    buyer_name: buyerName,
+    buyer_email: buyerEmail,
+    buyer_phone: phone,
     ...(pm.callback ? { callback_url: pm.callback } : {}),
   };
 

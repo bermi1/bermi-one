@@ -11,6 +11,7 @@ import { PERIODS, checkPayment, isValidPhone, latestPayment, periodUsd, startPay
 import { useAuth } from '../state/AuthContext';
 import { COUNTRIES } from '../lib/countries';
 import { isNative } from '../lib/native';
+import { ManualPay } from '../components/ManualPay';
 import { TestSms } from '../components/TestSms';
 
 /**
@@ -445,13 +446,15 @@ function PaySheet({ plan, period, country, onClose, onPaid }: {
   const [phone, setPhone] = useState('');
   const [busy, setBusy] = useState(false);
   const [timedOut, setTimedOut] = useState(false);
+  // A minute without an answer: offer the way that does not depend on the prompt.
+  const [noPrompt, setNoPrompt] = useState(false);
   const [reference, setReference] = useState<string | null>(null);
   const [status, setStatus] = useState<PayStatus | null>(null);
   const [message, setMessage] = useState('');
   const timer = useRef<number | null>(null);
 
   useEffect(() => {
-    if (!plan) { setReference(null); setStatus(null); setMessage(''); setBusy(false); setTimedOut(false); }
+    if (!plan) { setReference(null); setStatus(null); setMessage(''); setBusy(false); setTimedOut(false); setNoPrompt(false); }
   }, [plan]);
 
   useEffect(() => {
@@ -465,6 +468,7 @@ function PaySheet({ plan, period, country, onClose, onPaid }: {
       // on the next visit.
       const slow = Date.now() - started > 120_000;
       if (slow) setTimedOut(true);
+      if (Date.now() - started > 60_000) setNoPrompt(true);
       try {
         const out = await checkPayment(reference);
         if (out.status !== 'PENDING') {
@@ -586,8 +590,11 @@ function PaySheet({ plan, period, country, onClose, onPaid }: {
                 is a number that gets read out wrong. */}
             <div style={{ marginTop: 9, fontSize: 10, color: 'var(--ink3)', fontWeight: 700, letterSpacing: 0.4, userSelect: 'all' }}>{reference}</div>
           </div>
-          {(status === 'FAILED' || status === 'CANCELLED') && (
-            <button className="btn-primary tap" style={{ width: '100%' }} onClick={() => { setReference(null); setStatus(null); setMessage(''); setTimedOut(false); }}>
+          {((status === 'PENDING' && noPrompt) || status === 'FAILED' || status === 'CANCELLED') && (
+            <ManualPay reference={reference} amount={local} sw={sw} />
+          )}
+          {(status === 'FAILED' || status === 'CANCELLED' || (status === 'PENDING' && timedOut)) && (
+            <button className="btn-primary tap" style={{ width: '100%' }} onClick={() => { setReference(null); setStatus(null); setMessage(''); setTimedOut(false); setNoPrompt(false); }}>
               {sw ? 'Jaribu tena' : 'Try again'}
             </button>
           )}

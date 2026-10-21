@@ -10,6 +10,7 @@ import { InquiryDrawer } from './InquiryDrawer';
 import { PaymeTools } from './PaymeTools';
 import { SmsTools } from './SmsTools';
 import { EmailTools } from './EmailTools';
+import { PaymentsTools } from './PaymentsTools';
 import { Donut, Sparkline, StackBar } from './Sparkline';
 import { ACTION_TYPES, OBJECT_TYPES, type ObjectTypeName } from '../ontology/schema';
 import { gatewayConfig, type GatewayConfig } from '../lib/billing';
@@ -422,6 +423,7 @@ export function Hq() {
 
       {section === 'payments' && <GatewayCard config={gateway} error={gatewayError} T={T} />}
       {section === 'payments' && <PaymeTools onChanged={() => { setGateway(null); setGatewayError(''); }} />}
+      {section === 'payments' && <PaymentsTools />}
       {section === 'payments' && <SmsTools />}
       {section === 'payments' && <EmailTools />}
 
