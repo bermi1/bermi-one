@@ -31,12 +31,12 @@ async function loadSmsConfig() {
 // Email (Resend): the key and From address are saved from the HQ console into
 // Vault and read on every run, like the SMS key; env vars still win if set.
 let RESEND_KEY = '';
-let MAIL_FROM = 'Bermi One <noreply@bermi.one>';
+let MAIL_FROM = 'Bermi One <reports@bermione.com>';
 async function loadEmailConfig() {
   const { data } = await admin.rpc('email_config');
   const v = (data ?? {}) as { api_key?: string | null; from?: string | null };
   RESEND_KEY = Deno.env.get('RESEND_API_KEY') || v.api_key || '';
-  MAIL_FROM = Deno.env.get('MAIL_FROM') || v.from || 'Bermi One <noreply@bermi.one>';
+  MAIL_FROM = Deno.env.get('MAIL_FROM') || v.from || 'Bermi One <reports@bermione.com>';
 }
 
 /** Give up after this many tries rather than hammering a gateway forever. */
@@ -183,6 +183,15 @@ Deno.serve(async (req) => {
         provider_id: result.id ?? null,
         provider_message: result.message ?? null,
         sent_at: new Date().toISOString(),
+      }).eq('id', n.id);
+    } else if (n.channel === 'email' && /domain is not verified/i.test(result.message ?? '')) {
+      // Not this message's fault: the sending domain is still being verified
+      // at Resend. Hold it for an hour without using up its retries, so the
+      // queue simply starts flowing once the DNS records go green.
+      await admin.from('notifications').update({
+        provider: 'resend',
+        provider_message: result.message ?? 'Sending domain not verified yet',
+        scheduled_for: new Date(Date.now() + 60 * 60_000).toISOString(),
       }).eq('id', n.id);
     } else {
       failed++;

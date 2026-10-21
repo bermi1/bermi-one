@@ -18,12 +18,12 @@ export const COMPANY = {
    * Where the web app lives. The Play listing's privacy-policy and data-deletion
    * URLs are built from this, so it has to be the real, live host.
    */
-  site: 'https://bermione.app',
+  site: 'https://bermione.com',
   /**
    * A mailbox a person actually reads. Play will email it, and so will clients
    * asking for their data to be deleted.
    */
-  supportEmail: 'support@bermione.app',
+  supportEmail: 'support@bermione.com',
   /** Where the business is registered. Names the law the terms are read under. */
   jurisdiction: 'Tanzania',
 } as const;

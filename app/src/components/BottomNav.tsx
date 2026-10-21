@@ -10,7 +10,15 @@ export function BottomNav() {
   const sw = lang === 'sw';
   const salon = activeBusiness?.type === 'barber';
 
-  const items = salon
+  const retail = activeBusiness?.type === 'retail';
+  const items = retail
+    ? [
+        { to: '/home', icon: 'store', label: sw ? 'Duka' : 'Shop' },
+        { to: '/products', icon: 'tag', label: sw ? 'Bidhaa' : 'Products' },
+        { to: '/money', icon: owner ? 'wallet' : 'receipt', label: owner ? L.money : L.myEntries },
+        ...(owner ? [{ to: '/manage', icon: 'grid', label: L.manage }] : []),
+      ]
+    : salon
     ? [
         { to: '/home', icon: 'home', label: sw ? 'Leo' : 'Today' },
         ...(activeBusiness?.settings?.bookings_enabled ? [{ to: '/bookings', icon: 'calendar', label: sw ? 'Miadi' : 'Bookings' }] : []),

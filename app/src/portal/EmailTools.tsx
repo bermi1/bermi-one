@@ -54,7 +54,7 @@ export function EmailTools() {
         <div style={{ flex: 1 }}>
           <div style={{ fontWeight: 800 }}>{sw ? 'Email (Resend)' : 'Email (Resend)'}</div>
           <div style={{ fontSize: 12.5, color: 'var(--ink2)' }}>
-            {!o ? '…' : on ? (sw ? `Imewashwa — kutoka ${o.from || 'Bermi One <noreply@bermi.one>'}` : `On — sending from ${o.from || 'Bermi One <noreply@bermi.one>'}`)
+            {!o ? '…' : on ? (sw ? `Imewashwa — kutoka ${o.from || 'Bermi One <noreply@bermione.com>'}` : `On — sending from ${o.from || 'Bermi One <noreply@bermione.com>'}`)
               : (sw ? 'Imezimwa — hakuna ufunguo. Email zinasubiri kwenye foleni.' : 'Off — no key yet. Emails wait in the queue until one is saved.')}
           </div>
         </div>
@@ -64,7 +64,7 @@ export function EmailTools() {
       {!on && (
         <ol style={{ margin: '10px 0 0', paddingLeft: 18, fontSize: 12.5, color: 'var(--ink2)', lineHeight: 1.6 }}>
           <li>{sw ? 'Fungua akaunti resend.com' : 'Create an account at resend.com'}</li>
-          <li>{sw ? 'Domains → ongeza bermi.one, weka rekodi za DNS (SPF, DKIM) kwa msajili wa domain, subiri "Verified"' : 'Domains → add bermi.one, add the DNS records (SPF, DKIM) at your domain registrar, wait for "Verified"'}</li>
+          <li>{sw ? 'Domains → ongeza bermione.com, weka rekodi za DNS (SPF, DKIM) kwa msajili wa domain, subiri "Verified"' : 'Domains → add bermione.com, add the DNS records (SPF, DKIM) at your domain registrar, wait for "Verified"'}</li>
           <li>{sw ? 'API Keys → tengeneza ufunguo (Sending access), ubandike hapa' : 'API Keys → create a key (Sending access) and paste it here'}</li>
         </ol>
       )}
@@ -78,7 +78,7 @@ export function EmailTools() {
 
       <div style={{ display: 'grid', gap: 8, marginTop: 12 }}>
         <input className="hq-input" type="password" autoComplete="off" placeholder={on ? (sw ? 'Ufunguo umehifadhiwa — weka mpya kubadilisha' : 'Key saved — paste a new one to replace it') : 'Resend API key (re_…)'} value={key} onChange={(e) => setKey(e.target.value)} />
-        <input className="hq-input" placeholder={`${sw ? 'Kutoka' : 'From'}: ${o?.from || 'Bermi One <reports@bermi.one>'}`} value={from} onChange={(e) => setFrom(e.target.value)} />
+        <input className="hq-input" placeholder={`${sw ? 'Kutoka' : 'From'}: ${o?.from || 'Bermi One <reports@bermione.com>'}`} value={from} onChange={(e) => setFrom(e.target.value)} />
         <button className="hq-nav-item" style={{ justifyContent: 'center', background: 'var(--brand)', color: 'var(--brandInk)', fontWeight: 800 }} disabled={busy || (!key.trim() && !from.trim())} onClick={() => void save()}>
           <Icon name="check" size={14} /> {busy ? '…' : (sw ? 'Hifadhi' : 'Save')}
         </button>

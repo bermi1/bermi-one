@@ -232,9 +232,9 @@ export const BUSINESS_TYPES = [
     desc: 'Nightly stock count, cash and profit', descSw: 'Hesabu ya stoo kila usiku, fedha na faida' },
   { id: 'barber', name: 'Barbershop & salon', nameSw: 'Kinyozi na saluni', icon: 'scissors', live: true,
     desc: 'Services, barbers, clients and payouts', descSw: 'Huduma, vinyozi, wateja na malipo' },
-  // Shop module: built in parts, switched on when its screens ship.
-  { id: 'retail', name: 'Shop & online store', nameSw: 'Duka na duka la mtandaoni', icon: 'store', live: false,
-    desc: 'POS, stock, online store, offers and gift cards', descSw: 'POS, stoo, duka la mtandaoni, ofa na kadi za zawadi' },
+  // Shop module: products, the shop's link and QR, orders over WhatsApp. POS and payments next.
+  { id: 'retail', name: 'Shop & online store', nameSw: 'Duka na duka la mtandaoni', icon: 'store', live: true,
+    desc: 'Products, your shop link and QR, orders on WhatsApp', descSw: 'Bidhaa, link na QR ya duka, oda kwa WhatsApp' },
   { id: 'rest', name: 'Restaurant', nameSw: 'Mgahawa', icon: 'fork', live: false, desc: '', descSw: '' },
   { id: 'pharm', name: 'Pharmacy', nameSw: 'Famasia', icon: 'pill', live: false, desc: '', descSw: '' },
   { id: 'groc', name: 'Grocery', nameSw: 'Duka la vyakula', icon: 'cart', live: false, desc: '', descSw: '' },

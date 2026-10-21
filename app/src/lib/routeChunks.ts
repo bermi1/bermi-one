@@ -30,6 +30,9 @@ export const CHUNKS = {
   services: () => import('../routes/salon/Services'),
   payouts: () => import('../routes/salon/Payouts'),
   salonReports: () => import('../routes/salon/SalonReports'),
+  shopHome: () => import('../routes/shop/ShopHome'),
+  shopProducts: () => import('../routes/shop/Products'),
+  shopPage: () => import('../routes/ShopPage'),
 } as const;
 
 export type ChunkName = keyof typeof CHUNKS;
