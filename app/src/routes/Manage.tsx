@@ -9,6 +9,7 @@ import { useAuth } from '../state/AuthContext';
 import { useToast } from '../state/ToastContext';
 import { bizMeta, tintVars, typeName } from '../lib/types';
 import { BusinessTypePicker } from '../components/BusinessTypePicker';
+import { MyReceipts } from '../components/MyReceipts';
 import { checkPlatformAdmin } from '../lib/platform';
 import { localPrice } from '../lib/plans';
 import { COUNTRIES } from '../lib/countries';
@@ -19,7 +20,7 @@ import { canInstall, canOffer, install, isIosSafari, isStandalone, onInstallChan
 export function Manage() {
   const nav = useNavigate();
   const { L, lang, theme } = useSettings();
-  const { businesses, activeBusiness, switchBusiness, addBusiness, setLang, setTheme, displayName, staffMembers, plan, trialDays, onTrial } = useData();
+  const { businesses, activeBusiness, switchBusiness, addBusiness, setLang, setTheme, displayName, staffMembers, plan, trialDays, onTrial, role } = useData();
   const { signOut } = useAuth();
   const { flash } = useToast();
 
@@ -146,6 +147,9 @@ export function Manage() {
         </div>
         <Icon name="right" size={16} style={{ color: 'var(--ink3)' }} />
       </div>
+
+      {/* Receipts belong to whoever pays: the owner, not a staff login. */}
+      {role !== 'staff' && !native && <MyReceipts />}
 
       {isStaff && (
         <div className="card tap" onClick={() => nav('/hq')} style={{ padding: 16, marginBottom: 12, display: 'flex', alignItems: 'center', gap: 12, background: 'var(--ink)', color: '#fff' }}>

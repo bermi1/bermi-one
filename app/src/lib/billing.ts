@@ -130,3 +130,27 @@ export function normalisePhone(input: string): string {
 export function isValidPhone(input: string): boolean {
   return /^255[0-9]{9}$/.test(normalisePhone(input));
 }
+
+export interface PaidReceipt {
+  receipt_no: string;
+  receipt_token: string;
+  amount: number;
+  label: string | null;
+  billing_period: string | null;
+  updated_at: string | null;
+  created_at: string;
+}
+
+/** Every subscription payment that went through, newest first — each one has a receipt. */
+export async function listReceipts(ownerId: string): Promise<PaidReceipt[]> {
+  const { data } = await supabase
+    .from('payments')
+    .select('receipt_no, receipt_token, amount, label, billing_period, updated_at, created_at')
+    .eq('paid_by', ownerId)
+    .eq('purpose', 'subscription')
+    .eq('status', 'COMPLETED')
+    .not('receipt_token', 'is', null)
+    .order('created_at', { ascending: false })
+    .limit(50);
+  return (data as PaidReceipt[] | null) ?? [];
+}
