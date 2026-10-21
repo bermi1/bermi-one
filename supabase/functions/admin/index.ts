@@ -70,7 +70,11 @@ interface Body {
     | 'query_payment'
     | 'payments'
     | 'set_payme_config'
-    | 'test_payme';
+    | 'test_payme'
+    | 'payme_balance'
+    | 'payme_lookup'
+    | 'payme_withdraw'
+    | 'payme_payouts';
   business_id?: string;
   owner_id?: string;
   user_id?: string;
@@ -90,6 +94,62 @@ interface Body {
   sandbox_app_id?: string;
   secret?: string;
   sandbox?: boolean;
+  msisdn?: string;
+  channel?: string;
+  /** The amount typed a second time; a withdrawal goes only when it matches. */
+  confirm?: string;
+  recipient_name?: string;
+}
+
+/** Wallet channels Payme pays out to. CASHIN lets Payme detect the network. */
+const PAYOUT_CHANNELS = ['CASHIN', 'vodacom', 'airtel', 'tigo', 'halotel', 'zantel', 'ttcl', 'SELCOM_PESA'];
+
+/** Tanzanian numbers reach Payme as 255XXXXXXXXX. */
+function msisdnOf(input: string): string {
+  const d = (input || '').replace(/[^0-9]/g, '');
+  if (d.startsWith('255')) return d;
+  if (d.startsWith('0')) return '255' + d.slice(1);
+  if (d.length === 9) return '255' + d;
+  return d;
+}
+
+/** The network a Tanzanian number belongs to, from its prefix, for name lookups. */
+function networkOf(msisdn: string): string | null {
+  const p = msisdn.slice(3, 5);
+  if (['74', '75', '76'].includes(p)) return 'vodacom';
+  if (['68', '69', '78'].includes(p)) return 'airtel';
+  if (['65', '67', '71', '77'].includes(p)) return 'tigo';
+  if (['61', '62'].includes(p)) return 'halotel';
+  if (p === '73') return 'ttcl';
+  return null;
+}
+
+/** One signed call to Payme, the way every endpoint expects it. */
+async function payme(p: { appId: string; secret: string; sandbox: boolean }, path: string, payload: Record<string, unknown>) {
+  const message = JSON.stringify(payload);
+  const timestamp = String(Math.floor(Date.now() / 1000));
+  const key = await crypto.subtle.importKey('raw', new TextEncoder().encode(p.secret), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
+  const sig = await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(message + timestamp));
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+    'X-App-ID': p.appId,
+    'X-Timestamp': timestamp,
+    'X-Signature': btoa(String.fromCharCode(...new Uint8Array(sig))),
+  };
+  if (p.sandbox) headers['X-Sandbox'] = '1';
+  const res = await fetch(`https://portal.paymeafrica.com/api/v1${path}`, { method: 'POST', headers, body: message });
+  const text = await res.text();
+  let out: Record<string, unknown> = {};
+  try { out = text ? JSON.parse(text) : {}; } catch { out = { message: text.slice(0, 300) }; }
+  return { status: res.status, out };
+}
+
+/** The app's balance on Payme, or the reason it could not be read. */
+async function paymeBalance(p: { appId: string; secret: string; sandbox: boolean }) {
+  const { status, out } = await payme(p, '/summarize', {});
+  const data = (out.data ?? {}) as Record<string, unknown>;
+  const balance = Number(data.account_balance);
+  return { ok: status < 300 && Number.isFinite(balance), status, balance: Number.isFinite(balance) ? balance : null, data, message: String(out.message ?? out.error ?? '') };
 }
 
 /**
@@ -538,6 +598,90 @@ async function handle(req: Request): Promise<Response> {
       const testId = v.sandbox_app_id || liveId;
       const [live, sandbox] = await Promise.all([probePayme(liveId, secret, false), probePayme(testId, secret, true)]);
       return json({ mode: (Deno.env.get('PAYME_SANDBOX') || v.sandbox || '1') === '1' ? 'sandbox' : 'live', live, sandbox });
+    }
+
+    // What the app holds on Payme right now, and the collections behind it.
+    case 'payme_balance': {
+      const pm = await paymeConfig(admin);
+      if (!pm.appId || !pm.secret) return json({ error: 'Payme Africa is not configured yet.' }, 503);
+      const b = await paymeBalance(pm);
+      if (!b.ok) return json({ error: b.message || `Payme answered ${b.status}` }, 502);
+      return json({ balance: b.balance, sandbox: pm.sandbox, summary: b.data });
+    }
+
+    // Whose wallet a number is, before any money is sent to it.
+    case 'payme_lookup': {
+      const msisdn = msisdnOf(body.msisdn ?? '');
+      if (!/^255\d{9}$/.test(msisdn)) return json({ error: 'Enter a valid phone number, e.g. 0754 000 000.' }, 400);
+      const pm = await paymeConfig(admin);
+      if (!pm.appId || !pm.secret) return json({ error: 'Payme Africa is not configured yet.' }, 503);
+      const channel = (body.channel && body.channel !== 'CASHIN' && body.channel !== 'SELCOM_PESA') ? body.channel : networkOf(msisdn);
+      if (!channel) return json({ msisdn, name: null, ok: false, message: 'Pick the network to check the name.' });
+      const { status, out } = await payme(pm, '/lookup', { type: 'wallet', channel, msisdn });
+      return json({ msisdn, name: typeof out.name === 'string' ? out.name : null, ok: status < 300 && out.status === 'success', message: String(out.message ?? '') });
+    }
+
+    /*
+      Withdraw from the Payme balance to a mobile-money wallet. Real money
+      leaves, so every check happens here, not in the browser: an admin, a
+      valid number and channel, a whole amount typed twice, and no more than
+      the balance Payme reports this second. The row is written before the
+      call so a payout can never happen without a record of it.
+    */
+    case 'payme_withdraw': {
+      const amount = Math.floor(Number(body.amount));
+      if (!Number.isFinite(amount) || amount <= 0) return json({ error: 'Enter the amount to withdraw.' }, 400);
+      if (String(body.confirm ?? '').replace(/[^0-9]/g, '') !== String(amount)) return json({ error: 'The confirmation amount does not match.' }, 400);
+      const msisdn = msisdnOf(body.msisdn ?? '');
+      if (!/^255\d{9}$/.test(msisdn)) return json({ error: 'Enter a valid phone number, e.g. 0754 000 000.' }, 400);
+      const channel = PAYOUT_CHANNELS.includes(body.channel ?? '') ? body.channel! : 'CASHIN';
+
+      const pm = await paymeConfig(admin);
+      if (!pm.appId || !pm.secret) return json({ error: 'Payme Africa is not configured yet.' }, 503);
+
+      const { data: inFlight } = await admin.from('payouts').select('reference').eq('status', 'PENDING').gte('created_at', new Date(Date.now() - 10 * 60_000).toISOString()).limit(1);
+      if (inFlight && inFlight.length) return json({ error: `Withdrawal ${inFlight[0].reference} is still pending. Wait for it to finish first.` }, 409);
+
+      const b = await paymeBalance(pm);
+      if (!b.ok) return json({ error: b.message || `Could not read the Payme balance (${b.status}).` }, 502);
+      if (amount > (b.balance ?? 0)) return json({ error: `Only TSh ${(b.balance ?? 0).toLocaleString('en-US')} is available.` }, 400);
+
+      const stamp = new Date().toISOString().replace(/[-:TZ.]/g, '').slice(0, 14);
+      const reference = `BPAYOUT_${stamp}_${crypto.randomUUID().slice(0, 8).toUpperCase()}`;
+      const { error: insErr } = await admin.from('payouts').insert({
+        reference, amount, msisdn, channel, sandbox: pm.sandbox, requested_by: user.id,
+        recipient_name: body.recipient_name?.trim() || null, note: body.notes?.trim() || null,
+      });
+      if (insErr) return json({ error: insErr.message }, 500);
+
+      const payload: Record<string, unknown> = { action: 'disbursement', amount, msisdn, channel, reference };
+      if (pm.callback) payload.callback_url = pm.callback;
+      let sent: { status: number; out: Record<string, unknown> };
+      try {
+        sent = await payme(pm, '/transact', payload);
+      } catch (e) {
+        // Outcome unknown: it stays PENDING until Payme's callback settles it.
+        await admin.from('payouts').update({ provider_message: `No answer from Payme: ${e instanceof Error ? e.message : e}`.slice(0, 300), updated_at: new Date().toISOString() }).eq('reference', reference);
+        return json({ reference, status: 'PENDING', message: 'No answer from Payme yet — it may still go through. Check back before trying again.' });
+      }
+      const { status, out } = sent;
+      const ps = String(out.payment_status ?? '').toUpperCase();
+      // A timeout leaves it PENDING (it may still go through); anything not accepted is FAILED.
+      const final = status === 202 ? 'PENDING' : status >= 300 || out.status === 'error' ? 'FAILED' : ps === 'COMPLETED' ? 'COMPLETED' : ps === 'FAILED' ? 'FAILED' : 'PENDING';
+      const message = String((out.provider_response as Record<string, unknown> | undefined)?.message ?? out.message ?? out.resultcode ?? '');
+      await admin.from('payouts').update({
+        status: final, transaction_id: out.transaction_id ? String(out.transaction_id) : null,
+        provider_message: message.slice(0, 300) || null, response: out, updated_at: new Date().toISOString(),
+      }).eq('reference', reference);
+      return json({ reference, status: final, message, balance_before: b.balance });
+    }
+
+    case 'payme_payouts': {
+      const { data, error } = await admin.from('payouts')
+        .select('reference, amount, msisdn, channel, recipient_name, note, status, transaction_id, provider_message, sandbox, created_at, updated_at')
+        .order('created_at', { ascending: false }).limit(Math.min(body.limit ?? 20, 100));
+      if (error) return json({ error: error.message }, 500);
+      return json({ payouts: data ?? [] });
     }
 
     default:

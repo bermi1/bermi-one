@@ -114,6 +114,17 @@ async function handle(req: Request): Promise<Response> {
     return new Response('No reference', { status: 400 });
   }
 
+  // A withdrawal from HQ, not a payment in: settle the payout row and stop.
+  if (reference.startsWith('BPAYOUT_')) {
+    const s = normaliseStatus(String(body.result ?? ''), String(body.payment_status ?? ''));
+    const final = s === 'CANCELLED' ? 'FAILED' : s;
+    const { data: row } = await admin.from('payouts').update({
+      status: final, transaction_id: body.transid ? String(body.transid) : undefined, updated_at: new Date().toISOString(),
+    }).eq('reference', reference).neq('status', 'COMPLETED').select('reference').maybeSingle();
+    await record({ reference, signatureOk: true, handled: true, outcome: row ? `payout_${final.toLowerCase()}` : 'payout_unchanged', headers, body });
+    return new Response(JSON.stringify({ ok: true }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+  }
+
   const { data: payment } = await admin
     .from('payments')
     .select('*')

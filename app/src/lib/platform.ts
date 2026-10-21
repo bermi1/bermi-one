@@ -392,3 +392,14 @@ export async function fetchDailySeries(days = 30): Promise<DailyPoint[]> {
 // --- inquiries, from the console's side ------------------------------------
 export { fetchSupportQueue, fetchThread, postMessage, setInquiryStatus } from './support';
 export type { Inquiry, InquiryMessage, InquiryStatus } from './support';
+
+export interface PayoutRow {
+  reference: string; amount: number; msisdn: string; channel: string; recipient_name: string | null; note: string | null;
+  status: 'PENDING' | 'COMPLETED' | 'FAILED'; transaction_id: string | null; provider_message: string | null; sandbox: boolean; created_at: string; updated_at: string;
+}
+/** Money on the Payme app balance, and withdrawing it to a wallet. HQ only — the function checks. */
+export const fetchPaymeBalance = () => callAdmin<{ balance: number; sandbox: boolean }>({ action: 'payme_balance' });
+export const lookupWallet = (msisdn: string, channel: string) => callAdmin<{ msisdn: string; name: string | null; ok: boolean; message: string }>({ action: 'payme_lookup', msisdn, channel });
+export const withdrawPayme = (input: { amount: number; confirm: string; msisdn: string; channel: string; recipient_name?: string; notes?: string }) =>
+  callAdmin<{ reference: string; status: PayoutRow['status']; message: string }>({ action: 'payme_withdraw', ...input });
+export const fetchPayouts = () => callAdmin<{ payouts: PayoutRow[] }>({ action: 'payme_payouts' }).then((r) => r.payouts);
