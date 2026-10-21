@@ -1,3 +1,4 @@
+import { withLines } from '../lib/coldStorage';
 import { useCallback, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Icon } from '../lib/icons';
@@ -52,8 +53,20 @@ export function SessionHistory() {
     }
   };
 
-  async function report(s: StockSession) {
+  /** An archived closing's lines live in Storage; fetch them before showing any line. */
+  async function full(s: StockSession): Promise<StockSession | null> {
+    try { return await withLines(s); } catch { flash(lang === 'sw' ? 'Imeshindikana kufungua closing hii ya zamani' : 'Could not open this old closing'); return null; }
+  }
+
+  async function open(s: StockSession) {
+    const f = await full(s);
+    if (f) setViewing(f);
+  }
+
+  async function report(s0: StockSession) {
     if (!activeBusiness) return;
+    const s = await full(s0);
+    if (!s) return;
     const { openSessionReport } = await import('../lib/sessionReport');
     const ok = openSessionReport({ business: activeBusiness, products, session: s, lang, includeProfit: owner });
     if (!ok) flash(lang === 'sw' ? 'Ruhusu dirisha jipya' : 'Allow pop-ups to open the report');
@@ -139,7 +152,7 @@ export function SessionHistory() {
               </div>
 
               <div style={{ display: 'flex', gap: 6, marginTop: 12, flexWrap: 'wrap' }}>
-                <button className="chip tap" style={{ padding: '6px 11px', fontSize: 11.5 }} onClick={() => setViewing(s)}>
+                <button className="chip tap" style={{ padding: '6px 11px', fontSize: 11.5 }} onClick={() => void open(s)}>
                   {L.view}
                 </button>
                 <button className="chip tap" style={{ padding: '6px 11px', fontSize: 11.5, display: 'flex', alignItems: 'center', gap: 5 }} onClick={() => void report(s)}>

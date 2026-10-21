@@ -125,7 +125,8 @@ interface DataCtx {
   submitSession: (reason: string | null, note: string) => Promise<void>;
   approveSession: () => Promise<void>;
   returnSession: (comments?: string) => Promise<void>;
-  fetchSessions: (limit?: number) => Promise<StockSession[]>;
+  /** Pass `cols` to fetch only some columns; the full rows carry every product line. */
+  fetchSessions: (limit?: number, cols?: string) => Promise<StockSession[]>;
   deleteSession: (id: string) => Promise<void>;
   /** Permanently removes one money entry and undoes what it did to the balances. */
   deleteLedgerEntry: (id: string) => Promise<void>;
@@ -1051,15 +1052,15 @@ export function DataProvider({ children }: { children: ReactNode }) {
   );
 
   const fetchSessions = useCallback<DataCtx['fetchSessions']>(
-    async (limit = 60) => {
+    async (limit = 60, cols = '*') => {
       if (!activeBusiness) return [];
       const { data } = await supabase
         .from('stock_sessions')
-        .select('*')
+        .select(cols)
         .eq('business_id', activeBusiness.id)
         .order('session_date', { ascending: false })
         .limit(limit);
-      return (data || []) as StockSession[];
+      return (data || []) as unknown as StockSession[];
     },
     [activeBusiness],
   );

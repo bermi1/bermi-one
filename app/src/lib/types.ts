@@ -208,6 +208,9 @@ export interface StockSession {
   submitted_at: string | null;
   approved_by_name: string | null;
   approved_at: string | null;
+  /** Set once the per-product lines have moved to Storage; totals stay here. */
+  archived_at?: string | null;
+  archive_path?: string | null;
 }
 
 export const KIND_SIGN: Record<EntryKind, number> = {

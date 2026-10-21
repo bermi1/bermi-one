@@ -12,6 +12,7 @@ import { SmsTools } from './SmsTools';
 import { EmailTools } from './EmailTools';
 import { PaymentsTools } from './PaymentsTools';
 import { WithdrawTools } from './WithdrawTools';
+import { DbHealth } from './DbHealth';
 import { Donut, Sparkline, StackBar } from './Sparkline';
 import { ACTION_TYPES, OBJECT_TYPES, type ObjectTypeName } from '../ontology/schema';
 import { gatewayConfig, type GatewayConfig } from '../lib/billing';
@@ -266,6 +267,7 @@ export function Hq() {
           </>
         ) : <div className="hq-empty">{T.loading}…</div>
       )}
+      {section === 'overview' && <DbHealth />}
 
       {section === 'clients' && (
         <>

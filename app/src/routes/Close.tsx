@@ -64,7 +64,7 @@ export function Close() {
   // computes every "sold" against a shelf that never existed, so the screen
   // says so plainly rather than quietly producing wrong numbers.
   const checkEarlier = useCallback(async () => {
-    const rows = await fetchSessions(60);
+    const rows = await fetchSessions(60, 'session_date, status');
     const older = rows
       .filter((r) => r.status !== 'verified' && r.session_date < closingDay)
       .sort((a, b) => a.session_date.localeCompare(b.session_date))[0];
