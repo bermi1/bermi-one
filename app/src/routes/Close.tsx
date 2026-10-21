@@ -85,10 +85,10 @@ export function Close() {
     const [kind, day] = code.split(':');
     const d = day ? dayName(day) : '';
     if (kind === 'VERIFY_FIRST') return lang === 'sw'
-      ? `Hakiki kufunga kwa ${d} kwanza. Siku mpya inaanza na bidhaa zilizohakikiwa za siku iliyopita.`
+      ? `Hakiki closing ya ${d} kwanza. Siku mpya inaanza na bidhaa zilizohakikiwa za siku iliyopita.`
       : `Verify ${d} first. A new day opens on the last verified closing.`;
     if (kind === 'ALREADY_CLOSED') return lang === 'sw'
-      ? `Siku hii imeshafungwa. Kufunga kwa mwisho kulikohakikiwa ni ${d}.`
+      ? `Siku hii imeshafungwa. Closing ya mwisho kulikohakikiwa ni ${d}.`
       : `That day is already closed. The last verified closing is ${d}.`;
     return code;
   }

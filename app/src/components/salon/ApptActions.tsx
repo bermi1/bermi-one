@@ -44,8 +44,8 @@ export function ApptActions({ appt, onClose, onCheckout }: { appt: SalonAppointm
       <div className="card" style={{ padding: 14, display: 'flex', flexDirection: 'column', gap: 6, fontSize: 13.5 }}>
         <div><b>{sw ? 'Huduma' : 'Services'}:</b> {appt.service_names || '—'}{appt.price_estimate ? ` · ~${fmt(appt.price_estimate)}` : ''}</div>
         <div><b>{sw ? 'Kinyozi' : 'Barber'}:</b> {appt.barber_name || (sw ? 'Yeyote' : 'Any')}</div>
-        {appt.client_phone && <div><b>{sw ? 'Simu' : 'Phone'}:</b> {appt.client_phone}</div>}
-        <div><b>{sw ? 'Chanzo' : 'Source'}:</b> {appt.source === 'online' ? (sw ? 'Mtandaoni' : 'Online') : appt.source === 'phone' ? (sw ? 'Simu' : 'Phone') : (sw ? 'Ana kwa ana' : 'Walk-in')}</div>
+        {appt.client_phone && <div><b>{sw ? 'Mobile' : 'Phone'}:</b> {appt.client_phone}</div>}
+        <div><b>{sw ? 'Chanzo' : 'Source'}:</b> {appt.source === 'online' ? (sw ? 'Mtandaoni' : 'Online') : appt.source === 'phone' ? (sw ? 'Mobile' : 'Phone') : (sw ? 'Ana kwa ana' : 'Walk-in')}</div>
         {appt.note && <div style={{ color: 'var(--ink2)' }}>“{appt.note}”</div>}
       </div>
       <div style={{ display: 'grid', gap: 8, marginTop: 14 }}>

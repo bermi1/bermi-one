@@ -88,7 +88,7 @@ export function QueueJoin({ slug, sw, services, barbers }: { slug: string; sw: b
       <div className="section-label">{t('Your details', 'Taarifa zako')}</div>
       <div style={{ display: 'grid', gap: 8 }}>
         <input className="field" autoComplete="name" placeholder={t('Your name', 'Jina lako')} value={name} onChange={(e) => setName(e.target.value)} />
-        <input className="field" autoComplete="tel" inputMode="tel" placeholder={t('Phone', 'Simu')} value={phone} onChange={(e) => setPhone(e.target.value)} />
+        <input className="field" autoComplete="tel" inputMode="tel" placeholder={t('Phone', 'Mobile')} value={phone} onChange={(e) => setPhone(e.target.value)} />
       </div>
       {error && <div style={{ marginTop: 10, padding: '10px 12px', borderRadius: 12, background: 'var(--badSoft)', color: 'var(--bad)', fontSize: 13, fontWeight: 700 }}>{error}</div>}
       <button type="button" className="btn-primary tap" style={{ width: '100%', marginTop: 14, border: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}

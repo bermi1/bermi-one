@@ -198,7 +198,7 @@ export function NewAppointmentSheet({ open, onClose, initialDay, client: preset 
           ))}
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginTop: 8 }}>
             <input className="s-input" placeholder={sw ? 'Jina' : 'Name'} value={name} onChange={(e) => setName(e.target.value)} />
-            <input className="s-input" placeholder={sw ? 'Simu' : 'Phone'} inputMode="tel" value={phone} onChange={(e) => setPhone(e.target.value)} />
+            <input className="s-input" placeholder={sw ? 'Mobile' : 'Phone'} inputMode="tel" value={phone} onChange={(e) => setPhone(e.target.value)} />
           </div>
         </>
       )}
@@ -247,7 +247,7 @@ export function NewAppointmentSheet({ open, onClose, initialDay, client: preset 
 
       <div className="s-label">{sw ? 'Imepokelewa kupitia' : 'Booked by'}</div>
       <div className="s-seg">
-        <button type="button" aria-pressed={source === 'phone'} onClick={() => setSource('phone')}>{sw ? 'Simu' : 'Phone'}</button>
+        <button type="button" aria-pressed={source === 'phone'} onClick={() => setSource('phone')}>{sw ? 'Mobile' : 'Phone'}</button>
         <button type="button" aria-pressed={source === 'walk_in'} onClick={() => setSource('walk_in')}>{sw ? 'Ana kwa ana' : 'In person'}</button>
       </div>
       <input className="s-input" style={{ marginTop: 8 }} placeholder={sw ? 'Maelezo (hiari)' : 'Note (optional)'} value={note} onChange={(e) => setNote(e.target.value)} />

@@ -174,7 +174,7 @@ function EditClientSheet({ open, onClose, client }: { open: boolean; onClose: ()
     <Sheet open={open} onClose={onClose} title={client ? (sw ? 'Hariri mteja' : 'Edit client') : (sw ? 'Mteja mpya' : 'New client')}>
       <div style={{ display: 'grid', gap: 8 }}>
         <input className="s-input" placeholder={sw ? 'Jina' : 'Name'} value={name} onChange={(e) => setName(e.target.value)} />
-        <input className="s-input" placeholder={sw ? 'Simu' : 'Phone'} inputMode="tel" value={phone} onChange={(e) => setPhone(e.target.value)} />
+        <input className="s-input" placeholder={sw ? 'Mobile' : 'Phone'} inputMode="tel" value={phone} onChange={(e) => setPhone(e.target.value)} />
         <textarea className="s-input" rows={3} placeholder={sw ? 'Anachopenda — mfano "fade #1, ndevu fupi, hapendi wembe"' : 'Preferences — e.g. "skin fade #1, short beard, no razor"'} value={notes} onChange={(e) => setNotes(e.target.value)} />
       </div>
       {error && <div style={{ marginTop: 10, color: 'var(--bad)', fontSize: 12.5, fontWeight: 700 }}>{error}</div>}

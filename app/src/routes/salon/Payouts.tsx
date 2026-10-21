@@ -106,12 +106,12 @@ export function Payouts() {
           })}
         </div>
       )}
-      <Sheet open={!!paying} onClose={() => setPaying(null)} title={paying ? `${sw ? 'Mlipe' : 'Pay'} ${paying.name}` : ''} sub={sw ? 'Itarekodiwa kama matumizi kwenye daftari la fedha' : 'Recorded as an expense in the cash book'}>
+      <Sheet open={!!paying} onClose={() => setPaying(null)} title={paying ? `${sw ? 'Mlipe' : 'Pay'} ${paying.name}` : ''} sub={sw ? 'Itarekodiwa kama matumizi kwenye cash book' : 'Recorded as an expense in the cash book'}>
         <input className="s-input" inputMode="numeric" value={amount} onChange={(e) => setAmount(e.target.value.replace(/[^0-9.]/g, ''))} />
         <div className="s-seg" style={{ marginTop: 10 }}>
-          <button type="button" aria-pressed={account === 'cash'} onClick={() => setAccount('cash')}>{sw ? 'Taslimu' : 'Cash'}</button>
-          <button type="button" aria-pressed={account === 'mobile'} onClick={() => setAccount('mobile')}>{sw ? 'Simu' : 'Mobile'}</button>
-          <button type="button" aria-pressed={account === 'bank'} onClick={() => setAccount('bank')}>{sw ? 'Benki' : 'Bank'}</button>
+          <button type="button" aria-pressed={account === 'cash'} onClick={() => setAccount('cash')}>{sw ? 'Cash' : 'Cash'}</button>
+          <button type="button" aria-pressed={account === 'mobile'} onClick={() => setAccount('mobile')}>{sw ? 'Mobile' : 'Mobile'}</button>
+          <button type="button" aria-pressed={account === 'bank'} onClick={() => setAccount('bank')}>{sw ? 'Bank' : 'Bank'}</button>
         </div>
         <button type="button" className="btn-primary tap" style={{ width: '100%', marginTop: 14, border: 'none' }} onClick={pay}>{sw ? 'Thibitisha malipo' : 'Confirm payout'}</button>
       </Sheet>

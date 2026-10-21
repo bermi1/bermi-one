@@ -25,7 +25,7 @@ export function BookingLinkCard({ compact }: { compact?: boolean }) {
     setBusy(true);
     const s = await ensureSlug();
     setBusy(false);
-    if (!s) { flash(sw ? 'Imeshindwa kuunda kiungo' : 'Could not create the link'); return null; }
+    if (!s) { flash(sw ? 'Imeshindwa kuunda link' : 'Could not create the link'); return null; }
     setSlug(s);
     return s;
   }

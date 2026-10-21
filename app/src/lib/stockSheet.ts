@@ -79,7 +79,7 @@ const LABELS: Record<Lang, SheetLabels> = {
     grandTotal: 'JUMLA',
     totalSold: 'Jumla ya mauzo',
     expenses: 'Matumizi yaliyolipwa',
-    cash: 'Taslimu iliyopokelewa',
+    cash: 'Cash iliyopokelewa',
     mobile: 'Simu iliyopokelewa',
     bank: 'Benki / amana',
     debt: 'Deni la mfanyakazi',

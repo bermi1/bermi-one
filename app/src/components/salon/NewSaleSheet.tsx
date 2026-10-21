@@ -246,14 +246,14 @@ export function NewSaleSheet({ open, onClose, fromAppointment, initialServiceId,
       <div className="s-seg" role="group">
         {(['cash', 'mobile', 'card', 'split'] as Method[]).map((m) => (
           <button key={m} type="button" aria-pressed={method === m} onClick={() => setMethod(m)}>
-            {m === 'cash' ? (sw ? 'Taslimu' : 'Cash') : m === 'mobile' ? (sw ? 'Simu' : 'Mobile') : m === 'card' ? (sw ? 'Kadi' : 'Card') : (sw ? 'Gawanya' : 'Split')}
+            {m === 'cash' ? (sw ? 'Cash' : 'Cash') : m === 'mobile' ? (sw ? 'Mobile' : 'Mobile') : m === 'card' ? (sw ? 'Kadi' : 'Card') : (sw ? 'Gawanya' : 'Split')}
           </button>
         ))}
       </div>
       {method === 'split' && (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 6, marginTop: 8 }}>
           {(['cash', 'mobile', 'card'] as const).map((k) => (
-            <input key={k} className="s-input" inputMode="numeric" placeholder={k === 'cash' ? (sw ? 'Taslimu' : 'Cash') : k === 'mobile' ? (sw ? 'Simu' : 'Mobile') : (sw ? 'Kadi' : 'Card')}
+            <input key={k} className="s-input" inputMode="numeric" placeholder={k === 'cash' ? (sw ? 'Cash' : 'Cash') : k === 'mobile' ? (sw ? 'Mobile' : 'Mobile') : (sw ? 'Kadi' : 'Card')}
               value={split[k]} onChange={(e) => setSplit((s) => ({ ...s, [k]: e.target.value.replace(/[^0-9.]/g, '') }))} />
           ))}
         </div>

@@ -58,7 +58,7 @@ export function Ticket() {
           {s.services && <div><b>{t('Service', 'Huduma')}:</b> {s.services}</div>}
           {s.barber && <div><b>{t('Barber', 'Kinyozi')}:</b> {s.barber}</div>}
         </div>
-        <div style={{ fontSize: 12, color: 'var(--ink3)', fontWeight: 600, marginTop: 10, textAlign: 'center' }}>{t('This page updates by itself. Keep it open or come back to the link.', 'Ukurasa huu unajisasisha wenyewe. Uache wazi au rudi kwenye kiungo.')}</div>
+        <div style={{ fontSize: 12, color: 'var(--ink3)', fontWeight: 600, marginTop: 10, textAlign: 'center' }}>{t('This page updates by itself. Keep it open or come back to the link.', 'Ukurasa huu unajisasisha wenyewe. Uache wazi au rudi kwenye link.')}</div>
         {!finished && <button type="button" className="btn-ghost tap" style={{ width: '100%', marginTop: 14, color: 'var(--bad)' }} onClick={leave}>{t('I can’t come — leave the queue', 'Siwezi kuja — ondoka kwenye foleni')}</button>}
         {finished && s.slug && <Link to={`/book/${s.slug}`} className="btn-primary tap" style={{ display: 'block', marginTop: 14 }}>{t('Get a new number', 'Pata namba mpya')}</Link>}
       </div>

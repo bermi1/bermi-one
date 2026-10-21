@@ -100,7 +100,7 @@ export function Book() {
     return (
       <div style={{ minHeight: '100dvh', display: 'grid', placeItems: 'center', padding: 24, background: 'var(--bg)', textAlign: 'center' }}>
         <div><Icon name="scissors" size={34} /><div style={{ fontSize: 18, fontWeight: 800, marginTop: 10 }}>{t('This booking link is not active', 'Kiungo hiki cha miadi hakifanyi kazi')}</div>
-          <div style={{ fontSize: 13, color: 'var(--ink2)', marginTop: 6 }}>{t('Ask the shop for its current link.', 'Uliza duka kiungo chake kipya.')}</div></div>
+          <div style={{ fontSize: 13, color: 'var(--ink2)', marginTop: 6 }}>{t('Ask the shop for its current link.', 'Uliza duka link chake kipya.')}</div></div>
       </div>
     );
   }

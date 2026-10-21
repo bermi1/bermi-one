@@ -91,7 +91,7 @@ const COPY = {
     heroSub: 'Bermi One ni mfumo mmoja kwa kila biashara unayoendesha — bidhaa, fedha, wafanyakazi na ripoti, kwa kila tawi, kwenye simu yoyote.',
     props: [
       { icon: 'box', t: 'Stoo au huduma', d: 'Chupa zinahesabiwa kila usiku, au kila huduma inarekodiwa na bei yake.' },
-      { icon: 'wallet', t: 'Taslimu, pesa ya simu na benki', d: 'Kila shilingi inayoingia na kutoka, kila siku.' },
+      { icon: 'wallet', t: 'Cash, pesa ya simu na benki', d: 'Kila shilingi inayoingia na kutoka, kila siku.' },
       { icon: 'users', t: 'Wafanyakazi wenye PIN zao', d: 'Wanarekodi kazi; wewe unabaki na bei na faida.' },
       { icon: 'chart', t: 'Kila tawi, akaunti moja', d: 'Ripoti na uchambuzi kwa biashara zako zote.' },
     ],
@@ -99,7 +99,7 @@ const COPY = {
     rolling: 'Inafanya kazi leo kwa baa, lounge na vinyozi — aina nyingine za biashara zinakuja.',
     loginSub: 'Ingia uendelee ulipoishia.',
     signupSub: 'Siku 7 bure. Hakuna kadi.',
-    show: 'Onyesha nenosiri', hide: 'Ficha nenosiri',
+    show: 'Onyesha password', hide: 'Ficha password',
     strength: ['Fupi mno', 'Dhaifu', 'Wastani', 'Nzuri', 'Imara'],
     trust: 'Imesimbwa kikamilifu · Data yako ni yako',
     staffHint: 'Mfanyakazi? Ingia kwa namba ya simu na PIN yako →',
@@ -131,6 +131,8 @@ export function AuthScreen() {
   const [busy, setBusy] = useState(false);
   // Bumped on every failure so the shake animation replays each time.
   const [shake, setShake] = useState(0);
+  // The very first screen on a new device asks the language, before anything else.
+  const [picked, setPicked] = useState(() => { try { return !!localStorage.getItem('bermi:lang'); } catch { return true; } });
 
   useEffect(() => {
     try { localStorage.setItem('bermi:lang', lang); } catch { /* per-device nicety only */ }
@@ -168,7 +170,7 @@ export function AuthScreen() {
     setBusy(false);
     if (err === 'ALREADY_REGISTERED') {
       setMode('login');
-      setError(lang === 'sw' ? 'Barua pepe hii tayari ina akaunti — ingia kwa nenosiri lako.' : 'This email already has an account — sign in with your password.');
+      setError(lang === 'sw' ? 'Email hii tayari ina account — ingia kwa password yako.' : 'This email already has an account — sign in with your password.');
       setShake((n) => n + 1);
       return;
     }
@@ -196,6 +198,24 @@ export function AuthScreen() {
 
   const strength = strengthOf(password);
   const strengthTone = ['var(--bad)', 'var(--bad)', 'var(--warn)', 'var(--ok)', 'var(--ok)'][strength];
+
+  if (!picked) {
+    const choose = (l: 'en' | 'sw') => { setLang(l); setPicked(true); };
+    return (
+      <div className="auth-shell" style={{ minHeight: '100dvh', display: 'grid', placeItems: 'center', padding: 16 }}>
+        <div id="lang-pick" className="auth-card" style={{ maxWidth: 380, width: '100%', textAlign: 'center' }}>
+          <img src="/icons/bermi-mark.svg" alt="Bermi One" width={48} height={48} style={{ margin: '0 auto 14px' }} />
+          <h2 style={{ fontSize: 22, fontWeight: 800, margin: 0 }}>Chagua lugha</h2>
+          <p style={{ margin: '4px 0 20px', color: 'var(--ink3)', fontWeight: 600 }}>Choose your language</p>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            <button type="button" className="btn-primary tap" data-lang="sw" onClick={() => choose('sw')} style={{ width: '100%' }}>Kiswahili</button>
+            <button type="button" className="btn-ghost tap" data-lang="en" onClick={() => choose('en')} style={{ width: '100%', padding: '13px 0', borderRadius: 14, border: '1px solid var(--line)', fontWeight: 800 }}>English</button>
+          </div>
+          <p style={{ marginTop: 16, fontSize: 11.5, color: 'var(--ink3)', fontWeight: 600 }}>Unaweza kubadilisha baadaye · You can change it later</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="auth">

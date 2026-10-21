@@ -61,7 +61,7 @@ export function Home() {
       : lang === 'sw' ? 'Bidhaa za leo hazijahesabiwa.' : "Today's stock hasn't been counted.";
     alertGo = '/close';
   } else if (session.status === 'submitted') {
-    alertText = lang === 'sw' ? 'Kufunga kunasubiri idhini yako.' : 'A closing is waiting for your approval.';
+    alertText = lang === 'sw' ? 'Closing inasubiri idhini yako.' : 'A closing is waiting for your approval.';
     alertGo = '/approval';
   } else {
     alertText = lang === 'sw' ? 'Siku imefungwa na kuthibitishwa.' : 'Today is verified and locked.';

@@ -47,10 +47,10 @@ export function ClosingSummary({ businessIds }: { businessIds: string[] }) {
   const rows = x ? [
     { k: sw ? 'Mauzo halisi' : 'Actual sales', v: fmt0(x.sales), c: 'var(--ok)', big: true },
     { k: sw ? 'Faida' : 'Profit', v: fmt0(x.profit), c: 'var(--warn)', big: true },
-    { k: sw ? 'Taslimu' : 'Cash', v: fmt0(x.cash), sub: true },
-    { k: sw ? 'Simu' : 'Mobile', v: fmt0(x.mobile), sub: true },
-    { k: sw ? 'Benki' : 'Bank', v: fmt0(x.bankIn), sub: true },
-    { k: sw ? 'Kiasi cha kupeleka benki' : 'Amount to bank', v: fmt0(x.banked), sub: true },
+    { k: sw ? 'Cash' : 'Cash', v: fmt0(x.cash), sub: true },
+    { k: sw ? 'Mobile' : 'Mobile', v: fmt0(x.mobile), sub: true },
+    { k: sw ? 'Bank' : 'Bank', v: fmt0(x.bankIn), sub: true },
+    { k: sw ? 'Ya kupeleka bank' : 'Amount to bank', v: fmt0(x.banked), sub: true },
     { k: sw ? 'Matumizi, hasara na madeni (kwenye kufunga)' : 'Expenses, losses and staff debt (in the closing)', v: fmt0(out), sub: true },
     {
       k: sw ? 'Pungufu / ziada' : 'Short / over',
@@ -76,7 +76,7 @@ export function ClosingSummary({ businessIds }: { businessIds: string[] }) {
         <div style={{ padding: '14px 0', fontSize: 12.5, color: 'var(--ink3)', fontWeight: 600 }}>…</div>
       ) : t.verified === 0 ? (
         <div style={{ padding: '6px 0', fontSize: 12.5, color: 'var(--ink3)', fontWeight: 600 }}>
-          {sw ? 'Hakuna kufunga kulikohakikiwa katika kipindi hiki.' : 'No verified closings in this period.'}
+          {sw ? 'Hakuna closing iliyo verified katika kipindi hiki.' : 'No verified closings in this period.'}
         </div>
       ) : rows.map((r) => (
         <div key={r.k} style={{ display: 'flex', justifyContent: 'space-between', gap: 10, padding: r.sub ? '3px 0 3px 12px' : '6px 0', fontSize: r.big ? 15 : r.sub ? 12.5 : 13.5 }}>

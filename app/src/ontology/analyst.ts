@@ -49,7 +49,7 @@ function tooThin(ctx: AnalystCtx): AiAnswer | null {
     blocks: [{
       kind: 'text',
       text: sw
-        ? `Nina siku ${n} tu za kufunga zilizothibitishwa. Uchambuzi wa mauzo, mwenendo na mapendekezo ya kununua unahitaji angalau siku ${MIN_CLOSINGS} — na unakuwa sahihi zaidi baada ya wiki mbili. Endelea kufunga kila siku na kuthibitisha, nami nitaanza kuchambua.`
+        ? `Nina siku ${n} tu za closing zilizo verified. Uchambuzi wa mauzo, mwenendo na mapendekezo ya kununua unahitaji angalau siku ${MIN_CLOSINGS} — na unakuwa sahihi zaidi baada ya wiki mbili. Endelea kufunga kila siku na kuthibitisha, nami nitaanza kuchambua.`
         : `I only have ${n} verified closing${n === 1 ? '' : 's'} so far. Sales rankings, trends and buying advice need at least ${MIN_CLOSINGS}, and they get properly reliable after about two weeks. Keep closing and verifying each day and I'll start analysing.`,
     }],
   };
@@ -128,7 +128,7 @@ function slowMovers(ctx: AnalystCtx, period: Period): AiAnswer {
 function trend(ctx: AnalystCtx, period: Period): AiAnswer {
   const sw = ctx.lang === 'sw';
   const tr = businessTrend(ctx.rows, period);
-  if (!tr.closings) return { blocks: [{ kind: 'text', text: sw ? `Hakuna kufunga kulikothibitishwa kwa ${period.label.sw}.` : `No verified closings in ${period.label.en}.` }] };
+  if (!tr.closings) return { blocks: [{ kind: 'text', text: sw ? `Hakuna closing iliyo verified kwa ${period.label.sw}.` : `No verified closings in ${period.label.en}.` }] };
   const ch = tr.changePct;
   const items = [
     { label: sw ? 'Mauzo' : 'Sales', value: ctx.fmt(tr.revenue), delta: Number.isNaN(ch) ? undefined : signed(ch), tone: Number.isNaN(ch) ? undefined : toneOf(ch) },

@@ -26,7 +26,7 @@ const T = {
     title: 'Ripoti ya kufunga siku', item: 'Bidhaa', opening: 'Mwanzo', added: 'Imeongezwa', total: 'Jumla',
     closing: 'Zilizobaki', sold: 'Zimeuzwa', price: 'Bei', amount: 'Mauzo', profit: 'Faida',
     subtotal: 'Jumla ndogo', grand: 'Jumla', summary: 'Muhtasari', expectedSales: 'Mauzo yanayotarajiwa',
-    grossProfit: 'Faida ghafi', cash: 'Taslimu', mobile: 'Simu', bank: 'Benki', toBank: 'Kiasi cha kupeleka benki', received: 'Zilizopokelewa',
+    grossProfit: 'Gross profit', cash: 'Cash', mobile: 'Mobile', bank: 'Bank', toBank: 'Ya kupeleka bank', received: 'Zilizopokelewa',
     difference: 'Tofauti',
     deductions: 'Matumizi, hasara na madeni', expense: 'Matumizi', loss: 'Hasara', debt: 'Deni la mfanyakazi',
     reason: 'Sababu', ownerComments: 'Maoni ya mmiliki',

@@ -75,7 +75,7 @@ export function deriveInsights(opts: {
       id: 'returns',
       tone: 'warn',
       text: sw
-        ? 'Kufunga kumerudishwa kwa marekebisho zaidi ya mara moja hivi karibuni. Angalia jinsi hesabu ya bidhaa inavyofanyika.'
+        ? 'Closing imerudishwa kwa marekebisho zaidi ya mara moja hivi karibuni. Angalia jinsi hesabu ya bidhaa inavyofanyika.'
         : 'Closings have been sent back for correction more than once recently — worth checking how the stock count is being done.',
     });
   }
@@ -91,7 +91,7 @@ export function deriveInsights(opts: {
           id: 'cash-concentration',
           tone: 'info',
           text: sw
-            ? 'Fedha nyingi ziko mkononi (taslimu). Fikiria kuhamisha sehemu benki kwa usalama.'
+            ? 'Fedha nyingi ziko mkononi (cash). Fikiria kuhamisha sehemu benki kwa usalama.'
             : 'Most of your money is sitting in cash on hand. Consider banking some of it for safety.',
         });
       }

@@ -95,7 +95,7 @@ interface DataCtx {
   fetchStaffWithPins: () => Promise<Set<string>>;
   displayName: string;
 
-  completeOnboarding: (input: { name: string; type: string; city: string; countryCode: string; answers: Record<string, boolean | null> }) => Promise<void>;
+  completeOnboarding: (input: { name: string; type: string; city: string; countryCode: string; answers: Record<string, boolean | null>; lang?: Lang }) => Promise<void>;
   addBusiness: (input: { name: string; type: string; city: string; countryCode: string }) => Promise<string | null>;
   updateBusiness: (patch: Partial<Pick<Business, 'name' | 'city' | 'type' | 'country_code' | 'answers' | 'sms_alerts' | 'auto_report_weekly' | 'auto_report_monthly' | 'alerts_phone' | 'alerts_email' | 'settings'>>) => Promise<void>;
   switchBusiness: (id: string) => Promise<void>;
@@ -418,7 +418,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
   actorRef.current = role === 'staff' && activeStaff ? activeStaff.name : (profile?.full_name || undefined);
 
   const completeOnboarding = useCallback<DataCtx['completeOnboarding']>(
-    async ({ name, type, city, countryCode, answers }) => {
+    async ({ name, type, city, countryCode, answers, lang }) => {
       if (!uid) return;
       const { data: biz } = await supabase
         .from('businesses')
@@ -427,7 +427,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
         .single();
       if (!biz) return;
       await supabase.from('accounts').insert({ business_id: biz.id, cash: 0, mobile: 0, bank: 0 });
-      await patchProfile({ onboarded: true, active_business_id: biz.id });
+      await patchProfile({ onboarded: true, active_business_id: biz.id, ...(lang ? { lang } : {}) });
       setBusinesses((bs) => [...bs, biz as Business]);
       await loadBusinessData(biz.id);
       await record({ businessId: biz.id, actionType: 'business.create', objectId: biz.id, summary: `Opened ${name} (${type})`, payload: { name, type, city }, actorName: actorRef.current });

@@ -66,7 +66,7 @@ export const PLANS: Plan[] = [
         'Biashara 1',
         'Hadi wafanyakazi 3',
         'Kufunga na kuthibitisha bidhaa kila usiku',
-        'Daftari la fedha — kila shilingi',
+        'Cash book — kila shilingi',
         'Karatasi za bidhaa na ripoti za kuchapisha',
         'Muhtasari kwa WhatsApp',
       ],
@@ -125,7 +125,7 @@ export const PLANS: Plan[] = [
       ],
       sw: [
         'SMS ya kila siku mara siku inapothibitishwa',
-        'Ripoti za wiki na mwezi kwa barua pepe, kiotomatiki',
+        'Ripoti za wiki na mwezi kwa email, kiotomatiki',
         'Biashara, wafanyakazi na bidhaa bila kikomo',
         'Msaada wa haraka kwa WhatsApp',
         'Kila kitu cha Standard',

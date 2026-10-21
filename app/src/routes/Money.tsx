@@ -181,7 +181,7 @@ export function Money() {
           </div>
           <div style={{ fontSize: 11.5, color: 'var(--ink3)', fontWeight: 600, lineHeight: 1.45, marginTop: -4, marginBottom: 8 }}>
             {lang === 'sw'
-              ? 'Pesa iliyopo: kile ambacho kufunga kulikohakikiwa kuliweka kwenye taslimu, simu na benki, ukiondoa kilicholipwa.'
+              ? 'Pesa iliyopo: kile ambacho closing zilizo verified ziliweka kwenye cash, mobile na bank, ukiondoa kilicholipwa.'
               : 'Money held: what verified closings put into cash, mobile and bank, less what was paid out.'}
           </div>
           {[

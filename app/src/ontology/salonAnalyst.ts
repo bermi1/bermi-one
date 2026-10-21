@@ -141,7 +141,7 @@ function hours(ctx: SalonAnalystCtx): AiAnswer {
     { kind: 'bars', title: sw ? 'Wateja kwa siku ya wiki (siku 60)' : 'Clients by weekday (60 days)', rows: byDay.map((n, i) => ({ label: sw ? WD_SW[i] : WD_EN[i], value: n, display: String(n), tone: i === days[0].i ? 'good' as Tone : i === days[6].i ? 'bad' as Tone : undefined })) },
     { kind: 'list', items: [
       { title: sw ? 'Saa za shughuli nyingi' : 'Peak hours', detail: busy.map((b) => `${b.h}:00`).join(', ') + (sw ? ' — hakikisha vinyozi wote wapo, na usiweke punguzo saa hizi.' : ' — have every chair staffed, and never discount these hours.'), tone: 'good' },
-      { title: sw ? 'Saa za polepole' : 'Slow hours', detail: slow.map((b) => `${b.h}:00`).join(', ') + (sw ? ` — weka ofa ya "saa za utulivu" (mfano punguzo 15%) au tuma kiungo cha miadi kwa wateja walioacha kuja.` : ` — run an off-peak offer (e.g. 15% off) or send your booking link to lapsed clients for these times.`), tone: 'warn' },
+      { title: sw ? 'Saa za polepole' : 'Slow hours', detail: slow.map((b) => `${b.h}:00`).join(', ') + (sw ? ` — weka ofa ya "saa za utulivu" (mfano punguzo 15%) au tuma link cha miadi kwa wateja walioacha kuja.` : ` — run an off-peak offer (e.g. 15% off) or send your booking link to lapsed clients for these times.`), tone: 'warn' },
       { title: sw ? `${WD_SW[days[6].i]} ndiyo siku ya polepole` : `${WD_EN[days[6].i]} is your slowest day`, detail: sw ? `${days[6].n} wateja dhidi ya ${days[0].n} siku ya ${WD_SW[days[0].i]}. Fikiria saa fupi au ofa maalum.` : `${days[6].n} clients against ${days[0].n} on ${WD_EN[days[0].i]}. Consider shorter hours or a standing offer that day.`, tone: 'neutral' },
     ] },
   ] };

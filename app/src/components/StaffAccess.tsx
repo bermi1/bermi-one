@@ -49,19 +49,19 @@ export function OwnerUnlock({ onDone }: { onDone?: () => void }) {
         const r = await unlockOwner(password);
         setBusy(false);
         if (r === 'ok') onDone?.();
-        else setError(r === 'wrong' ? (sw ? 'Nenosiri si sahihi.' : 'That password is not right.') : (pinMessage(r, sw) || ''));
+        else setError(r === 'wrong' ? (sw ? 'Password si sahihi.' : 'That password is not right.') : (pinMessage(r, sw) || ''));
       }}
     >
       <div className="pin-title">{sw ? 'Wewe ni mmiliki?' : 'Are you the owner?'}</div>
       <div className="pin-sub">
-        {sw ? 'Weka nenosiri la akaunti. Kisha weka PIN ya mmiliki ili iwe haraka zaidi.' : 'Enter the account password. Set an owner PIN afterwards to make this quicker.'}
+        {sw ? 'Weka password ya account. Kisha weka PIN ya mmiliki ili iwe haraka zaidi.' : 'Enter the account password. Set an owner PIN afterwards to make this quicker.'}
       </div>
       <input
         type="password"
         className="field"
         autoFocus
         autoComplete="current-password"
-        placeholder={sw ? 'Nenosiri' : 'Password'}
+        placeholder={sw ? 'Password' : 'Password'}
         value={password}
         onChange={(e) => setPassword(e.target.value)}
         style={{ width: '100%', marginTop: 14 }}

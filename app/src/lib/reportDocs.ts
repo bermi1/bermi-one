@@ -20,14 +20,14 @@ const T = {
   },
   sw: {
     title: 'Ripoti ya fedha', period: 'Kipindi', summary: 'Muhtasari',
-    sales: 'Jumla ya mauzo', profit: 'Jumla ya faida', cashMobile: 'Zilizokusanywa (taslimu, simu, benki, kupeleka benki)', bankIn: 'Benki', short: 'Pungufu', over: 'Ziada', sessionExp: 'Matumizi ya siku',
+    sales: 'Jumla ya mauzo', profit: 'Jumla ya faida', cashMobile: 'Zilizokusanywa (cash, mobile, bank, ya kupeleka bank)', bankIn: 'Bank', short: 'Pungufu', over: 'Ziada', sessionExp: 'Matumizi ya siku',
     purchases: 'Manunuzi', otherExp: 'Matumizi mengine', staffDebts: 'Madeni ya wafanyakazi', losses: 'Hasara',
-    banked: 'Kiasi cha kupeleka benki', balance: 'Tofauti',
-    daily: 'Uchambuzi wa kila siku', date: 'Tarehe', cash: 'Taslimu', mobile: 'Simu', sExp: 'Mat.', sPur: 'Man.',
+    banked: 'Ya kupeleka bank', balance: 'Tofauti',
+    daily: 'Uchambuzi wa kila siku', date: 'Tarehe', cash: 'Cash', mobile: 'Mobile', sExp: 'Mat.', sPur: 'Man.',
     oExp: 'Meng.', sDebt: 'Deni', total: 'JUMLA',
     lossesTable: 'Hasara na uharibifu', topExpenses: 'Matumizi makubwa', description: 'Maelezo', amount: 'Kiasi',
     highlights: 'Mambo muhimu', bestDay: 'Siku bora ya mauzo', avgProfit: 'Wastani wa faida', margin: 'Kiwango cha faida',
-    footer: 'Bermi One', noData: 'Hakuna kufunga kulikothibitishwa kipindi hiki.', day: 'siku', days: 'siku',
+    footer: 'Bermi One', noData: 'Hakuna closing iliyo verified kipindi hiki.', day: 'siku', days: 'siku',
   },
 } as const;
 

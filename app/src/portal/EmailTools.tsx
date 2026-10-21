@@ -40,7 +40,7 @@ export function EmailTools() {
     setBusy(false);
     if (e) { setError(e.message); return; }
     setKey('');
-    setNotice(sw ? 'Imehifadhiwa. Barua pepe zitaanza kutumwa ndani ya dakika moja.' : 'Saved. Emails start going out within a minute.');
+    setNotice(sw ? 'Imehifadhiwa. Email zitaanza kutumwa ndani ya dakika moja.' : 'Saved. Emails start going out within a minute.');
     void load();
   }
 
@@ -52,10 +52,10 @@ export function EmailTools() {
       <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
         <span className="hq-dot" style={{ background: on ? 'var(--ok)' : 'var(--bad)' }} />
         <div style={{ flex: 1 }}>
-          <div style={{ fontWeight: 800 }}>{sw ? 'Barua pepe (Resend)' : 'Email (Resend)'}</div>
+          <div style={{ fontWeight: 800 }}>{sw ? 'Email (Resend)' : 'Email (Resend)'}</div>
           <div style={{ fontSize: 12.5, color: 'var(--ink2)' }}>
             {!o ? '…' : on ? (sw ? `Imewashwa — kutoka ${o.from || 'Bermi One <noreply@bermi.one>'}` : `On — sending from ${o.from || 'Bermi One <noreply@bermi.one>'}`)
-              : (sw ? 'Imezimwa — hakuna ufunguo. Barua pepe zinasubiri kwenye foleni.' : 'Off — no key yet. Emails wait in the queue until one is saved.')}
+              : (sw ? 'Imezimwa — hakuna ufunguo. Email zinasubiri kwenye foleni.' : 'Off — no key yet. Emails wait in the queue until one is saved.')}
           </div>
         </div>
         <button className="hq-icon-btn" onClick={() => void load()} aria-label="Refresh"><Icon name="refresh" size={14} /></button>
@@ -88,7 +88,7 @@ export function EmailTools() {
 
       {o && o.recent.length > 0 && (
         <div style={{ marginTop: 14 }}>
-          <div className="hq-section-sub">{sw ? 'Barua pepe za karibuni' : 'Recent emails'}</div>
+          <div className="hq-section-sub">{sw ? 'Email za karibuni' : 'Recent emails'}</div>
           {o.recent.map((r, i) => (
             <div key={i} style={{ display: 'flex', gap: 10, padding: '7px 0', borderTop: '1px solid var(--line)', fontSize: 12.5 }}>
               <span style={{ width: 64, fontWeight: 800, color: tone(r.status) }}>{r.status}</span>

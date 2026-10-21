@@ -264,7 +264,7 @@ export function Pricing() {
         </div>
         <div style={{ marginTop: 4, fontSize: 12.5, color: 'var(--ink2)', lineHeight: 1.45 }}>{L.automationSub}</div>
         <div style={{ marginTop: 8, fontSize: 12, fontWeight: 700, color: 'var(--brand)', lineHeight: 1.45 }}>
-          {sw ? `Inatumika kwa biashara zako zote (${businesses.length}) — namba moja, barua pepe moja.` : `Applies to all your businesses (${businesses.length}) — one number, one email.`}
+          {sw ? `Inatumika kwa biashara zako zote (${businesses.length}) — namba moja, email moja.` : `Applies to all your businesses (${businesses.length}) — one number, one email.`}
         </div>
 
         {([
@@ -302,7 +302,7 @@ export function Pricing() {
           style={{ width: '100%', marginTop: 12 }}
         />
         <div style={{ marginTop: 8, fontSize: 11.5, color: 'var(--ink3)', fontWeight: 600, lineHeight: 1.45 }}>
-          {sw ? 'Muhtasari wa wiki (mauzo, faida, pesa, madeni ya wafanyakazi na nani anadaiwa) unatumwa kwa SMS na barua pepe kufunga kwa Jumapili kukishahakikiwa.' : "A weekly summary (sales, profit, money, staff debt and who owes what) goes out by SMS and email once Sunday's closing is verified."}
+          {sw ? 'Muhtasari wa wiki (mauzo, faida, pesa, madeni ya wafanyakazi na nani anadaiwa) unatumwa kwa SMS na email closing ya Jumapili ikishakuwa verified.' : "A weekly summary (sales, profit, money, staff debt and who owes what) goes out by SMS and email once Sunday's closing is verified."}
         </div>
         <TestSms businessId={activeBusiness.id} phone={acct.alerts_phone} sw={lang === 'sw'} />
         <input

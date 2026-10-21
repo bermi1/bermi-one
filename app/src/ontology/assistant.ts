@@ -201,21 +201,21 @@ export function answerQuestion(data: AssistantData, question: string, fmt: (n: n
   }
 
   // --- Cash position ---
-  if (/(cash|fedha)/.test(q)) {
+  if (/(cash|fedha|pesa|hela)/.test(q)) {
     const pos = (accounts?.cash || 0) + (accounts?.mobile || 0) + (accounts?.bank || 0);
-    return (sw ? 'Fedha zilizopo: ' : 'Cash position: ') + fmt(pos)
-      + `\n${sw ? 'Taslimu' : 'Cash'} ${fmt(accounts?.cash || 0)}\n${sw ? 'Simu' : 'Mobile'} ${fmt(accounts?.mobile || 0)}\n${sw ? 'Benki' : 'Bank'} ${fmt(accounts?.bank || 0)}`;
+    return (sw ? 'Pesa zilizopo: ' : 'Cash position: ') + fmt(pos)
+      + `\n${sw ? 'Cash' : 'Cash'} ${fmt(accounts?.cash || 0)}\n${sw ? 'Mobile' : 'Mobile'} ${fmt(accounts?.mobile || 0)}\n${sw ? 'Bank' : 'Bank'} ${fmt(accounts?.bank || 0)}`;
   }
 
   // --- Today's reconciliation difference ---
   if (/(diff|tofauti)/.test(q)) {
-    if (!session) return sw ? "Hujaanza kufunga leo bado." : "You haven't started today's closing yet.";
+    if (!session) return sw ? "Hujaanza closing ya leo bado." : "You haven't started today's closing yet.";
     const diff = diffOf(products, counts, session);
     return (sw ? "Tofauti ya leo: " : "Today's difference: ") + fmt(Math.abs(diff));
   }
 
   // --- Week-over-week profit / revenue comparison ---
-  if (/(profit|faida|revenue|mapato|week|wiki)/.test(q)) {
+  if (/(profit|faida|revenue|mapato|mauzo|sales|week|wiki)/.test(q)) {
     const thisWeek = inWindow(ledger, 7, 0);
     const lastWeek = inWindow(ledger, 14, 7);
     const revThis = revenueOf(thisWeek);
@@ -232,7 +232,7 @@ export function answerQuestion(data: AssistantData, question: string, fmt: (n: n
     // Profit is only stated from verified closings (the analyst); a guess at
     // cost of goods would be a number nobody recorded.
     return (sw
-      ? `Wiki hii\n\nMapato: ${fmt(revThis)}\nMatumizi: ${fmt(opexThis)}\nHasara: ${fmt(lossThis)}\n\nFaida halisi itaonekana baada ya siku 3 za kufunga zilizothibitishwa.`
+      ? `Wiki hii\n\nMapato: ${fmt(revThis)}\nMatumizi: ${fmt(opexThis)}\nHasara: ${fmt(lossThis)}\n\nFaida halisi itaonekana baada ya siku 3 za closing zilizo verified.`
       : `This week\n\nRevenue: ${fmt(revThis)}\nExpenses: ${fmt(opexThis)}\nLosses: ${fmt(lossThis)}\n\nProfit appears once there are 3 verified closings to read it from.`) + trend;
   }
 

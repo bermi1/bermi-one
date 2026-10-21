@@ -12,7 +12,8 @@ const STEPS = ['welcome', 'setup', 'questions'] as const;
 
 export function Onboarding() {
   const { completeOnboarding } = useData();
-  const [lang, setLang] = useState<'en' | 'sw'>('en');
+  const [lang, setLangState] = useState<'en' | 'sw'>(() => { try { return localStorage.getItem('bermi:lang') === 'sw' ? 'sw' : 'en'; } catch { return 'en'; } });
+  const setLang = (l: 'en' | 'sw') => { setLangState(l); try { localStorage.setItem('bermi:lang', l); } catch { /* per-device nicety only */ } };
   const L = T[lang];
   const [step, setStep] = useState<(typeof STEPS)[number]>('welcome');
 
@@ -42,7 +43,7 @@ export function Onboarding() {
 
   async function finish() {
     setBusy(true);
-    await completeOnboarding({ name: name.trim() || 'My Business', type, city: city.trim(), countryCode: country.code, answers });
+    await completeOnboarding({ name: name.trim() || 'My Business', type, city: city.trim(), countryCode: country.code, answers, lang });
     setBusy(false);
   }
 

@@ -9,6 +9,11 @@ import { analyse, overview, type AiAnswer, type AiBlock, type AnalystCtx, type T
 import { salonAnalyse, salonOverview, type SalonAnalystCtx } from '../ontology/salonAnalyst';
 import { useSalon } from '../state/SalonContext';
 import type { SalonVisit } from '../lib/salon';
+import type { Lang } from '../lib/i18n';
+
+// Everyday words that give away which language a question was typed in.
+const SW_WORDS = new Set(['nini', 'gani', 'ngapi', 'je', 'leo', 'jana', 'wiki', 'mwezi', 'hii', 'hiyo', 'yangu', 'zangu', 'wangu', 'nina', 'tuna', 'kuna', 'iko', 'ziko', 'bidhaa', 'mauzo', 'faida', 'hasara', 'deni', 'pesa', 'fedha', 'bei', 'nifanye', 'niongeze', 'ninunue', 'zaidi', 'kidogo', 'inauza', 'inauzwa', 'zimeuzwa', 'biashara', 'mfanyakazi', 'wafanyakazi', 'kinyozi', 'wateja', 'mteja', 'siku', 'bora', 'mbaya', 'kwa', 'na', 'ya', 'za', 'cha', 'vya', 'ni', 'nipe', 'nionyeshe', 'naomba', 'habari', 'mwenendo', 'ushauri', 'uchambuzi', 'ipi', 'zipi', 'lini', 'kwanini', 'vipi', 'imebaki', 'zimebaki']);
+const EN_WORDS = new Set(['what', 'which', 'how', 'many', 'much', 'the', 'is', 'are', 'my', 'today', 'yesterday', 'week', 'month', 'best', 'worst', 'sell', 'sells', 'selling', 'sold', 'sales', 'profit', 'loss', 'losses', 'debt', 'should', 'show', 'me', 'give', 'who', 'when', 'why', 'top', 'most', 'least', 'left', 'trend', 'business', 'barber', 'clients', 'analysis', 'forecast', 'do', 'does', 'did', 'and', 'of', 'for', 'this', 'last', 'buy', 'order']);
 
 interface Msg {
   who: 'user' | 'ai';
@@ -87,7 +92,27 @@ export function AI() {
     if (o) setMessages([{ who: 'ai', answer: o }]);
   }, [analystCtx, salonCtx, isSalon]);
 
+  /*
+    Answer in the language the question was asked in. The app's language is
+    the default, but someone who types "bidhaa gani inauza zaidi?" in an
+    English app wants the answer in Swahili, and the reverse.
+  */
+  const salonBase = salonCtx, analystBase = analystCtx, assistantBase = assistantData;
+  function replyLang(q: string): Lang {
+    const w = q.toLowerCase().split(/[^\p{L}]+/u).filter(Boolean);
+    const swHits = w.filter((x) => SW_WORDS.has(x)).length;
+    const enHits = w.filter((x) => EN_WORDS.has(x)).length;
+    if (swHits > enHits) return 'sw';
+    if (enHits > swHits) return 'en';
+    return lang;
+  }
+
   function reply(q: string): Msg {
+    const ql = replyLang(q);
+    const sw = ql === 'sw';
+    const salonCtx = salonBase && { ...salonBase, lang: ql };
+    const analystCtx = analystBase && { ...analystBase, lang: ql };
+    const assistantData = { ...assistantBase, lang: ql };
     if (salonCtx) {
       const a = salonAnalyse(q, salonCtx);
       if (a) return { who: 'ai', answer: a };
