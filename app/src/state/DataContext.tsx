@@ -1,7 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from './AuthContext';
-import { businessDayIso, roundQty, snapshotLine, soldOf } from '../lib/calc';
+import { businessDayIso, nextClosingDay, roundQty, snapshotLine, soldOf, todayIso } from '../lib/calc';
 import { logAction, fetchRecentActions, purgeActions, type ActionLogEntry } from '../ontology/actions';
 import { fetchMySubscription, trialDaysLeft, type Subscription } from '../lib/platform';
 import { planByCode, type Plan } from '../lib/plans';
@@ -218,7 +218,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
         .from('stock_sessions')
         .select('*')
         .eq('business_id', businessId)
-        .lte('session_date', businessDayIso())
+        .lte('session_date', todayIso())
         .neq('status', 'verified')
         .order('session_date', { ascending: true })
         .limit(1),
@@ -236,7 +236,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
     setAccounts(acc || { business_id: businessId, cash: 0, mobile: 0, bank: 0 });
     setLedger(led || []);
     setSession(open);
-    setSessionDate(open?.session_date || businessDayIso());
+    // Nothing unfinished: the next closing is the day after the last verified one.
+    setSessionDate(open?.session_date || nextClosingDay(((closings || []) as StockSession[])[0]?.session_date));
     setActionLog(log);
     setStaffMembers(staff || []);
   }, []);
@@ -706,7 +707,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
   const openSessionForDate = useCallback<DataCtx['openSessionForDate']>(
     async (dateIso) => {
       if (!activeBusiness) return 'No business';
-      if (dateIso > businessDayIso()) return 'FUTURE_DAY';
+      if (dateIso > todayIso()) return 'FUTURE_DAY';
 
       const { data: existing } = await supabase
         .from('stock_sessions')
@@ -937,13 +938,14 @@ export function DataProvider({ children }: { children: ReactNode }) {
       .from('stock_sessions')
       .select('*')
       .eq('business_id', activeBusiness.id)
-      .lte('session_date', businessDayIso())
+      .lte('session_date', todayIso())
       .neq('status', 'verified')
       .order('session_date', { ascending: true })
       .limit(1);
     const following = ((next || []) as StockSession[])[0] || null;
     setSession(following);
-    setSessionDate(following?.session_date || businessDayIso());
+    // The day just verified is finished; the next one to count is the day after it.
+    setSessionDate(following?.session_date || nextClosingDay(session.session_date));
   }, [session, profile, addLedgerLines, activeBusiness, record, products]);
 
   const fetchBooks = useCallback<DataCtx['fetchBooks']>(

@@ -140,12 +140,32 @@ export function diffOf(products: Product[], counts: Record<string, number>, sess
   return expectedSales(products, counts) - moneyReceived(session);
 }
 
+/*
+  Days are Tanzanian days. toISOString() is UTC, three hours behind, so a
+  "today" built from it does not move on until 03:00 here — exactly when a bar
+  is counting. Every date the closing flow uses comes from these helpers.
+*/
+const DAY_ZONE = 'Africa/Dar_es_Salaam';
+
+/** The calendar day in East Africa, `offset` days from today, as YYYY-MM-DD. */
+export function localDayIso(offset = 0, now: Date = new Date()): string {
+  const today = new Intl.DateTimeFormat('en-CA', { timeZone: DAY_ZONE, year: 'numeric', month: '2-digit', day: '2-digit' }).format(now);
+  return offset ? addDaysIso(today, offset) : today;
+}
+
+/** A YYYY-MM-DD date moved by whole days, with no time zone in the way. */
+export function addDaysIso(iso: string, days: number): string {
+  const d = new Date(`${iso}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + days);
+  return d.toISOString().slice(0, 10);
+}
+
 export function todayIso(): string {
-  return new Date().toISOString().slice(0, 10);
+  return localDayIso(0);
 }
 
 /**
- * The trading day a closing belongs to.
+ * The trading day a closing belongs to when nothing says otherwise.
  *
  * A bar counts its stock after the night is over — in practice the next
  * morning — so the count taken now settles *yesterday's* trade. Dating the
@@ -153,9 +173,19 @@ export function todayIso(): string {
  * the wrong date and shift every report by one day.
  */
 export function businessDayIso(): string {
-  const d = new Date();
-  d.setDate(d.getDate() - 1);
-  return d.toISOString().slice(0, 10);
+  return localDayIso(-1);
+}
+
+/**
+ * The day the next closing is for: the day after the last verified one, since
+ * that closing is its opening. Never later than today — a night not yet traded
+ * cannot be counted — and yesterday when nothing has been verified yet.
+ */
+export function nextClosingDay(lastVerified: string | null | undefined, now: Date = new Date()): string {
+  const today = localDayIso(0, now);
+  if (!lastVerified) return localDayIso(-1, now);
+  const next = addDaysIso(lastVerified, 1);
+  return next > today ? today : next;
 }
 
 /**

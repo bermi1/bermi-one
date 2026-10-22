@@ -7,7 +7,7 @@ import { Icon } from '../lib/icons';
 import { useSettings } from '../lib/useSettings';
 import { useData } from '../state/DataContext';
 import { useToast } from '../state/ToastContext';
-import { businessDayIso, roundQty, expectedSales, profitOf, soldOf, closingItemsTotal, groupByCategory } from '../lib/calc';
+import { addDaysIso, todayIso, roundQty, expectedSales, profitOf, soldOf, closingItemsTotal, groupByCategory } from '../lib/calc';
 import { tintVars, type ClosingItemKind } from '../lib/types';
 
 const DEDUCTION_SECTIONS: { kind: ClosingItemKind; icon: string }[] = [
@@ -54,7 +54,7 @@ export function Close() {
   const closingDayLabel = `${L.closingFor} ${dayName(closingDay)}`;
   // "Close Today" is a lie on a day that is not today, and a counter working
   // through a backlog needs to see which one they are on from the title.
-  const screenTitle = closingDay === businessDayIso() ? L.closeToday : L.closeADay;
+  const screenTitle = closingDay === todayIso() ? L.closeToday : L.closeADay;
 
   const [dayOpen, setDayOpen] = useState(false);
   const [dayPick, setDayPick] = useState(closingDay);
@@ -110,7 +110,7 @@ export function Close() {
           <input
             type="date"
             value={dayPick}
-            max={businessDayIso()}
+            max={todayIso()}
             onChange={(e) => setDayPick(e.target.value)}
             className="field"
             style={{ width: '100%', marginBottom: 12 }}
@@ -118,9 +118,7 @@ export function Close() {
           {/* The last week, because a day missed is nearly always a recent one. */}
           <div style={{ display: 'flex', gap: 7, flexWrap: 'wrap', marginBottom: 16 }}>
             {Array.from({ length: 7 }, (_, i) => {
-              const d = new Date(businessDayIso());
-              d.setDate(d.getDate() - i);
-              const iso = d.toISOString().slice(0, 10);
+              const iso = addDaysIso(todayIso(), -i);
               const on = iso === dayPick;
               return (
                 <button

@@ -4,12 +4,9 @@ import { AppHeader } from '../components/AppHeader';
 import { Icon } from '../lib/icons';
 import { useSettings } from '../lib/useSettings';
 import { closingDayLabel, useData } from '../state/DataContext';
-import { businessDayIso, currentQty, stockValueOf } from '../lib/calc';
+import { businessDayIso, currentQty, localDayIso, stockValueOf } from '../lib/calc';
 import { tintVars } from '../lib/types';
 
-function dayKey(d: Date) {
-  return d.toISOString().slice(0, 10);
-}
 
 export function Home() {
   const nav = useNavigate();
@@ -24,7 +21,7 @@ export function Home() {
     from the day somebody happened to verify it.
   */
   const today = businessDayIso();
-  const todayKey = dayKey(new Date());
+  const todayKey = localDayIso(0);
   const latest = recentClosings[0] || null;
   const revenue = Number(latest?.total_calculated_sales || 0);
   const profit = Number(latest?.total_calculated_profit || 0);
@@ -41,9 +38,8 @@ export function Home() {
     const days: { key: string; label: string; total: number }[] = [];
     const labels = lang === 'sw' ? ['Jpi', 'Jtt', 'Jnn', 'Jtn', 'Alh', 'Iju', 'Jmo'] : ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
     for (let i = 6; i >= 0; i--) {
-      const d = new Date();
-      d.setDate(d.getDate() - i);
-      days.push({ key: dayKey(d), label: labels[d.getDay()], total: 0 });
+      const key = localDayIso(-i);
+      days.push({ key, label: labels[new Date(`${key}T12:00:00Z`).getUTCDay()], total: 0 });
     }
     for (const c of recentClosings) {
       const row = days.find((d) => d.key === c.session_date);
