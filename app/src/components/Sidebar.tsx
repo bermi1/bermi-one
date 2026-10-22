@@ -27,28 +27,7 @@ export function Sidebar() {
   const meta = activeBusiness ? bizMeta(activeBusiness.type) : null;
 
   const salon = activeBusiness?.type === 'barber';
-  const retail = activeBusiness?.type === 'retail';
-  const groups: { title: string; items: { to: string; icon: string; label: string }[] }[] = retail
-    ? [
-        {
-          title: sw ? 'Duka' : 'Shop',
-          items: [
-            { to: '/home', icon: 'store', label: sw ? 'Duka' : 'Shop' },
-            { to: '/products', icon: 'tag', label: sw ? 'Bidhaa' : 'Products' },
-            { to: '/money', icon: owner ? 'wallet' : 'receipt', label: owner ? L.money : L.myEntries },
-          ],
-        },
-        ...(owner ? [{
-          title: sw ? 'Akaunti' : 'Account',
-          items: [
-            { to: '/manage', icon: 'grid', label: L.manage },
-            { to: '/business', icon: 'building', label: L.businessProfile },
-            { to: '/pricing', icon: 'receipt', label: sw ? 'Kifurushi na malipo' : 'Plan & billing' },
-            { to: '/help', icon: 'info', label: L.getHelp },
-          ],
-        }] : []),
-      ]
-    : salon
+  const groups: { title: string; items: { to: string; icon: string; label: string }[] }[] = salon
     ? [
         {
           title: sw ? 'Kazi' : 'Work',

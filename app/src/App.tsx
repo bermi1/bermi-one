@@ -56,22 +56,6 @@ const Clients = lazy(() => loadScreen('clients').then((m) => ({ default: m.Clien
 const Services = lazy(() => loadScreen('services').then((m) => ({ default: m.Services })));
 const Payouts = lazy(() => loadScreen('payouts').then((m) => ({ default: m.Payouts })));
 const SalonReports = lazy(() => loadScreen('salonReports').then((m) => ({ default: m.SalonReports })));
-const ShopHome = lazy(() => loadScreen('shopHome').then((m) => ({ default: m.ShopHome })));
-const ShopProducts = lazy(() => loadScreen('shopProducts').then((m) => ({ default: m.Products })));
-const ShopPage = lazy(() => loadScreen('shopPage').then((m) => ({ default: m.ShopPage })));
-
-/*
-  bermione.com/<name> is a shop's or a barbershop's public page. Any single
-  path segment the app does not use itself is treated as one; the database
-  refuses these words as shop names (slug_reserved) so the two never meet.
-*/
-const APP_PATHS = new Set(['home', 'stock', 'close', 'money', 'reports', 'manage', 'pricing', 'help', 'legal', 'hq', 'book', 'q', 'r', 's',
-  'ai', 'staff', 'business', 'approval', 'diff', 'bookings', 'clients', 'services', 'payouts', 'products', 'shop', 'login', 'signup',
-  'set-password', 'api', 'assets', 'icons', 'admin', 'www', 'app', 'support', 'about', 'terms', 'privacy', 'index', 'sw', 'manifest']);
-function publicSlug(path: string): string | null {
-  const m = /^\/([a-z0-9-]{2,60})\/?$/i.exec(path);
-  return m && !APP_PATHS.has(m[1].toLowerCase()) ? m[1] : null;
-}
 
 /**
  * What fills the gap while a screen is fetched.
@@ -245,11 +229,6 @@ function AppRoutes() {
 
   // A barbershop's public booking page: for its clients, who have no account.
   // A subscription receipt from the payment SMS: opened by the client, often signed out.
-  if (publicSlug(location.pathname)) {
-    handOverFromSplash();
-    return <Suspense fallback={<Pending />}><Routes><Route path="/:slug" element={<ShopPage />} /></Routes></Suspense>;
-  }
-
   if (location.pathname.startsWith('/book/') || location.pathname.startsWith('/q/') || location.pathname.startsWith('/r/')) {
     handOverFromSplash();
     return <Suspense fallback={<Pending />}><Routes><Route path="/book/:slug" element={<Book />} /><Route path="/q/:token" element={<Ticket />} /><Route path="/r/:token" element={<Receipt />} /></Routes></Suspense>;
@@ -307,7 +286,6 @@ function AppRoutes() {
 
   const isOwnerOnly = ['/reports', '/ai', '/manage', '/business', '/staff', '/pricing', '/help', '/payouts'].includes(location.pathname) && !owner;
   const salon = activeBusiness?.type === 'barber';
-  const retail = activeBusiness?.type === 'retail';
   if (isOwnerOnly) return <Navigate to="/home" replace />;
 
 
@@ -328,10 +306,8 @@ function AppRoutes() {
         <div key={location.pathname} className="page-in page-wrap">
         <Suspense fallback={<Pending />}>
         <Routes>
-          <Route path="/home" element={salon ? <SalonToday /> : retail ? <ShopHome /> : owner ? <Home /> : <StaffHome />} />
-          {retail ? (
-            <Route path="/products" element={<ShopProducts />} />
-          ) : salon ? (
+          <Route path="/home" element={salon ? <SalonToday /> : owner ? <Home /> : <StaffHome />} />
+          {salon ? (
             <>
               <Route path="/bookings" element={<Bookings />} />
               <Route path="/clients" element={<Clients />} />

@@ -62,30 +62,6 @@ export interface BusinessSettings {
   staff_discount?: boolean;
   tz?: string;
   public_phone?: string;
-  /** Shop module: the online store, delivery, manual payment and loyalty. */
-  shop?: ShopSettings;
-}
-
-export interface DeliveryArea { name: string; fee: number }
-
-export interface ShopSettings {
-  tagline?: string;
-  about?: string;
-  logo?: string;
-  banner?: string;
-  color?: string;
-  phone?: string;
-  whatsapp?: string;
-  instagram?: string;
-  pickup?: boolean;
-  delivery?: boolean;
-  cod?: boolean;
-  payme?: boolean;
-  till?: string;
-  till_name?: string;
-  delivery_areas?: DeliveryArea[];
-  loyalty?: { earn_per_1000?: number; point_value?: number };
-  payout_phone?: string;
 }
 
 export interface Product {
@@ -232,9 +208,6 @@ export const BUSINESS_TYPES = [
     desc: 'Nightly stock count, cash and profit', descSw: 'Hesabu ya stoo kila usiku, fedha na faida' },
   { id: 'barber', name: 'Barbershop & salon', nameSw: 'Kinyozi na saluni', icon: 'scissors', live: true,
     desc: 'Services, barbers, clients and payouts', descSw: 'Huduma, vinyozi, wateja na malipo' },
-  // Shop module: products, the shop's link and QR, orders over WhatsApp. POS and payments next.
-  { id: 'retail', name: 'Shop & online store', nameSw: 'Duka na duka la mtandaoni', icon: 'store', live: true,
-    desc: 'Products, your shop link and QR, orders on WhatsApp', descSw: 'Bidhaa, link na QR ya duka, oda kwa WhatsApp' },
   { id: 'rest', name: 'Restaurant', nameSw: 'Mgahawa', icon: 'fork', live: false, desc: '', descSw: '' },
   { id: 'pharm', name: 'Pharmacy', nameSw: 'Famasia', icon: 'pill', live: false, desc: '', descSw: '' },
   { id: 'groc', name: 'Grocery', nameSw: 'Duka la vyakula', icon: 'cart', live: false, desc: '', descSw: '' },
