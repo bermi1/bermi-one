@@ -8,6 +8,12 @@ import type { Product, SessionLine, StockSession } from './types';
 export const roundQty = (n: number) => Math.round(n * 1000) / 1000;
 
 /** What a quantity box keeps of what was typed: digits and one decimal point (a comma counts as one), three places at most. */
+/** Like cleanQty, but keeps one leading minus: "−3" takes three back off the shelf. */
+export function cleanSignedQty(raw: string): string {
+  const t = raw.trim().replace(/^[\u2212\u2013]/, '-');
+  return (t.startsWith('-') ? '-' : '') + cleanQty(t);
+}
+
 export function cleanQty(raw: string): string {
   const s = raw.replace(/,/g, '.').replace(/[^0-9.]/g, '');
   const dot = s.indexOf('.');

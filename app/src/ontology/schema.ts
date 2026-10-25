@@ -164,6 +164,8 @@ export type ActionTypeName =
   | 'stock.updateProduct'
   | 'stock.bulkImport'
   | 'stock.transfer'
+  | 'stock.transfer.undo'
+  | 'stock.correct'
   | 'session.submit'
   | 'session.approve'
   | 'session.return'
@@ -202,6 +204,8 @@ export const ACTION_TYPES: Record<ActionTypeName, ActionTypeDef> = {
   'stock.updateProduct': { labelSw: 'Sasisha bidhaa', label: 'Update product', objectType: 'Product' },
   'stock.bulkImport': { labelSw: 'Ingiza bidhaa kwa wingi', label: 'Bulk import products', objectType: 'Product' },
   'stock.transfer': { labelSw: 'Hamisha bidhaa kwenda biashara nyingine', label: 'Transfer stock to another business', objectType: 'Product' },
+  'stock.transfer.undo': { labelSw: 'Rudisha uhamisho wa bidhaa', label: 'Undo a stock transfer', objectType: 'Product' },
+  'stock.correct': { labelSw: 'Rekebisha stock iliyoongezwa', label: 'Correct added stock', objectType: 'Product' },
   'session.submit': { labelSw: 'Wasilisha kufunga', label: 'Submit closing', objectType: 'StockSession' },
   'session.approve': { labelSw: 'Thibitisha kufunga', label: 'Approve closing', objectType: 'StockSession' },
   'session.return': { labelSw: 'Rudisha closing ya marekebisho', label: 'Return closing for correction', objectType: 'StockSession' },

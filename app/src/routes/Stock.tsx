@@ -13,6 +13,8 @@ import { parseTable, buildRows, FIELD_LABELS, excelToCsv, isExcelFile, type Fiel
 import { SessionHistory } from '../components/SessionHistory';
 import { ReceiveStock } from '../components/ReceiveStock';
 import { TransferStock } from '../components/TransferStock';
+import { TransferHistory } from '../components/TransferHistory';
+import { CorrectAdded } from '../components/CorrectAdded';
 
 /** The canonical bar stock template — the same columns the business exports. */
 function toCsv(products: Product[]): string {
@@ -33,6 +35,8 @@ export function Stock() {
   const [tab, setTab] = useState<'items' | 'sessions'>('items');
   const [receiveOpen, setReceiveOpen] = useState(false);
   const [transferOpen, setTransferOpen] = useState(false);
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [correcting, setCorrecting] = useState<Product | null>(null);
   const [query, setQuery] = useState('');
   const [cat, setCat] = useState('All');
   const [editId, setEditId] = useState<string | null>(null);
@@ -297,6 +301,11 @@ export function Stock() {
           <Icon name="out" size={16} /> {lang === 'sw' ? 'Hamisha kwenda biashara nyingine' : 'Transfer to another business'}
         </button>
       )}
+      {!reorderMode && !editAllMode && canTransfer && owner && (
+        <button id="open-transfers" type="button" className="tap" style={{ width: '100%', marginTop: -6, marginBottom: 12, fontSize: 12.5, fontWeight: 800, color: 'var(--brand)', background: 'none' }} onClick={() => setHistoryOpen(true)}>
+          {lang === 'sw' ? 'Ona na rudisha uhamisho' : 'See and undo transfers'}
+        </button>
+      )}
     </>
   );
   const toolsBlock = (
@@ -544,6 +553,7 @@ export function Stock() {
                               )}
                               {owner && (
                                 <span className="row-actions" onClick={(e) => e.stopPropagation()}>
+                                  <button type="button" className="mini-btn tap correct-added" aria-label={lang === 'sw' ? `Rekebisha stock iliyoongezwa ${p.name}` : `Correct added stock for ${p.name}`} title={lang === 'sw' ? 'Rekebisha iliyoongezwa' : 'Correct added'} onClick={() => setCorrecting(p)}><Icon name="swap" size={13} /></button>
                                   <button type="button" className="mini-btn tap" aria-label={lang === 'sw' ? `Hariri ${p.name}` : `Edit ${p.name}`} onClick={() => startEdit(p)}><Icon name="edit" size={13} /></button>
                                   <button type="button" className="mini-btn tap" aria-label={lang === 'sw' ? `Futa ${p.name}` : `Delete ${p.name}`} onClick={() => setConfirmDelete(p)}><Icon name="trash" size={13} /></button>
                                 </span>
@@ -609,6 +619,8 @@ export function Stock() {
       </Sheet>
 
       <TransferStock open={transferOpen} onClose={() => setTransferOpen(false)} />
+      <TransferHistory open={historyOpen} onClose={() => setHistoryOpen(false)} />
+      <CorrectAdded product={correcting} onClose={() => setCorrecting(null)} />
       <ReceiveStock open={receiveOpen} onClose={() => setReceiveOpen(false)} note={stockDestinationNote} heldForNext={heldForNext} />
 
       <Sheet open={addOpen} onClose={() => setAddOpen(false)} title={lang === 'sw' ? 'Bidhaa mpya' : 'New product'}>

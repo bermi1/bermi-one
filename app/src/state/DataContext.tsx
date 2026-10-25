@@ -102,7 +102,12 @@ interface DataCtx {
 
   updateProductPrice: (productId: string, price: number) => Promise<void>;
   reorderProducts: (orderedIds: string[]) => Promise<void>;
-  addStock: (productId: string, qty: number) => Promise<void>;
+  /** Negative qty takes stock back off. Returns NOT_ENOUGH:<name>:<available> when that is more than there is. */
+  addStock: (productId: string, qty: number) => Promise<string | null>;
+  /** Owner correction of a product's added figure for the live day. TOO_LOW:<name>:<lowest> when refused. */
+  setAddedStock: (productId: string, value: number) => Promise<string | null>;
+  /** Reverse a transfer: back to the sender, off the receiver. */
+  undoTransfer: (transferId: string) => Promise<string | null>;
   addProduct: (input: { name: string; cat: string; unit: string; price: number; profit: number; low: number }) => Promise<void>;
   addProductsBulk: (rows: { name: string; cat: string; unit: string; cost: number; price: number; profit: number; opening: number; low: number }[]) => Promise<void>;
   updateProductFields: (productId: string, patch: Partial<Pick<Product, 'name' | 'cat' | 'unit' | 'price' | 'profit' | 'low' | 'opening'>>) => Promise<void>;
@@ -557,25 +562,83 @@ export function DataProvider({ children }: { children: ReactNode }) {
    */
   const stockTarget: 'added' | 'incoming' = session?.status === 'submitted' ? 'incoming' : 'added';
 
+  /**
+   * What is on the shelf right now, the same figure the database checks for a
+   * transfer: opening plus added while the day is open; while a day sits
+   * submitted, its count (or opening plus added) plus what is held for next.
+   */
+  const shelfOf = useCallback((p: Product) => {
+    if (session?.status === 'submitted') {
+      const c = session.counts?.[p.id];
+      return roundQty((c === undefined || c === null ? p.opening + p.added : Number(c)) + (p.incoming || 0));
+    }
+    return roundQty(p.opening + p.added);
+  }, [session]);
+
+  /** Lowest the open day's added may go: no negative shelf, and never below what was already counted. */
+  const minAddedFor = useCallback((p: Product) => {
+    const counted = session?.status !== 'submitted' ? session?.counts?.[p.id] : undefined;
+    return roundQty(Math.max(0, counted === undefined || counted === null ? 0 : Number(counted)) - p.opening);
+  }, [session]);
+
   const addStock = useCallback(
-    async (productId: string, qty: number) => {
-      if (!activeBusiness || qty <= 0) return;
+    async (productId: string, qty: number): Promise<string | null> => {
+      if (!activeBusiness || !qty) return null;
       const p = products.find((x) => x.id === productId);
-      if (!p) return;
+      if (!p) return null;
       const target = stockTarget;
+      // Taking stock back off (a wrong entry, a return to the supplier) cannot
+      // take more than is there.
+      if (qty < 0) {
+        const room = target === 'incoming' ? shelfOf(p) : roundQty(p.added - minAddedFor(p));
+        if (-qty > room) return `NOT_ENOUGH:${p.name}:${Math.max(0, room)}`;
+      }
       const next = roundQty((target === 'incoming' ? p.incoming : p.added) + qty);
+      setProducts((ps) => ps.map((x) => (x.id === productId ? { ...x, [target]: next } : x)));
+      await supabase.from('products').update({ [target]: next }).eq('id', productId);
+      const where = target === 'incoming' ? ' (held for the next count)' : '';
+      const label = qty > 0 ? `Stock added — ${qty} × ${p.name}${where}` : `Stock removed — ${-qty} × ${p.name}${where}`;
+      const { data: entry } = await supabase
+        .from('ledger_entries')
+        .insert({ business_id: activeBusiness.id, kind: 'stock', label, amount: 0, account: 'cash', who_name: actorRef.current })
+        .select()
+        .single();
+      if (entry) setLedger((l) => [entry as LedgerEntry, ...l]);
+      await record({ businessId: activeBusiness.id, actionType: 'stock.add', objectId: productId, summary: qty > 0 ? `Added ${qty} × ${p.name} to stock${where}` : `Removed ${-qty} × ${p.name} from stock${where}`, payload: { qty, product: p.name, target }, actorName: actorRef.current });
+      return null;
+    },
+    [activeBusiness, products, profile, record, stockTarget, shelfOf, minAddedFor],
+  );
+
+  /**
+   * Put right what was added: the owner types the figure it should have been.
+   * Only the live figure moves — a verified day is finished — and it cannot go
+   * below zero on the shelf or below what was already counted.
+   */
+  const setAddedStock = useCallback(
+    async (productId: string, value: number): Promise<string | null> => {
+      if (!activeBusiness) return null;
+      const p = products.find((x) => x.id === productId);
+      if (!p) return null;
+      const target = stockTarget;
+      const before = roundQty(target === 'incoming' ? p.incoming || 0 : p.added);
+      const next = roundQty(value);
+      if (next === before) return null;
+      const lowest = target === 'incoming' ? roundQty(before - shelfOf(p)) : minAddedFor(p);
+      if (next < lowest) return `TOO_LOW:${p.name}:${lowest}`;
       setProducts((ps) => ps.map((x) => (x.id === productId ? { ...x, [target]: next } : x)));
       await supabase.from('products').update({ [target]: next }).eq('id', productId);
       const where = target === 'incoming' ? ' (held for the next count)' : '';
       const { data: entry } = await supabase
         .from('ledger_entries')
-        .insert({ business_id: activeBusiness.id, kind: 'stock', label: `Stock added — ${qty} × ${p.name}${where}`, amount: 0, account: 'cash', who_name: actorRef.current })
+        .insert({ business_id: activeBusiness.id, kind: 'stock', label: `Stock corrected — ${p.name}: ${before} → ${next}${where}`, amount: 0, account: 'cash', who_name: actorRef.current })
         .select()
         .single();
       if (entry) setLedger((l) => [entry as LedgerEntry, ...l]);
-      await record({ businessId: activeBusiness.id, actionType: 'stock.add', objectId: productId, summary: `Added ${qty} × ${p.name} to stock${where}`, payload: { qty, product: p.name, target }, actorName: actorRef.current });
+      await record({ businessId: activeBusiness.id, actionType: 'stock.correct', objectId: productId, summary: `Corrected added ${p.name}: ${before} → ${next}${where}`, payload: { before, after: next, target }, actorName: actorRef.current });
+      return null;
     },
-    [activeBusiness, products, profile, record, stockTarget],
+    [activeBusiness, products, profile, record, stockTarget, shelfOf, minAddedFor],
   );
 
   const addProduct = useCallback<DataCtx['addProduct']>(
@@ -1183,6 +1246,17 @@ export function DataProvider({ children }: { children: ReactNode }) {
     return null;
   }, [activeBusiness, profile, refreshMoney, record, businesses]);
 
+  const undoTransfer = useCallback<DataCtx['undoTransfer']>(async (transferId) => {
+    if (!activeBusiness) return 'No business';
+    const { error } = await supabase.rpc('undo_stock_transfer', { p_id: transferId, p_by: actorRef.current || profile?.full_name || null });
+    if (error) return error.message;
+    const { data: prods } = await supabase.from('products').select('*').eq('business_id', activeBusiness.id).order('sort_order');
+    if (prods) setProducts(prods as Product[]);
+    await refreshMoney();
+    await record({ businessId: activeBusiness.id, actionType: 'stock.transfer.undo', objectId: transferId, summary: 'Undid a stock transfer', payload: { transfer: transferId }, actorName: actorRef.current });
+    return null;
+  }, [activeBusiness, profile, refreshMoney, record]);
+
   const value: DataCtx = {
     ready,
     loadError,
@@ -1227,6 +1301,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
     updateProductPrice,
     reorderProducts,
     addStock,
+    setAddedStock,
+    undoTransfer,
     addProduct,
     addProductsBulk,
     updateProductFields,
