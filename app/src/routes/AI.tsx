@@ -11,6 +11,9 @@ import { useSalon } from '../state/SalonContext';
 import type { SalonVisit } from '../lib/salon';
 import type { Lang } from '../lib/i18n';
 import { askAi, type AiFallback, type AiTurn } from '../lib/ai';
+import { answer as brainAnswer, answerAs, teach, INTENT_LABELS, type BrainData, type Intent } from '../ontology/brain';
+import { todayIso } from '../lib/calc';
+import type { StockSession } from '../lib/types';
 
 // Everyday words that give away which language a question was typed in.
 const SW_WORDS = new Set(['nini', 'gani', 'ngapi', 'je', 'leo', 'jana', 'wiki', 'mwezi', 'hii', 'hiyo', 'yangu', 'zangu', 'wangu', 'nina', 'tuna', 'kuna', 'iko', 'ziko', 'bidhaa', 'mauzo', 'faida', 'hasara', 'deni', 'pesa', 'fedha', 'bei', 'nifanye', 'niongeze', 'ninunue', 'zaidi', 'kidogo', 'inauza', 'inauzwa', 'zimeuzwa', 'biashara', 'mfanyakazi', 'wafanyakazi', 'kinyozi', 'wateja', 'mteja', 'siku', 'bora', 'mbaya', 'kwa', 'na', 'ya', 'za', 'cha', 'vya', 'ni', 'nipe', 'nionyeshe', 'naomba', 'habari', 'mwenendo', 'ushauri', 'uchambuzi', 'ipi', 'zipi', 'lini', 'kwanini', 'vipi', 'imebaki', 'zimebaki']);
@@ -26,6 +29,8 @@ interface Msg {
   pending?: boolean;
   /** Why the built-in assistant answered instead. */
   note?: string;
+  /** Answered by the local brain: the question and what it took it to mean, so the owner can correct it. */
+  local?: { q: string; intent: Intent; lang: Lang; rated?: 'up' | 'down' | 'fixed' };
 }
 
 /** How far back Bermi reads closings for trends, rankings and buying advice. */
@@ -66,6 +71,7 @@ export function AI() {
 
   // The sales history: every verified closing of the last few months, per product.
   const [rows, setRows] = useState<SaleRow[] | null>(null);
+  const [sessions, setSessions] = useState<StockSession[]>([]);
   useEffect(() => {
     if (!activeBusiness) return;
     let cancelled = false;
@@ -73,7 +79,7 @@ export function AI() {
     const from = new Date();
     from.setDate(from.getDate() - HISTORY_DAYS);
     fetchReportSource([activeBusiness.id], from.toISOString().slice(0, 10), to.toISOString().slice(0, 10))
-      .then(({ sessions }) => { if (!cancelled) setRows(salesHistory(sessions, products)); })
+      .then(({ sessions }) => { if (!cancelled) { setSessions(sessions); setRows(salesHistory(sessions, products)); } })
       .catch(() => { if (!cancelled) setRows([]); });
     return () => { cancelled = true; };
   }, [activeBusiness, fetchReportSource, products]);
@@ -85,6 +91,12 @@ export function AI() {
   const analystCtx: AnalystCtx | null = useMemo(() => (rows ? {
     rows, products, counts: session?.counts || {}, lang, fmt, businessName: activeBusiness?.name || L.appName,
   } : null), [rows, products, session, lang, fmt, activeBusiness, L.appName]);
+
+  // The local brain: reads this business's own records, no internet needed.
+  const brainData: BrainData | null = useMemo(() => (rows && activeBusiness && !isSalon ? {
+    businessId: activeBusiness.id, businessName: activeBusiness.name, sessions, rows, products,
+    counts: session?.counts || {}, ledger, accounts, fmt, today: todayIso(),
+  } : null), [rows, activeBusiness, isSalon, sessions, products, session, ledger, accounts, fmt]);
 
   const [messages, setMessages] = useState<Msg[]>(() => [{ who: 'ai', text: defaultSummary(assistantData, fmt) }]);
   const [input, setInput] = useState('');
@@ -125,7 +137,17 @@ export function AI() {
       if (a) return { who: 'ai', answer: a };
       return { who: 'ai', text: sw ? 'Naweza kuchambua vinyozi, huduma, bei, saa za shughuli, wateja wanaorudi na mwenendo. Jaribu: "kinyozi bora?" au "bei gani nipandishe?"' : 'I can analyse barbers, services, pricing, busy hours, returning clients and the trend. Try "who is my best barber?" or "what should I charge more for?"' };
     }
-    if (analystCtx) {
+    // "All my businesses" is the portfolio view, which the older assistant owns.
+    const portfolioAsk = businesses.length > 1 && /(all|every|portfolio|zote)/i.test(q) && /(business|biashara)/i.test(q);
+    if (brainData && !portfolioAsk) {
+      const b = brainAnswer(q, brainData, ql);
+      if (b.intent === 'search' && analystCtx) {
+        const a = analyse(q, analystCtx, findProduct(products, q));
+        if (a) return { who: 'ai', answer: a };
+      }
+      return { who: 'ai', answer: b.answer, local: { q, intent: b.intent, lang: ql } };
+    }
+    if (analystCtx && !portfolioAsk) {
       const a = analyse(q, analystCtx, findProduct(products, q));
       if (a) return { who: 'ai', answer: a };
     }
@@ -166,6 +188,26 @@ export function AI() {
       const basic = reply(q);
       return [...rest, { ...basic, note: noteFor(res.fallback || 'AI_ERROR', replyLang(q) === 'sw') }];
     });
+    scrollDown();
+  }
+
+  // 👍 / 👎 on a local answer. 👎 asks what was meant; the pick is answered and remembered.
+  const [fixing, setFixing] = useState<number | null>(null);
+  function rate(i: number, up: boolean) {
+    setMessages((m) => m.map((x, j) => (j === i && x.local ? { ...x, local: { ...x.local, rated: up ? 'up' : 'down' } } : x)));
+    if (up) {
+      const l = messages[i].local;
+      if (l && brainData && l.intent !== 'search') teach(brainData.businessId, l.q, l.intent, brainData);
+    } else setFixing(i);
+  }
+  function fix(i: number, intent: Intent) {
+    const l = messages[i].local;
+    if (!l || !brainData) return;
+    teach(brainData.businessId, l.q, intent, brainData);
+    const a = answerAs(intent, l.q, brainData, l.lang);
+    setFixing(null);
+    setMessages((m) => [...m.map((x, j) => (j === i && x.local ? { ...x, local: { ...x.local, rated: 'fixed' as const } } : x)),
+      { who: 'ai', answer: a, local: { q: l.q, intent, lang: l.lang, rated: 'fixed' } }]);
     scrollDown();
   }
 
@@ -212,6 +254,29 @@ export function AI() {
               </div>
             )}
             {m.note && <div style={{ marginTop: 8, fontSize: 11, fontWeight: 700, color: 'var(--ink3)' }}>{m.note}</div>}
+            {m.local && (
+              <div className="brain-rate" style={{ marginTop: 8, display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, fontWeight: 700, color: 'var(--ink3)' }}>
+                {m.local.rated === 'up' && <span>{sw ? 'Asante — nimejifunza.' : 'Thanks — learned.'}</span>}
+                {m.local.rated === 'fixed' && <span>{sw ? 'Nimekumbuka maana hii.' : 'Got it — I will remember that.'}</span>}
+                {(!m.local.rated || m.local.rated === 'down') && (
+                  <>
+                    <span>{sw ? 'Jibu sahihi?' : 'Right answer?'}</span>
+                    <button className="tap brain-up" aria-label="yes" onClick={() => rate(i, true)} style={{ background: 'none', border: 0, fontSize: 14, cursor: 'pointer' }}>👍</button>
+                    <button className="tap brain-down" aria-label="no" onClick={() => rate(i, false)} style={{ background: 'none', border: 0, fontSize: 14, cursor: 'pointer' }}>👎</button>
+                  </>
+                )}
+              </div>
+            )}
+            {fixing === i && m.local && (
+              <div className="brain-fix" style={{ marginTop: 8 }}>
+                <div style={{ fontSize: 11.5, fontWeight: 800, color: 'var(--ink2)', marginBottom: 6 }}>{sw ? 'Ulimaanisha nini?' : 'What did you mean?'}</div>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                  {(Object.keys(INTENT_LABELS) as (keyof typeof INTENT_LABELS)[]).filter((k) => k !== m.local!.intent).map((k) => (
+                    <button key={k} className="chip tap" data-intent={k} onClick={() => fix(i, k)} style={{ fontSize: 11.5 }}>{INTENT_LABELS[k][m.local!.lang]}</button>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         ))}
         {!isSalon && !smart && (
