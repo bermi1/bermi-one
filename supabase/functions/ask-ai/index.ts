@@ -128,14 +128,17 @@ Deno.serve(async (req) => {
     const user = who?.user;
     if (!user) return json({ error: 'Not signed in' }, 401);
 
-    const body = await req.json().catch(() => ({})) as { business_id?: string; question?: string; history?: Turn[] };
+    const body = await req.json().catch(() => ({})) as { business_id?: string; business_ids?: string[]; question?: string; history?: Turn[] };
     const question = String(body.question ?? '').trim().slice(0, 1000);
-    if (!body.business_id || !question) return json({ error: 'business_id and question are required' }, 400);
+    // One business, or several the owner chose to read together (at most 6).
+    const ids = [...new Set((Array.isArray(body.business_ids) && body.business_ids.length ? body.business_ids : [body.business_id]).filter((x): x is string => typeof x === 'string' && !!x))].slice(0, 6);
+    if (!ids.length || !question) return json({ error: 'business_id and question are required' }, 400);
 
-    // The owner only: the figures are the business's books.
-    const { data: biz } = await admin.from('businesses').select('id, owner_id, type').eq('id', body.business_id).maybeSingle();
-    if (!biz || biz.owner_id !== user.id) return json({ error: 'Not allowed' }, 403);
-    if (biz.type === 'barber') return json({ fallback: 'NOT_BAR' });
+    // The owner only: the figures are the businesses' books.
+    const { data: bizRows } = await admin.from('businesses').select('id, name, owner_id, type').in('id', ids);
+    if (!bizRows || bizRows.length !== ids.length || bizRows.some((b) => b.owner_id !== user.id)) return json({ error: 'Not allowed' }, 403);
+    const bars = bizRows.filter((b) => b.type !== 'barber');
+    if (!bars.length) return json({ fallback: 'NOT_BAR' });
 
     // Premium, or a trial (which runs as Premium), with its own daily allowance.
     const { data: sub } = await admin.from('subscriptions').select('status, subscription_plans(code)').eq('owner_id', user.id).maybeSingle();
@@ -151,7 +154,10 @@ Deno.serve(async (req) => {
     const { data: used } = await admin.from('ai_usage').select('questions').eq('owner_id', user.id).eq('day', day).maybeSingle();
     if ((used?.questions ?? 0) >= DAILY_LIMIT[tier]) return json({ fallback: 'LIMIT', limit: DAILY_LIMIT[tier] });
 
-    const facts = await snapshot(biz.id);
+    const facts = bars.length === 1
+      ? await snapshot(bars[0].id)
+      : `${bars.length} businesses read together. Give combined totals first, then the split per business, and name the business for any per-business fact.\n\n` +
+        (await Promise.all(bars.map(async (b) => `===== BUSINESS: ${b.name} =====\n${await snapshot(b.id)}`))).join('\n\n');
     const history = (Array.isArray(body.history) ? body.history : [])
       .filter((t) => (t.role === 'user' || t.role === 'assistant') && typeof t.text === 'string' && t.text.trim())
       .slice(-6)

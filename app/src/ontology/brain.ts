@@ -18,6 +18,7 @@
 import type { Accounts, LedgerEntry, Product, StockSession } from '../lib/types';
 import type { Lang } from '../lib/i18n';
 import type { SaleRow } from './analytics';
+import type { DayPart } from './combine';
 import { analyse, fullAnalysis, type AiAnswer, type AiBlock, type AnalystCtx } from './analyst';
 
 // ------------------------------------------------------------------ language
@@ -143,6 +144,8 @@ interface Day {
   date: string; sales: number; profit: number; cash: number; mobile: number; bank: number; toBank: number;
   expenses: number; losses: number; debts: number; gap: number; by: string | null;
   items: { kind: string; amount: number; note: string }[];
+  /** Several businesses read together: each one's share of the day. */
+  parts: DayPart[] | null;
 }
 
 function daysOf(sessions: StockSession[]): Day[] {
@@ -155,6 +158,7 @@ function daysOf(sessions: StockSession[]): Day[] {
     return {
       date: s.session_date, sales, profit: Number(s.total_calculated_profit || 0), cash, mobile, bank, toBank, expenses, losses, debts,
       gap: cash + mobile + bank + toBank + expenses + losses + debts - sales, by: s.submitted_by_name, items,
+      parts: (s as StockSession & { parts?: DayPart[] }).parts || null,
     };
   }).sort((a, b) => b.date.localeCompare(a.date));
 }
@@ -428,6 +432,19 @@ function noteAsked(businessId: string, intent: Intent) {
 
 const txt = (text: string): AiBlock => ({ kind: 'text', text });
 
+/** "By business" bars, when the answer covers more than one business. */
+function splitBlock(ds: Day[], fmt: (n: number) => string, sw: boolean): AiBlock[] {
+  const m = new Map<string, { sales: number; gap: number }>();
+  for (const d of ds) for (const p of d.parts || []) {
+    const e = m.get(p.business) || { sales: 0, gap: 0 };
+    e.sales += p.sales; e.gap += p.gap; m.set(p.business, e);
+  }
+  if (m.size < 2) return [];
+  const gapTxt = (g: number) => (g === 0 ? (sw ? 'imelingana' : 'balanced') : g < 0 ? `${sw ? 'pungufu' : 'short'} ${fmt(-g)}` : `${sw ? 'ziada' : 'over'} ${fmt(g)}`);
+  return [{ kind: 'bars', title: sw ? 'Kwa biashara' : 'By business', rows: [...m].sort((a, b) => b[1].sales - a[1].sales).map(([name, e]) => ({
+    label: name, value: e.sales, display: fmt(e.sales), note: gapTxt(e.gap), tone: e.gap < 0 ? 'bad' as const : 'neutral' as const })) }];
+}
+
 function analystAsk(q: string, data: BrainData, lang: Lang, product: Product | null = null): AiAnswer | null {
   const ctx: AnalystCtx = { rows: data.rows, products: data.products, counts: data.counts, lang, fmt: data.fmt, businessName: data.businessName };
   return q === 'full' ? fullAnalysis(ctx) : analyse(q, ctx, product);
@@ -570,6 +587,7 @@ function daySummary(d: Day, data: BrainData, sw: boolean): AiAnswer {
       { label: T('Collected', 'Zilizokusanywa'), value: fmt(d.cash + d.mobile + d.bank + d.toBank) },
       { label: T('Result', 'Matokeo'), value: gapTxt, tone: d.gap < 0 ? 'bad' : d.gap > 0 ? 'warn' : 'good' },
     ] },
+    ...splitBlock([d], fmt, sw),
     ...(sold.length ? [{ kind: 'bars' as const, title: T('Top sellers that day', 'Zilizouza zaidi siku hiyo'), rows: sold.map((r) => ({ label: r.name, value: r.revenue, display: `${r.sold} ${r.unit} · ${fmt(r.revenue)}` })) }] : []),
   ] };
 }
@@ -588,6 +606,7 @@ function periodSummary(ds: Day[], label: string, data: BrainData, sw: boolean): 
       { label: T('Expenses', 'Matumizi'), value: fmt(sum((d) => d.expenses)) },
       { label: T('Short / over', 'Pungufu / ziada'), value: gap === 0 ? T('Balanced', 'Imelingana') : `${gap < 0 ? '−' : '+'}${fmt(Math.abs(gap))}`, tone: gap < 0 ? 'bad' : 'neutral' },
     ] },
+    ...splitBlock(ds, fmt, sw),
     txt(T(`Best day: ${best.date} with ${fmt(best.sales)}.`, `Siku bora: ${best.date} kwa ${fmt(best.sales)}.`)),
   ] };
 }
@@ -617,7 +636,7 @@ function whyGap(d: Day, days: Day[], data: BrainData, sw: boolean): AiAnswer {
     : T(`It is within the usual range (about ${fmt(avgGap)}).`, `Iko ndani ya kawaida (${fmt(avgGap)} hivi).`));
   if (d.by) tips.push(T(`Counted by ${d.by}.`, `Imehesabiwa na ${d.by}.`));
   if (top.length) tips.push(T(`Top sellers that night: ${top.map((r) => `${r.name} (${r.sold})`).join(', ')}.`, `Zilizouza zaidi usiku huo: ${top.map((r) => `${r.name} (${r.sold})`).join(', ')}.`));
-  return { blocks: [txt(T(`${d.date} was ${short ? 'short' : 'over'} by ${fmt(Math.abs(d.gap))}.`, `${d.date} ilikuwa ${short ? 'pungufu' : 'na ziada'} ya ${fmt(Math.abs(d.gap))}.`)), { kind: 'list', items: list }, txt(tips.map((t) => `• ${t}`).join('\n'))] };
+  return { blocks: [txt(T(`${d.date} was ${short ? 'short' : 'over'} by ${fmt(Math.abs(d.gap))}.`, `${d.date} ilikuwa ${short ? 'pungufu' : 'na ziada'} ya ${fmt(Math.abs(d.gap))}.`)), { kind: 'list', items: list }, ...splitBlock([d], fmt, sw), txt(tips.map((t) => `• ${t}`).join('\n'))] };
 }
 
 function compare(a: Day[], b: Day[], la: string, lb: string, data: BrainData, sw: boolean): AiAnswer {
@@ -643,6 +662,7 @@ function compare(a: Day[], b: Day[], la: string, lb: string, data: BrainData, sw
       { label: T(`Profit ${la}`, `Faida ${la}`), value: fmt(pa), delta: delta(pa, pb), tone: pa >= pb ? 'good' : 'bad' },
       { label: T('Closings', 'Closing'), value: `${a.length} / ${b.length}` },
     ] },
+    ...splitBlock(a, fmt, sw),
     ...(movers.length ? [{ kind: 'list' as const, title: T('Biggest changes', 'Mabadiliko makubwa'), items: movers.map((m) => ({ title: m.n, detail: `${m.d > 0 ? '+' : ''}${Math.round(m.d * 10) / 10} ${T('units', 'vipande')}`, tone: m.d > 0 ? 'good' as const : 'bad' as const })) }] : []),
   ] };
 }

@@ -13,7 +13,9 @@ import type { Lang } from '../lib/i18n';
 import { askAi, type AiFallback, type AiTurn } from '../lib/ai';
 import { answer as brainAnswer, answerAs, teach, INTENT_LABELS, type BrainData, type Intent } from '../ontology/brain';
 import { todayIso } from '../lib/calc';
-import type { StockSession } from '../lib/types';
+import type { Accounts, LedgerEntry, Product, StockSession } from '../lib/types';
+import { supabase } from '../lib/supabase';
+import { combineAccounts, combineProducts, combineSessions, labelLedger } from '../ontology/combine';
 
 // Everyday words that give away which language a question was typed in.
 const SW_WORDS = new Set(['nini', 'gani', 'ngapi', 'je', 'leo', 'jana', 'wiki', 'mwezi', 'hii', 'hiyo', 'yangu', 'zangu', 'wangu', 'nina', 'tuna', 'kuna', 'iko', 'ziko', 'bidhaa', 'mauzo', 'faida', 'hasara', 'deni', 'pesa', 'fedha', 'bei', 'nifanye', 'niongeze', 'ninunue', 'zaidi', 'kidogo', 'inauza', 'inauzwa', 'zimeuzwa', 'biashara', 'mfanyakazi', 'wafanyakazi', 'kinyozi', 'wateja', 'mteja', 'siku', 'bora', 'mbaya', 'kwa', 'na', 'ya', 'za', 'cha', 'vya', 'ni', 'nipe', 'nionyeshe', 'naomba', 'habari', 'mwenendo', 'ushauri', 'uchambuzi', 'ipi', 'zipi', 'lini', 'kwanini', 'vipi', 'imebaki', 'zimebaki']);
@@ -69,38 +71,78 @@ export function AI() {
     };
   }, [businesses.length, fetchPortfolioSummary]);
 
+  /*
+    Which businesses the AI reads. One by default (the active one); the owner
+    can tick more and every answer becomes the total, with the split per
+    business shown where it matters.
+  */
+  const stockBiz = useMemo(() => businesses.filter((b) => b.type !== 'barber'), [businesses]);
+  const [picked, setPicked] = useState<string[]>(() => (activeBusiness ? [activeBusiness.id] : []));
+  useEffect(() => { if (activeBusiness) setPicked((p) => (p.length === 1 && p[0] === activeBusiness.id ? p : [activeBusiness.id])); }, [activeBusiness]);
+  const several = picked.length > 1;
+  const names = useMemo(() => Object.fromEntries(businesses.map((b) => [b.id, b.name])), [businesses]);
+  const pickedName = several ? picked.map((id) => names[id]).join(' + ') : activeBusiness?.name || L.appName;
+
   // The sales history: every verified closing of the last few months, per product.
-  const [rows, setRows] = useState<SaleRow[] | null>(null);
-  const [sessions, setSessions] = useState<StockSession[]>([]);
+  type Source = { sessions: StockSession[]; products: Product[]; accounts: Accounts | null; ledger: LedgerEntry[] };
+  const [src, setSrc] = useState<Source | null>(null);
+  const lastPick = useRef('');
   useEffect(() => {
-    if (!activeBusiness) return;
+    if (!activeBusiness || isSalon || !picked.length) return;
     let cancelled = false;
-    const to = new Date();
-    const from = new Date();
-    from.setDate(from.getDate() - HISTORY_DAYS);
-    fetchReportSource([activeBusiness.id], from.toISOString().slice(0, 10), to.toISOString().slice(0, 10))
-      .then(({ sessions }) => { if (!cancelled) { setSessions(sessions); setRows(salesHistory(sessions, products)); } })
-      .catch(() => { if (!cancelled) setRows([]); });
+    // Only a new selection blanks the page; a refresh of the same one swaps in quietly.
+    const pickKey = picked.join(',');
+    if (lastPick.current !== pickKey) { lastPick.current = pickKey; setSrc(null); }
+    const to = todayIso();
+    const from = new Date(Date.now() - HISTORY_DAYS * 86_400_000).toISOString().slice(0, 10);
+    (async () => {
+      const { sessions: raw, ledger: led } = await fetchReportSource(picked, from, to);
+      if (picked.length === 1) return { sessions: raw, products, accounts, ledger: labelLedger(led.length ? led : ledger, names, false) };
+      const [{ data: prods }, { data: accts }] = await Promise.all([
+        supabase.from('products').select('*').in('business_id', picked),
+        supabase.from('accounts').select('*').in('business_id', picked),
+      ]);
+      const byBiz: Record<string, Product[]> = {};
+      for (const p of (prods || []) as Product[]) (byBiz[p.business_id] ||= []).push(p);
+      return {
+        sessions: combineSessions(raw, byBiz, names),
+        products: combineProducts(byBiz),
+        accounts: combineAccounts((accts || []) as Accounts[]),
+        ledger: labelLedger(led, names, true),
+      };
+    })()
+      .then((v) => { if (!cancelled) setSrc(v); })
+      .catch(() => { if (!cancelled) setSrc({ sessions: [], products, accounts, ledger }); });
     return () => { cancelled = true; };
-  }, [activeBusiness, fetchReportSource, products]);
+  }, [picked, activeBusiness, isSalon, fetchReportSource, products, accounts, ledger, names]);
+  const rows: SaleRow[] | null = useMemo(() => (src ? salesHistory(src.sessions, src.products) : null), [src]);
+  const counts = several ? {} : session?.counts || {};
 
   const assistantData: AssistantData = {
     products, session, accounts, ledger, actionLog, businesses, portfolio, lang,
     activeBusinessName: activeBusiness?.name || L.appName,
   };
-  const analystCtx: AnalystCtx | null = useMemo(() => (rows ? {
-    rows, products, counts: session?.counts || {}, lang, fmt, businessName: activeBusiness?.name || L.appName,
-  } : null), [rows, products, session, lang, fmt, activeBusiness, L.appName]);
+  const analystCtx: AnalystCtx | null = useMemo(() => (rows && src ? {
+    rows, products: src.products, counts, lang, fmt, businessName: pickedName,
+  } : null), [rows, src, counts, lang, fmt, pickedName]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // The local brain: reads this business's own records, no internet needed.
-  const brainData: BrainData | null = useMemo(() => (rows && activeBusiness && !isSalon ? {
-    businessId: activeBusiness.id, businessName: activeBusiness.name, sessions, rows, products,
-    counts: session?.counts || {}, ledger, accounts, fmt, today: todayIso(),
-  } : null), [rows, activeBusiness, isSalon, sessions, products, session, ledger, accounts, fmt]);
+  // The local brain: reads the chosen businesses' own records, no internet needed.
+  const brainData: BrainData | null = useMemo(() => (rows && src && activeBusiness && !isSalon ? {
+    businessId: activeBusiness.id, businessName: pickedName, sessions: src.sessions, rows, products: src.products,
+    counts, ledger: src.ledger, accounts: src.accounts, fmt, today: todayIso(),
+  } : null), [rows, src, activeBusiness, isSalon, pickedName, fmt]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const [messages, setMessages] = useState<Msg[]>(() => [{ who: 'ai', text: defaultSummary(assistantData, fmt) }]);
   const [input, setInput] = useState('');
   const asked = useRef(false);
+
+  // A new selection is a new conversation.
+  const firstPick = useRef(true);
+  useEffect(() => {
+    asked.current = false;
+    if (firstPick.current) { firstPick.current = false; return; }
+    setMessages([{ who: 'ai', text: sw ? 'Inasoma…' : 'Reading…' }]);
+  }, [picked]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Once the history is in, open with where the business actually stands.
   useEffect(() => {
@@ -109,6 +151,7 @@ export function AI() {
     if (!analystCtx || isSalon) return;
     const o = overview(analystCtx);
     if (o) setMessages([{ who: 'ai', answer: o }]);
+    else setMessages((m) => (m.length === 1 && m[0].text && /^(Reading|Inasoma)…$/.test(m[0].text) ? [{ who: 'ai', text: sw ? 'Bado hakuna closing zilizo verified za kusoma.' : 'No verified closings to read yet.' }] : m));
   }, [analystCtx, salonCtx, isSalon]);
 
   /*
@@ -181,7 +224,7 @@ export function AI() {
       .map((m) => ({ role: m.who === 'user' ? 'user' : 'assistant', text: m.text as string }));
     setMessages((m) => [...m, { who: 'user', text: q }, { who: 'ai', pending: true }]);
     scrollDown();
-    const res = await askAi(activeBusiness!.id, q, history);
+    const res = await askAi(picked, q, history);
     setMessages((m) => {
       const rest = m.filter((x) => !x.pending);
       if (res.answer) return [...rest, { who: 'ai', text: res.answer, smart: true }];
@@ -211,7 +254,10 @@ export function AI() {
     scrollDown();
   }
 
-  const suggestions = smart
+  const suggestions = several
+    ? (sw ? ['Mauzo ya wiki hii', 'Linganisha wiki hii na iliyopita', 'Nani anadaiwa pesa?', 'Ninunue nini?', 'Kwa nini closing ya mwisho ilikuwa short?']
+      : ['Sales this week', 'Compare this week with last week', 'Who owes money?', 'What should I order?', 'Why was the last closing short?'])
+    : smart
     ? (sw ? ['Ninunue nini kesho?', 'Kwa nini closing ya mwisho ilikuwa short?', 'Vinywaji gani vinaleta faida zaidi?', 'Linganisha wiki hii na iliyopita', 'Nani anadaiwa pesa?', 'Stock gani haiuzi?']
       : ['What should I order tomorrow?', 'Why was the last closing short?', 'Which drinks make the most profit?', 'Compare this week with last week', 'Who owes money?', 'What stock is not moving?'])
     : isSalon
@@ -224,7 +270,28 @@ export function AI() {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0, minWidth: 0, overflowX: 'clip' }}>
       <div style={{ padding: '16px 16px 0' }}>
-        <ScreenHeader title={L.bermiAI} sub={(isSalon ? salonVisits === null : rows === null) ? (sw ? 'Inasoma historia ya mauzo…' : 'Reading your sales history…') : L.watching} />
+        <ScreenHeader title={L.bermiAI} sub={(isSalon ? salonVisits === null : rows === null) ? (sw ? 'Inasoma historia ya mauzo…' : 'Reading your sales history…') : several ? (sw ? `Biashara ${picked.length} pamoja` : `${picked.length} businesses together`) : L.watching} />
+        {!isSalon && stockBiz.length > 1 && (
+          <div className="ai-picker sb" role="group" aria-label={sw ? 'Biashara za kusoma' : 'Businesses to read'} style={{ display: 'flex', gap: 6, overflowX: 'auto', padding: '2px 0 10px', scrollbarWidth: 'none' }}>
+            {stockBiz.map((b) => {
+              const on = picked.includes(b.id);
+              return (
+                <button key={b.id} className="tap" aria-pressed={on} data-biz={b.id} disabled={busy}
+                  onClick={() => setPicked((p) => (on ? (p.length > 1 ? p.filter((x) => x !== b.id) : p) : [...p, b.id]))}
+                  style={{ flexShrink: 0, padding: '7px 12px', borderRadius: 999, fontSize: 12, fontWeight: 800, cursor: 'pointer',
+                    border: on ? '1px solid var(--brand)' : '1px solid var(--line)', background: on ? 'var(--brand)' : 'transparent', color: on ? 'var(--brandInk)' : 'var(--ink2)' }}>
+                  {b.name}
+                </button>
+              );
+            })}
+            {picked.length < stockBiz.length && (
+              <button className="tap" data-biz="all" disabled={busy} onClick={() => setPicked(stockBiz.map((b) => b.id))}
+                style={{ flexShrink: 0, padding: '7px 12px', borderRadius: 999, fontSize: 12, fontWeight: 800, cursor: 'pointer', border: '1px dashed var(--line)', background: 'transparent', color: 'var(--ink3)' }}>
+                {sw ? '+ Zote' : '+ All'}
+              </button>
+            )}
+          </div>
+        )}
       </div>
       <div ref={scrollRef} className="sb" style={{ flex: 1, overflowY: 'auto', padding: '0 16px', display: 'flex', flexDirection: 'column', gap: 10 }}>
         {messages.map((m, i) => (
@@ -256,14 +323,11 @@ export function AI() {
             {m.note && <div style={{ marginTop: 8, fontSize: 11, fontWeight: 700, color: 'var(--ink3)' }}>{m.note}</div>}
             {m.local && (
               <div className="brain-rate" style={{ marginTop: 8, display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, fontWeight: 700, color: 'var(--ink3)' }}>
-                {m.local.rated === 'up' && <span>{sw ? 'Asante — nimejifunza.' : 'Thanks — learned.'}</span>}
                 {m.local.rated === 'fixed' && <span>{sw ? 'Nimekumbuka maana hii.' : 'Got it — I will remember that.'}</span>}
-                {(!m.local.rated || m.local.rated === 'down') && (
-                  <>
-                    <span>{sw ? 'Jibu sahihi?' : 'Right answer?'}</span>
-                    <button className="tap brain-up" aria-label="yes" onClick={() => rate(i, true)} style={{ background: 'none', border: 0, fontSize: 14, cursor: 'pointer' }}>👍</button>
-                    <button className="tap brain-down" aria-label="no" onClick={() => rate(i, false)} style={{ background: 'none', border: 0, fontSize: 14, cursor: 'pointer' }}>👎</button>
-                  </>
+                {!m.local.rated && i === messages.length - 1 && (
+                  <button className="tap brain-down" onClick={() => rate(i, false)} style={{ background: 'none', border: 0, padding: 0, fontSize: 11, fontWeight: 700, color: 'var(--ink3)', textDecoration: 'underline', cursor: 'pointer' }}>
+                    {sw ? 'Sio nilichomaanisha' : 'Not what I meant'}
+                  </button>
                 )}
               </div>
             )}
@@ -279,21 +343,18 @@ export function AI() {
             )}
           </div>
         ))}
-        {!isSalon && !smart && (
-          <div className="card" style={{ padding: '10px 13px', fontSize: 12, fontWeight: 700, color: 'var(--ink2)', display: 'flex', alignItems: 'center', gap: 8 }}>
-            <Icon name="spark" size={14} style={{ color: 'var(--brand)' }} />
-            {sw ? 'Bermi AI kamili (inaelewa swali lolote, inapanga oda, inaeleza short) iko kwenye Premium.' : 'Full Bermi AI (understands any question, plans orders, explains short/over) comes with Premium.'}
-          </div>
-        )}
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, padding: '4px 0 16px' }}>
-          {suggestions.map((s) => (
-            <button key={s} className="chip tap" data-disabled={busy} onClick={() => void ask(s)}>
+        <div style={{ height: 8, flexShrink: 0 }} />
+      </div>
+      {!busy && (
+        <div className="ai-suggest sb" style={{ display: 'flex', gap: 6, overflowX: 'auto', padding: '6px 16px 0', flexShrink: 0, scrollbarWidth: 'none' }}>
+          {suggestions.slice(0, 5).map((s) => (
+            <button key={s} className="chip tap" onClick={() => void ask(s)} style={{ flexShrink: 0, whiteSpace: 'nowrap', boxShadow: 'none', fontSize: 12 }}>
               {s}
             </button>
           ))}
         </div>
-      </div>
-      <div style={{ padding: '10px 16px calc(96px + env(safe-area-inset-bottom))', display: 'flex', gap: 8, flexShrink: 0 }}>
+      )}
+      <div style={{ padding: '8px 16px calc(96px + env(safe-area-inset-bottom))', display: 'flex', gap: 8, flexShrink: 0 }}>
         <input
           value={input}
           onChange={(e) => setInput(e.target.value)}
