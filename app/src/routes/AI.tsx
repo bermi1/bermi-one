@@ -10,6 +10,7 @@ import { salonAnalyse, salonOverview, type SalonAnalystCtx } from '../ontology/s
 import { useSalon } from '../state/SalonContext';
 import type { SalonVisit } from '../lib/salon';
 import type { Lang } from '../lib/i18n';
+import { askAi, type AiFallback, type AiTurn } from '../lib/ai';
 
 // Everyday words that give away which language a question was typed in.
 const SW_WORDS = new Set(['nini', 'gani', 'ngapi', 'je', 'leo', 'jana', 'wiki', 'mwezi', 'hii', 'hiyo', 'yangu', 'zangu', 'wangu', 'nina', 'tuna', 'kuna', 'iko', 'ziko', 'bidhaa', 'mauzo', 'faida', 'hasara', 'deni', 'pesa', 'fedha', 'bei', 'nifanye', 'niongeze', 'ninunue', 'zaidi', 'kidogo', 'inauza', 'inauzwa', 'zimeuzwa', 'biashara', 'mfanyakazi', 'wafanyakazi', 'kinyozi', 'wateja', 'mteja', 'siku', 'bora', 'mbaya', 'kwa', 'na', 'ya', 'za', 'cha', 'vya', 'ni', 'nipe', 'nionyeshe', 'naomba', 'habari', 'mwenendo', 'ushauri', 'uchambuzi', 'ipi', 'zipi', 'lini', 'kwanini', 'vipi', 'imebaki', 'zimebaki']);
@@ -19,6 +20,12 @@ interface Msg {
   who: 'user' | 'ai';
   text?: string;
   answer?: AiAnswer;
+  /** Written by the real model (Claude), not the built-in assistant. */
+  smart?: boolean;
+  /** Still waiting for the model. */
+  pending?: boolean;
+  /** Why the built-in assistant answered instead. */
+  note?: string;
 }
 
 /** How far back Bermi reads closings for trends, rankings and buying advice. */
@@ -26,7 +33,7 @@ const HISTORY_DAYS = 120;
 
 export function AI() {
   const { L, fmt, lang } = useSettings();
-  const { products, session, accounts, ledger, actionLog, businesses, activeBusiness, fetchPortfolioSummary, fetchReportSource } = useData();
+  const { products, session, accounts, ledger, actionLog, businesses, activeBusiness, fetchPortfolioSummary, fetchReportSource, plan } = useData();
   const scrollRef = useRef<HTMLDivElement>(null);
   const sw = lang === 'sw';
   const salon = useSalon();
@@ -125,17 +132,47 @@ export function AI() {
     return { who: 'ai', text: answerQuestion(assistantData, q, fmt) };
   }
 
-  function ask(q: string) {
-    asked.current = true;
-    setMessages((m) => [...m, { who: 'user', text: q }]);
-    setInput('');
-    setTimeout(() => {
-      setMessages((m) => [...m, reply(q)]);
-      requestAnimationFrame(() => scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' }));
-    }, 350);
+  // The bar on Premium (or a trial) asks the real model; everything else, and
+  // any failure, gets the built-in assistant's answer.
+  const smart = !isSalon && plan.code === 'premium' && !!activeBusiness;
+  const busy = messages.some((m) => m.pending);
+  const scrollDown = () => requestAnimationFrame(() => scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' }));
+
+  function noteFor(code: AiFallback, qsw: boolean): string | undefined {
+    if (code === 'LIMIT') return qsw ? 'Maswali ya AI ya leo yameisha — hili ni jibu la kawaida.' : "Today's AI questions are used up — this is the basic answer.";
+    if (code === 'BUSY' || code === 'AI_ERROR' || code === 'EMPTY') return qsw ? 'AI haipatikani sasa hivi — hili ni jibu la kawaida.' : 'The AI is not available right now — this is the basic answer.';
+    return undefined;
   }
 
-  const suggestions = isSalon
+  async function ask(q: string) {
+    if (busy) return;
+    asked.current = true;
+    setInput('');
+    if (!smart) {
+      setMessages((m) => [...m, { who: 'user', text: q }]);
+      setTimeout(() => { setMessages((m) => [...m, reply(q)]); scrollDown(); }, 350);
+      return;
+    }
+    // The conversation so far, as plain text turns the model can follow.
+    const history: AiTurn[] = messages
+      .filter((m) => !m.pending && m.text && (m.who === 'user' || m.smart))
+      .map((m) => ({ role: m.who === 'user' ? 'user' : 'assistant', text: m.text as string }));
+    setMessages((m) => [...m, { who: 'user', text: q }, { who: 'ai', pending: true }]);
+    scrollDown();
+    const res = await askAi(activeBusiness!.id, q, history);
+    setMessages((m) => {
+      const rest = m.filter((x) => !x.pending);
+      if (res.answer) return [...rest, { who: 'ai', text: res.answer, smart: true }];
+      const basic = reply(q);
+      return [...rest, { ...basic, note: noteFor(res.fallback || 'AI_ERROR', replyLang(q) === 'sw') }];
+    });
+    scrollDown();
+  }
+
+  const suggestions = smart
+    ? (sw ? ['Ninunue nini kesho?', 'Kwa nini closing ya mwisho ilikuwa short?', 'Vinywaji gani vinaleta faida zaidi?', 'Linganisha wiki hii na iliyopita', 'Nani anadaiwa pesa?', 'Stock gani haiuzi?']
+      : ['What should I order tomorrow?', 'Why was the last closing short?', 'Which drinks make the most profit?', 'Compare this week with last week', 'Who owes money?', 'What stock is not moving?'])
+    : isSalon
     ? (sw ? ['Kinyozi bora?', 'Huduma gani inauza zaidi?', 'Bei gani nipandishe?', 'Saa zipi ni za polepole?', 'Wateja gani hawarudi?', 'Mwenendo wa wiki', 'Uchambuzi kamili']
       : ['Who is my best barber?', 'What sells the most?', 'What should I charge more for?', 'When are we slow?', 'Who has stopped coming?', 'Weekly trend', 'Full analysis'])
     : sw
@@ -166,12 +203,26 @@ export function AI() {
               boxShadow: m.who === 'ai' ? 'var(--sh)' : 'none',
             }}
           >
-            {m.answer ? <Answer a={m.answer} /> : m.text}
+            {m.pending ? (
+              <span className="ai-typing" style={{ color: 'var(--ink3)' }}>{sw ? 'Bermi AI inafikiri…' : 'Bermi AI is thinking…'}</span>
+            ) : m.answer ? <Answer a={m.answer} /> : m.text}
+            {m.smart && (
+              <div className="ai-badge" style={{ marginTop: 8, fontSize: 10.5, fontWeight: 800, color: 'var(--brand)', display: 'flex', alignItems: 'center', gap: 4 }}>
+                <Icon name="spark" size={11} /> Bermi AI
+              </div>
+            )}
+            {m.note && <div style={{ marginTop: 8, fontSize: 11, fontWeight: 700, color: 'var(--ink3)' }}>{m.note}</div>}
           </div>
         ))}
+        {!isSalon && !smart && (
+          <div className="card" style={{ padding: '10px 13px', fontSize: 12, fontWeight: 700, color: 'var(--ink2)', display: 'flex', alignItems: 'center', gap: 8 }}>
+            <Icon name="spark" size={14} style={{ color: 'var(--brand)' }} />
+            {sw ? 'Bermi AI kamili (inaelewa swali lolote, inapanga oda, inaeleza short) iko kwenye Premium.' : 'Full Bermi AI (understands any question, plans orders, explains short/over) comes with Premium.'}
+          </div>
+        )}
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, padding: '4px 0 16px' }}>
           {suggestions.map((s) => (
-            <button key={s} className="chip tap" onClick={() => ask(s)}>
+            <button key={s} className="chip tap" data-disabled={busy} onClick={() => void ask(s)}>
               {s}
             </button>
           ))}
@@ -182,13 +233,13 @@ export function AI() {
           value={input}
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={(e) => {
-            if (e.key === 'Enter' && input.trim()) ask(input.trim());
+            if (e.key === 'Enter' && input.trim()) void ask(input.trim());
           }}
           placeholder={L.askPlaceholder}
           className="field"
           style={{ flex: 1 }}
         />
-        <button className="icon-btn tap" style={{ width: 46, height: 46, background: 'var(--grad)', color: '#fff', border: 'none' }} onClick={() => input.trim() && ask(input.trim())}>
+        <button className="icon-btn tap" style={{ width: 46, height: 46, background: 'var(--grad)', color: '#fff', border: 'none' }} onClick={() => { if (input.trim()) void ask(input.trim()); }}>
           <Icon name="right" size={18} />
         </button>
       </div>

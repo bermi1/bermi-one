@@ -13,6 +13,7 @@ import { EmailTools } from './EmailTools';
 import { PaymentsTools } from './PaymentsTools';
 import { WithdrawTools } from './WithdrawTools';
 import { DbHealth } from './DbHealth';
+import { AiTools } from './AiTools';
 import { Donut, Sparkline, StackBar } from './Sparkline';
 import { ACTION_TYPES, OBJECT_TYPES, type ObjectTypeName } from '../ontology/schema';
 import { gatewayConfig, type GatewayConfig } from '../lib/billing';
@@ -430,6 +431,7 @@ export function Hq() {
       {section === 'payments' && <PaymentsTools />}
       {section === 'payments' && <SmsTools />}
       {section === 'payments' && <EmailTools />}
+      {section === 'payments' && <AiTools />}
 
       {section === 'payments' && (
         payments === null ? <div className="hq-empty">{T.loading}…</div>
