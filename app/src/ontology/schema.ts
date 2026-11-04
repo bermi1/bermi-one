@@ -166,9 +166,11 @@ export type ActionTypeName =
   | 'stock.transfer'
   | 'stock.transfer.undo'
   | 'stock.correct'
+  | 'stock.restart'
   | 'session.submit'
   | 'session.approve'
   | 'session.return'
+  | 'session.reopen'
   | 'ledger.recordLines'
   | 'business.create'
   | 'business.update'
@@ -209,6 +211,8 @@ export const ACTION_TYPES: Record<ActionTypeName, ActionTypeDef> = {
   'session.submit': { labelSw: 'Wasilisha kufunga', label: 'Submit closing', objectType: 'StockSession' },
   'session.approve': { labelSw: 'Thibitisha kufunga', label: 'Approve closing', objectType: 'StockSession' },
   'session.return': { labelSw: 'Rudisha closing ya marekebisho', label: 'Return closing for correction', objectType: 'StockSession' },
+  'session.reopen': { labelSw: 'Fungua tena closing iliyo verified', label: 'Reopen verified closing', objectType: 'StockSession' },
+  'stock.restart': { labelSw: 'Anza stock upya kutoka closing', label: 'Restart stock from a closing', objectType: 'StockSession' },
   'ledger.recordLines': { labelSw: 'Rekodi ingizo la fedha', label: 'Record money entry', objectType: 'LedgerEntry' },
   'business.create': { labelSw: 'Fungua biashara', label: 'Create business', objectType: 'Business' },
   'business.update': { labelSw: 'Sasisha wasifu wa biashara', label: 'Update business profile', objectType: 'Business' },

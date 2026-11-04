@@ -10,7 +10,7 @@ import { tintVars } from '../lib/types';
 
 export function Difference() {
   const nav = useNavigate();
-  const { L, fmt, owner } = useSettings();
+  const { L, fmt, owner, lang } = useSettings();
   const { products, session, submitSession } = useData();
   const { flash } = useToast();
   const [reason, setReason] = useState<string | null>(session?.reason || null);
@@ -36,8 +36,13 @@ export function Difference() {
 
   async function submit() {
     setBusy(true);
-    await submitSession(ok ? null : reason, note);
+    const err = await submitSession(ok ? null : reason, note);
     setBusy(false);
+    if (err) {
+      const day = err.split(':')[1];
+      flash(lang === 'sw' ? `Hakiki closing ya ${day} kwanza.` : `Verify the ${day} closing first.`);
+      return;
+    }
     flash(L.submitReview);
     nav(owner ? '/approval' : '/home');
   }

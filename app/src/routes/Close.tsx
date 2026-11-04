@@ -59,6 +59,8 @@ export function Close() {
   const [dayOpen, setDayOpen] = useState(false);
   const [dayPick, setDayPick] = useState(closingDay);
   const [earlier, setEarlier] = useState<string | null>(null);
+  // A later day already counted (this day was reopened to fix it): it gets checked again after this one.
+  const [laterWaiting, setLaterWaiting] = useState<string | null>(null);
 
   // An unfinished day older than the one on screen. Counting out of order
   // computes every "sold" against a shelf that never existed, so the screen
@@ -69,6 +71,10 @@ export function Close() {
       .filter((r) => r.status !== 'verified' && r.session_date < closingDay)
       .sort((a, b) => a.session_date.localeCompare(b.session_date))[0];
     setEarlier(older?.session_date || null);
+    const later = rows
+      .filter((r) => r.status !== 'verified' && r.session_date > closingDay)
+      .sort((a, b) => a.session_date.localeCompare(b.session_date))[0];
+    setLaterWaiting(later?.session_date || null);
   }, [fetchSessions, closingDay]);
 
   useEffect(() => { void checkEarlier(); }, [checkEarlier]);
@@ -341,6 +347,14 @@ export function Close() {
 
       <div className="desk">
       <div className="desk-main">
+
+      {laterWaiting && session && session.status !== 'verified' && (
+        <div className="card later-waiting" style={{ padding: '11px 14px', marginBottom: 12, fontSize: 12.5, fontWeight: 700, color: 'var(--ink2)', background: 'var(--warnSoft)', lineHeight: 1.45 }}>
+          {lang === 'sw'
+            ? `Siku hii imefunguliwa tena kurekebisha. Ukiiverify, ${dayName(laterWaiting)} itaanza na hesabu iliyorekebishwa na itakaguliwa tena.`
+            : `This day was reopened to fix it. Once verified, ${dayName(laterWaiting)} opens on the corrected count and is checked again.`}
+        </div>
+      )}
 
       {session?.owner_comments && (
         <div className="card" style={{ padding: 14, marginBottom: 14, background: 'var(--badSoft)' }}>

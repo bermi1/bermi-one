@@ -132,7 +132,8 @@ export function Approval() {
             className="btn-primary tap"
             style={{ flex: 1 }}
             onClick={async () => {
-              await approveSession();
+              const err = await approveSession();
+              if (err) { flash(lang === 'sw' ? `Hakiki closing ya ${err.split(':')[1]} kwanza.` : `Verify the ${err.split(':')[1]} closing first.`); return; }
               flash(L.closed);
             }}
           >

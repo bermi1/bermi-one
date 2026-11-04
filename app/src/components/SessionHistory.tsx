@@ -14,13 +14,18 @@ import type { StockSession } from '../lib/types';
 export function SessionHistory() {
   const nav = useNavigate();
   const { L, fmt, lang, owner } = useSettings();
-  const { products, activeBusiness, fetchSessions, deleteSession, resumeSession } = useData();
+  const { products, activeBusiness, fetchSessions, deleteSession, resumeSession, reopenVerified, restartFromClosing, fetchReportSource } = useData();
   const { flash } = useToast();
 
   const [sessions, setSessions] = useState<StockSession[] | null>(null);
   const [viewing, setViewing] = useState<StockSession | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<StockSession | null>(null);
   const [busy, setBusy] = useState(false);
+  const [confirmReopen, setConfirmReopen] = useState<StockSession | null>(null);
+  const [confirmRestart, setConfirmRestart] = useState<StockSession | null>(null);
+  const [movesSince, setMovesSince] = useState<string[] | null>(null);
+  const sw = lang === 'sw';
+  const dayLabel = (iso: string) => new Date(`${iso}T12:00:00Z`).toLocaleDateString(sw ? 'sw-TZ' : 'en-GB', { weekday: 'long', day: 'numeric', month: 'short' });
 
   const load = useCallback(async () => {
     const rows = await fetchSessions();
@@ -72,13 +77,61 @@ export function SessionHistory() {
     if (!ok) flash(lang === 'sw' ? 'Ruhusu dirisha jipya' : 'Allow pop-ups to open the report');
   }
 
+  /** Why a fix was refused, in words. */
+  function explain(code: string): string {
+    const [kind, day] = code.split(':');
+    if (kind === 'DELETE_LATER_FIRST') return sw
+      ? `${dayLabel(day)} ilifunguka kwa hesabu ya siku hii. Futa au fungua tena ${dayLabel(day)} kwanza — au tumia "Fungua tena kurekebisha".`
+      : `${dayLabel(day)} opened on this day's count. Delete or reopen ${dayLabel(day)} first — or use "Reopen to fix".`;
+    return code;
+  }
+
+  const verified = (sessions || []).filter((x) => x.status === 'verified').map((x) => x.session_date).sort();
+  const latestVerified = verified[verified.length - 1] || null;
+  const reopenChain = confirmReopen ? verified.filter((d) => d >= confirmReopen.session_date).reverse() : [];
+
   async function doDelete() {
     if (!confirmDelete) return;
     setBusy(true);
-    await deleteSession(confirmDelete.id);
+    const err = await deleteSession(confirmDelete.id);
     setBusy(false);
     setConfirmDelete(null);
-    flash(lang === 'sw' ? 'Imefutwa' : 'Deleted');
+    if (err) { flash(explain(err)); return; }
+    flash(confirmDelete.status === 'verified'
+      ? (sw ? 'Imefutwa — stock imerudi kama siku hiyo ilivyoanza' : 'Deleted — stock is back to how that day started')
+      : (sw ? 'Imefutwa' : 'Deleted'));
+    void load();
+  }
+
+  async function doReopen() {
+    if (!confirmReopen) return;
+    setBusy(true);
+    const err = await reopenVerified(confirmReopen.id);
+    setBusy(false);
+    setConfirmReopen(null);
+    if (err) { flash(explain(err)); return; }
+    flash(sw ? 'Imefunguliwa — rekebisha kisha verify tena' : 'Reopened — correct it and verify again');
+    nav('/close');
+  }
+
+  async function askRestart(s0: StockSession) {
+    setConfirmRestart(s0);
+    setMovesSince(null);
+    if (!activeBusiness) return;
+    const to = new Date().toISOString().slice(0, 10);
+    const { ledger } = await fetchReportSource([activeBusiness.id], s0.session_date, to);
+    setMovesSince(ledger.filter((e) => e.kind === 'stock' && e.created_at.slice(0, 10) >= s0.session_date)
+      .sort((a, b) => a.created_at.localeCompare(b.created_at)).map((e) => `${e.created_at.slice(0, 10)} · ${e.label}`));
+  }
+
+  async function doRestart() {
+    if (!confirmRestart) return;
+    setBusy(true);
+    const err = await restartFromClosing(confirmRestart.id);
+    setBusy(false);
+    setConfirmRestart(null);
+    if (err) { flash(explain(err)); return; }
+    flash(sw ? 'Stock imeanza upya kutoka closing hii' : 'Stock restarted from this closing');
     void load();
   }
 
@@ -174,8 +227,20 @@ export function SessionHistory() {
                     {L.resumeClosing}
                   </button>
                 )}
+                {owner && s.status === 'verified' && (
+                  <button className="chip tap reopen-btn" style={{ padding: '6px 11px', fontSize: 11.5, color: 'var(--brand)', display: 'flex', alignItems: 'center', gap: 5 }} onClick={() => setConfirmReopen(s)}>
+                    <Icon name="edit" size={11} />
+                    {sw ? 'Fungua tena kurekebisha' : 'Reopen to fix'}
+                  </button>
+                )}
+                {owner && s.status === 'verified' && s.session_date === latestVerified && (
+                  <button className="chip tap restart-btn" style={{ padding: '6px 11px', fontSize: 11.5 }} onClick={() => void askRestart(s)}>
+                    {sw ? 'Anza upya kutoka hapa' : 'Start again from here'}
+                  </button>
+                )}
                 <div style={{ flex: 1 }} />
-                <button className="chip tap" style={{ padding: '6px 11px', fontSize: 11.5, color: 'var(--bad)' }} onClick={() => setConfirmDelete(s)}>
+                <button className="chip tap delete-btn" style={{ padding: '6px 11px', fontSize: 11.5, color: 'var(--bad)' }}
+                  onClick={() => (s.status === 'verified' && latestVerified && s.session_date < latestVerified ? flash(explain(`DELETE_LATER_FIRST:${latestVerified}`)) : setConfirmDelete(s))}>
                   <Icon name="x" size={11} />
                 </button>
               </div>
@@ -309,6 +374,57 @@ export function SessionHistory() {
               <Icon name="doc" size={15} />
               {L.report}
             </button>
+          </div>
+        )}
+      </Sheet>
+
+      <Sheet open={!!confirmReopen} onClose={() => setConfirmReopen(null)} title={sw ? 'Fungua tena kurekebisha?' : 'Reopen to fix?'}>
+        {confirmReopen && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+            <div className="reopen-text" style={{ fontSize: 13.5, color: 'var(--ink2)', lineHeight: 1.5 }}>
+              {sw
+                ? `${reopenChain.map(dayLabel).join(', ')} ${reopenChain.length > 1 ? 'zitafunguliwa' : 'itafunguliwa'}. Hesabu na pesa zinabaki kama zilivyo — rekebisha kilichokosewa, kisha verify tena. Pesa zake zinatoka kwenye cash book hadi zitakapo-verify tena, na stock inarudi kama ${dayLabel(confirmReopen.session_date)} ilivyoanza.`
+                : `${reopenChain.map(dayLabel).join(', ')} will reopen. Counts and money stay filled in — fix what is wrong, then verify again. Their money comes out of the cash book until verified again, and the stock goes back to how ${dayLabel(confirmReopen.session_date)} started.`}
+              {reopenChain.length > 1 && (
+                <div style={{ marginTop: 8, fontWeight: 700 }}>
+                  {sw ? 'Ukishaverify siku ya kwanza, inayofuata inaanza na hesabu iliyorekebishwa.' : 'Once the first day is verified again, the next day opens on its corrected count.'}
+                </div>
+              )}
+            </div>
+            <div style={{ display: 'flex', gap: 10 }}>
+              <button className="btn-ghost tap" style={{ flex: 1 }} onClick={() => setConfirmReopen(null)}>{L.cancel}</button>
+              <button className="btn-primary tap reopen-go" style={{ flex: 1 }} data-disabled={busy} onClick={doReopen}>{sw ? 'Fungua tena' : 'Reopen'}</button>
+            </div>
+          </div>
+        )}
+      </Sheet>
+
+      <Sheet open={!!confirmRestart} onClose={() => setConfirmRestart(null)} title={sw ? 'Anza stock upya kutoka closing hii?' : 'Start stock again from this closing?'}>
+        {confirmRestart && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+            <div style={{ fontSize: 13.5, color: 'var(--ink2)', lineHeight: 1.5 }}>
+              {sw
+                ? `Kila bidhaa itaanza na hesabu ya closing ya ${dayLabel(confirmRestart.session_date)}. Stock iliyoongezwa baada yake inafutwa — iongeze tena kwa "Ongeza stock" kwenye siku sahihi.`
+                : `Every product will open on ${dayLabel(confirmRestart.session_date)}'s closing count. Stock added after it is cleared — add it again with Add stock on the right day.`}
+            </div>
+            <div>
+              <div style={{ fontSize: 11.5, fontWeight: 800, color: 'var(--ink3)', textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 6 }}>
+                {sw ? 'Mizunguko ya stock tangu siku hiyo' : 'Stock movements since that day'}
+              </div>
+              {movesSince === null ? (
+                <div style={{ fontSize: 12.5, color: 'var(--ink3)' }}>{L.loading}</div>
+              ) : movesSince.length === 0 ? (
+                <div style={{ fontSize: 12.5, color: 'var(--ink3)' }}>{sw ? 'Hakuna.' : 'None recorded.'}</div>
+              ) : (
+                <div className="restart-moves" style={{ display: 'flex', flexDirection: 'column', gap: 4, maxHeight: 180, overflowY: 'auto', fontSize: 12.5, color: 'var(--ink2)', fontWeight: 600 }}>
+                  {movesSince.map((m, i) => <div key={i}>{m}</div>)}
+                </div>
+              )}
+            </div>
+            <div style={{ display: 'flex', gap: 10 }}>
+              <button className="btn-ghost tap" style={{ flex: 1 }} onClick={() => setConfirmRestart(null)}>{L.cancel}</button>
+              <button className="btn-primary tap restart-go" style={{ flex: 1 }} data-disabled={busy} onClick={doRestart}>{sw ? 'Anza upya' : 'Start again'}</button>
+            </div>
           </div>
         )}
       </Sheet>

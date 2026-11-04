@@ -21,6 +21,7 @@ import {
   type StaffMember,
   type SalonRole,
   type StockSession,
+  type SessionLine,
   type Theme,
 } from '../lib/types';
 
@@ -127,12 +128,23 @@ interface DataCtx {
   canStartDay: (dateIso: string) => Promise<string | null>;
   addClosingItem: (kind: ClosingItemKind, amount: number, note: string) => Promise<void>;
   removeClosingItem: (id: string) => Promise<void>;
-  submitSession: (reason: string | null, note: string) => Promise<void>;
-  approveSession: () => Promise<void>;
+  /** null when submitted; VERIFY_FIRST:<day> while an earlier day is still unverified. */
+  submitSession: (reason: string | null, note: string) => Promise<string | null>;
+  /** null when verified; VERIFY_FIRST:<day> while an earlier day is still unverified. */
+  approveSession: () => Promise<string | null>;
+  /**
+   * Owner: take a verified closing back to open to correct it. Later verified
+   * days reopen too (newest first). Stock goes back to that day's opening, its
+   * money leaves the cash book until it is verified again, counts stay filled in.
+   */
+  reopenVerified: (id: string) => Promise<string | null>;
+  /** Owner repair: every product opens on this (latest verified) closing's count; deliveries since are re-entered. */
+  restartFromClosing: (id: string) => Promise<string | null>;
   returnSession: (comments?: string) => Promise<void>;
   /** Pass `cols` to fetch only some columns; the full rows carry every product line. */
   fetchSessions: (limit?: number, cols?: string) => Promise<StockSession[]>;
-  deleteSession: (id: string) => Promise<void>;
+  /** null when deleted; DELETE_LATER_FIRST:<day> for a verified closing that is not the latest. */
+  deleteSession: (id: string) => Promise<string | null>;
   /** Permanently removes one money entry and undoes what it did to the balances. */
   deleteLedgerEntry: (id: string) => Promise<void>;
   fetchReportSource: (businessIds: string[], from: string, to: string) => Promise<{ sessions: StockSession[]; ledger: LedgerEntry[] }>;
@@ -878,10 +890,71 @@ export function DataProvider({ children }: { children: ReactNode }) {
     [activeBusiness, profile, accounts, record],
   );
 
+  /*
+    Fixing a verified day.
+
+    Verifying a day rolls every product forward (its count becomes tomorrow's
+    opening). Undoing that day — to reopen it or delete it — has to roll the
+    shelf back, or the day can never be counted again from the right opening.
+    The closing's frozen `lines` hold exactly what its shelf was, so that is
+    what comes back. Stock that arrived after it is kept aside: for the next
+    unfinished day as \`held\` on its lines, or in \`incoming\` when there is none.
+  */
+  async function earlierUnverified(bizId: string, date: string): Promise<string | null> {
+    const { data } = await supabase.from('stock_sessions').select('session_date').eq('business_id', bizId).neq('status', 'verified')
+      .lt('session_date', date).order('session_date', { ascending: true }).limit(1);
+    return ((data || [])[0]?.session_date as string | undefined) || null;
+  }
+  async function nextUnverifiedAfter(bizId: string, date: string): Promise<StockSession | null> {
+    const { data } = await supabase.from('stock_sessions').select('*').eq('business_id', bizId).neq('status', 'verified')
+      .gt('session_date', date).order('session_date', { ascending: true }).limit(1);
+    return ((data || []) as StockSession[])[0] || null;
+  }
+  /** Take a closing's money back out of the cash book (lines and balances). */
+  async function reverseClosingMoney(bizId: string, sessionId: string): Promise<string[]> {
+    const { data: linked } = await supabase.from('ledger_entries').select('id, amount, account').eq('session_id', sessionId);
+    const rows = (linked || []) as { id: string; amount: number; account: AccountId }[];
+    if (!rows.length) return [];
+    const { data: acc } = await supabase.from('accounts').select('*').eq('business_id', bizId).maybeSingle();
+    if (acc) {
+      const next = { cash: Number(acc.cash), mobile: Number(acc.mobile), bank: Number(acc.bank) };
+      for (const r of rows) next[r.account] -= Number(r.amount);
+      await supabase.from('accounts').update(next).eq('business_id', bizId);
+    }
+    await supabase.from('ledger_entries').delete().eq('session_id', sessionId);
+    return rows.map((r) => r.id);
+  }
+  /** Put the shelf back to how this verified closing found it. */
+  async function unrollDay(bizId: string, d: StockSession) {
+    const { data: prods } = await supabase.from('products').select('*').eq('business_id', bizId);
+    const later = await nextUnverifiedAfter(bizId, d.session_date);
+    const byId = new Map((d.lines || []).map((l) => [l.id, l]));
+    const held: Record<string, number> = {};
+    for (const p of (prods || []) as Product[]) {
+      const l = byId.get(p.id);
+      if (!l) continue;
+      const added = Number(p.added || 0), incoming = Number(p.incoming || 0);
+      if (later) held[p.id] = roundQty(added);
+      await supabase.from('products').update({
+        opening: roundQty(Number(l.opening || 0)), added: roundQty(Number(l.added || 0)),
+        incoming: roundQty(later ? incoming : added + incoming),
+      }).eq('id', p.id);
+    }
+    if (later) {
+      const base = later.lines?.length ? later.lines : ((prods || []) as Product[]).map(snapshotLine);
+      const lines = base.map((l) => (l.id in held ? { ...l, held: held[l.id] } : l));
+      await supabase.from('stock_sessions').update({ lines, ...(later.status === 'submitted' ? { status: 'open' } : {}) }).eq('id', later.id);
+    }
+  }
+
   const submitSession = useCallback(
-    async (reason: string | null, note: string) => {
+    async (reason: string | null, note: string): Promise<string | null> => {
       const s = (await ensureSession()) || session;
-      if (!s) return;
+      if (!s) return null;
+      if (activeBusiness) {
+        const waiting = await earlierUnverified(activeBusiness.id, s.session_date);
+        if (waiting) return `VERIFY_FIRST:${waiting}`;
+      }
       // Freeze what the day was worth at the moment it was submitted.
       const counted = products.filter((p) => s.counts[p.id] !== undefined);
       const patch = {
@@ -914,6 +987,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
           payload: { reason, note }, actorName: actorRef.current,
         });
       }
+      return null;
     },
     [ensureSession, session, profile, activeBusiness, record, products],
   );
@@ -936,8 +1010,16 @@ export function DataProvider({ children }: { children: ReactNode }) {
     setSessionDate(s.session_date);
   }, []);
 
-  const approveSession = useCallback(async () => {
-    if (!session || !activeBusiness) return;
+  const approveSession = useCallback(async (): Promise<string | null> => {
+    if (!session || !activeBusiness) return null;
+    const waiting = await earlierUnverified(activeBusiness.id, session.session_date);
+    if (waiting) return `VERIFY_FIRST:${waiting}`;
+    // A day reopened to be fixed: the next day may already be counted and holds its own deliveries.
+    const later = await nextUnverifiedAfter(activeBusiness.id, session.session_date);
+    const heldOf = (id: string): number | null => {
+      const l = later?.lines?.find((x) => x.id === id) as (SessionLine & { held?: number }) | undefined;
+      return l && typeof l.held === 'number' ? l.held : null;
+    };
     const patch = { status: 'verified' as const, approved_by_name: profile?.full_name || 'Owner', approved_at: new Date().toISOString() };
     setSession({ ...session, ...patch });
     await supabase.from('stock_sessions').update(patch).eq('id', session.id);
@@ -970,14 +1052,29 @@ export function DataProvider({ children }: { children: ReactNode }) {
     */
     const rolled = products.map((p) => {
       const counted = session.counts[p.id] !== undefined && session.counts[p.id] !== null;
-      return { id: p.id, opening: roundQty(counted ? Number(session.counts[p.id]) : p.opening + p.added), added: roundQty(p.incoming || 0) };
+      const h = heldOf(p.id);
+      return {
+        id: p.id, opening: roundQty(counted ? Number(session.counts[p.id]) : p.opening + p.added),
+        added: roundQty(h ?? (p.incoming || 0)), incoming: h === null ? 0 : roundQty(p.incoming || 0),
+      };
     });
     setProducts((ps) => ps.map((p) => {
       const r = rolled.find((x) => x.id === p.id);
-      return r ? { ...p, opening: r.opening, added: r.added, incoming: 0 } : p;
+      return r ? { ...p, opening: r.opening, added: r.added, incoming: r.incoming } : p;
     }));
     for (const r of rolled) {
-      await supabase.from('products').update({ opening: r.opening, added: r.added, incoming: 0 }).eq('id', r.id);
+      await supabase.from('products').update({ opening: r.opening, added: r.added, incoming: r.incoming }).eq('id', r.id);
+    }
+    // The correction carries forward: the next day now opens on this day's corrected count.
+    if (later) {
+      const byId = new Map(rolled.map((r) => [r.id, r]));
+      const base = later.lines?.length ? later.lines : products.map(snapshotLine);
+      const lines = base.map((l) => {
+        const r = byId.get(l.id);
+        const { held: _h, ...rest } = l as SessionLine & { held?: number };
+        return r ? { ...rest, opening: r.opening, added: r.added } : rest;
+      });
+      await supabase.from('stock_sessions').update({ lines }).eq('id', later.id);
     }
     const counted = products.filter((p) => session.counts[p.id] !== undefined);
     setRecentClosings((c) => [{ ...session, ...patch }, ...c.filter((x) => x.id !== session.id)]
@@ -1009,6 +1106,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
     setSession(following);
     // The day just verified is finished; the next one to count is the day after it.
     setSessionDate(following?.session_date || nextClosingDay(session.session_date));
+    return null;
   }, [session, profile, addLedgerLines, activeBusiness, record, products]);
 
   const fetchBooks = useCallback<DataCtx['fetchBooks']>(
@@ -1151,33 +1249,94 @@ export function DataProvider({ children }: { children: ReactNode }) {
    */
   const deleteSession = useCallback<DataCtx['deleteSession']>(
     async (id) => {
-      if (!activeBusiness) return;
+      if (!activeBusiness) return null;
+      const bizId = activeBusiness.id;
+      const { data: row } = await supabase.from('stock_sessions').select('*').eq('id', id).maybeSingle();
+      const target = row as StockSession | null;
+      if (!target) return null;
 
-      const { data: linked } = await supabase
-        .from('ledger_entries')
-        .select('id, amount, account')
-        .eq('session_id', id);
-      const rows = (linked || []) as { id: string; amount: number; account: AccountId }[];
-
-      if (rows.length && accounts) {
-        const next = { ...accounts };
-        for (const r of rows) next[r.account] -= Number(r.amount);
-        setAccounts(next);
-        await supabase.from('accounts').update({ cash: next.cash, mobile: next.mobile, bank: next.bank }).eq('business_id', activeBusiness.id);
+      if (target.status === 'verified') {
+        // Only the newest verified day can go: the days after it opened on its count.
+        const { data: newer } = await supabase.from('stock_sessions').select('session_date').eq('business_id', bizId).eq('status', 'verified')
+          .gt('session_date', target.session_date).order('session_date', { ascending: false }).limit(1);
+        const blocker = (newer || [])[0]?.session_date as string | undefined;
+        if (blocker) return `DELETE_LATER_FIRST:${blocker}`;
+        // The shelf goes back to how this day found it, so the day can be counted again.
+        await unrollDay(bizId, target);
       }
 
+      const gone = await reverseClosingMoney(bizId, id);
       await supabase.from('stock_sessions').delete().eq('id', id);
-      const gone = new Set(rows.map((r) => r.id));
-      if (gone.size) setLedger((l) => l.filter((e) => !gone.has(e.id)));
-      if (session?.id === id) setSession(null);
 
       // Permanent means permanent: the session row, its ledger lines and the
       // history that describes them all go. A deleted day must not keep
       // narrating its own takings from the action log.
-      await purgeActions(activeBusiness.id, [id, ...rows.map((r) => r.id)]);
-      setActionLog((log) => log.filter((a) => a.object_id !== id && !gone.has(a.object_id || '')));
+      await purgeActions(bizId, [id, ...gone]);
+      await loadBusinessData(bizId);
+      return null;
     },
-    [activeBusiness, session, record, profile, accounts],
+    [activeBusiness, loadBusinessData],
+  );
+
+  const reopenVerified = useCallback<DataCtx['reopenVerified']>(
+    async (id) => {
+      if (!activeBusiness) return null;
+      const bizId = activeBusiness.id;
+      const { data: row } = await supabase.from('stock_sessions').select('*').eq('id', id).maybeSingle();
+      const target = row as StockSession | null;
+      if (!target || target.status !== 'verified') return 'NOT_VERIFIED';
+      const { data: chain } = await supabase.from('stock_sessions').select('*').eq('business_id', bizId).eq('status', 'verified')
+        .gte('session_date', target.session_date).order('session_date', { ascending: false });
+      // Newest first: each day is rolled back onto the one before it.
+      for (const d of (chain || []) as StockSession[]) {
+        await reverseClosingMoney(bizId, d.id);
+        await unrollDay(bizId, d);
+        await supabase.from('stock_sessions').update({ status: 'open', approved_by_name: null, approved_at: null }).eq('id', d.id);
+        await record({
+          businessId: bizId, actionType: 'session.reopen', objectId: d.id,
+          summary: `Reopened ${d.session_date}'s verified closing to correct it`, payload: {}, actorName: actorRef.current,
+        });
+      }
+      await loadBusinessData(bizId);
+      return null;
+    },
+    [activeBusiness, loadBusinessData, record],
+  );
+
+  const restartFromClosing = useCallback<DataCtx['restartFromClosing']>(
+    async (id) => {
+      if (!activeBusiness) return null;
+      const bizId = activeBusiness.id;
+      const { data: row } = await supabase.from('stock_sessions').select('*').eq('id', id).maybeSingle();
+      const s = row as StockSession | null;
+      if (!s || s.status !== 'verified') return 'NOT_VERIFIED';
+      const { data: newer } = await supabase.from('stock_sessions').select('session_date').eq('business_id', bizId).eq('status', 'verified')
+        .gt('session_date', s.session_date).order('session_date', { ascending: false }).limit(1);
+      const blocker = (newer || [])[0]?.session_date as string | undefined;
+      if (blocker) return `DELETE_LATER_FIRST:${blocker}`;
+      const counts = s.counts || {};
+      const opening: Record<string, number> = {};
+      for (const l of s.lines || []) {
+        const c = counts[l.id];
+        opening[l.id] = roundQty(c === undefined || c === null ? Number(l.opening || 0) + Number(l.added || 0) : Number(c));
+      }
+      for (const [pid, o] of Object.entries(opening)) {
+        await supabase.from('products').update({ opening: o, added: 0, incoming: 0 }).eq('id', pid).eq('business_id', bizId);
+      }
+      const later = await nextUnverifiedAfter(bizId, s.session_date);
+      if (later) {
+        const { data: prods } = await supabase.from('products').select('*').eq('business_id', bizId);
+        const lines = ((prods || []) as Product[]).map(snapshotLine);
+        await supabase.from('stock_sessions').update({ lines, ...(later.status === 'submitted' ? { status: 'open' } : {}) }).eq('id', later.id);
+      }
+      await record({
+        businessId: bizId, actionType: 'stock.restart', objectId: s.id,
+        summary: `Stock restarted from ${s.session_date}'s closing`, payload: { products: Object.keys(opening).length }, actorName: actorRef.current,
+      });
+      await loadBusinessData(bizId);
+      return null;
+    },
+    [activeBusiness, loadBusinessData, record],
   );
 
   /**
@@ -1315,6 +1474,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
     approveSession,
     returnSession,
     reopenSession,
+    reopenVerified,
+    restartFromClosing,
     resumeSession,
     sessionDate,
     openSessionForDate,
